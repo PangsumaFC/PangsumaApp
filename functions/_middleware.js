@@ -17,6 +17,7 @@ export async function onRequest(context) {
     '/sw.js',
     '/pangsuma-theme.css',
     '/manifest.webmanifest',
+    '/version.json',
   ].includes(pathname)) {
     headers.set('Cache-Control', 'no-cache');
   } else if (pathname === '/api' || pathname.startsWith('/api/')) {

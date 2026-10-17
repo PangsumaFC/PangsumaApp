@@ -99,7 +99,7 @@ for path in ('/api/login', '/api/session', '/api/overview', '/api/users', '/api/
         assert e.code == 503 and body['error']['code'] == 'migration_required', (path, e.code, body)
 print('PROFILE_MIGRATION_PRE_PASS health=503 login=503 session=503 overview=503 users=503 profile=503 raw_sql_errors=0')
 PY
-cp "$repo_root/migrations/0003_user_profiles.sql" "$repo_root/migrations/0004_manager_submissions.sql" "$project_dir/migrations/"
+cp "$repo_root/migrations/0003_user_profiles.sql" "$repo_root/migrations/0004_manager_submissions.sql" "$repo_root/migrations/0005_cash_topups.sql" "$repo_root/migrations/0006_financial_controls.sql" "$repo_root/migrations/0007_submission_receipts.sql" "$repo_root/migrations/0008_financial_alert_settings.sql" "$project_dir/migrations/"
 CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
 curl --connect-timeout 1 --max-time 5 -fsS "$base/api/health" >/dev/null || { cat "$state_dir/wrangler.log" >&2; exit 1; }
 echo 'PROFILE_MIGRATION_POST_PASS health=200 same_server_recovered=1'
@@ -108,7 +108,19 @@ export PROFILE_REVIEW_DIR="$(mktemp -d /workspace/pangsuma-profile-review.XXXXXX
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUNBUFFERED=1
 echo "PROFILE_REVIEW_DIR=$PROFILE_REVIEW_DIR"
-if [[ "${1:-}" == "--manager-sync" ]]; then
+if [[ "${1:-}" == "--dashboard-design" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/dashboard_design_e2e.py "$@"
+elif [[ "${1:-}" == "--navigation-loader" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/navigation_loader_e2e.py "$@"
+elif [[ "${1:-}" == "--cash-topup" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/cash_topup_e2e.py "$@"
+elif [[ "${1:-}" == "--manager-design" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/manager_design_e2e.py "$@"
+elif [[ "${1:-}" == "--manager-sync" ]]; then
   shift
   timeout -k 5s 150s python3 -B tests/manager_sync_e2e.py "$@"
 elif [[ "${1:-}" == "--image-upload" ]]; then
@@ -120,6 +132,14 @@ elif [[ "${1:-}" == "--manager-actions" ]]; then
 elif [[ "${1:-}" == "--mobile-download" ]]; then
   shift
   timeout -k 5s 120s python3 -B tests/mobile_download_e2e.py "$@"
+elif [[ "${1:-}" == "--app-update" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/app_update_e2e.py "$@"
+elif [[ "${1:-}" == "--financial-controls" ]]; then
+  python3 -B "$repo_root/tests/financial_controls_e2e.py"
+elif [[ "${1:-}" == "--financial-workspace" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/financial_workspace_e2e.py "$@"
 else
   timeout -k 5s 180s python3 -B tests/profile_flow_e2e.py "$@"
 fi

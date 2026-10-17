@@ -9,3 +9,10 @@ node_modules/
 coverage/
 playwright-report/
 test-results/
+
+# Python local regression artifacts
+__pycache__/
+*.py[cod]
+
+# Atomic editor scratch files
+.manus-*.tmp

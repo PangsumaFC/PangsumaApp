@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from playwright.sync_api import sync_playwright
 
-from e2e_local import api, local_d1_rows, local_vars
+from e2e_local import api, local_d1_rows, local_vars, manager_credential
 from webauthn_e2e import (
     BASE_URL,
     MANAGER_EMAIL,
@@ -65,7 +65,7 @@ def main():
         page.goto(BASE_URL, wait_until="networkidle")
         wait_for_login_controls(page)
 
-        boot = api(page, "/api/bootstrap", "POST", {"managerPassword": secrets["LOCAL_MANAGER_PASSWORD"]},
+        boot = api(page, "/api/bootstrap", "POST", {"managerCredential": manager_credential(page, secrets["LOCAL_MANAGER_PASSWORD"])},
                    {"Authorization": "Bearer " + secrets["BOOTSTRAP_TOKEN"]})
         assert boot["status"] in (201, 409), boot
 
@@ -193,6 +193,10 @@ def main():
         wait_for_login_controls(page)
         page.locator("#passkeyLoginButton").click()
         page.locator("#loginGate").wait_for(state="hidden", timeout=15000)
+        # Isolate this request-budget scenario from the preceding hardening cases.
+        # This helper is pinned to the temporary --local database; production policy is unchanged.
+        local_d1_rows("DELETE FROM passkey_request_limits;")
+        assert count("SELECT COUNT(*) AS count FROM passkey_request_limits") == 0
         for _ in range(8):
             body = begin_assertion(page)
             change_signature(body["credential"])

@@ -35,6 +35,20 @@ def main():
         rotate_first_login(page, password)
         overview = api(page, '/api/overview')['data']
         target = next(user for user in overview['users'] if user['role'] == 'user')
+        manager = overview['user']
+        manager_path = f"/api/users/{manager['id']}/profile"
+        page.locator('.welcome-avatar-button').click()
+        manager_dialog = visible_dialog(page)
+        set_file(page, '#profilePhoto', 'manager-dashboard-avatar.png', tiny_png(), 'image/png')
+        expect(manager_dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap', timeout=5_000)
+        with page.expect_response(lambda response: response.request.method == 'PUT'
+                                  and response.url.endswith(manager_path), timeout=10_000) as manager_response:
+            manager_dialog.locator('#profileSubmit').click()
+        assert manager_response.value.status == 200
+        manager_dialog.wait_for(state='hidden', timeout=10_000)
+        page.reload(wait_until='networkidle', timeout=10_000)
+        expect(page.locator('.welcome-avatar-button img')).to_be_visible(timeout=10_000)
+        assert api(page, manager_path)['data']['user']['photoUrl']
         path = f"/api/users/{target['id']}/profile"
         page.locator("[data-page='users']:visible").first.click()
         page.locator('tbody tr').first.wait_for(timeout=5_000)

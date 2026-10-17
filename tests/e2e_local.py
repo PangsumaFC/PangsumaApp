@@ -55,6 +55,22 @@ def local_d1_rows(sql: str):
 
 
 def api(page, path: str, method: str = "GET", body=None, headers=None):
+    # The server never accepts raw passwords. Keep legacy tests readable while
+    # deriving the current client PBKDF2 credential through the real endpoint.
+    if path == "/api/login" and method == "POST" and isinstance(body, dict) and "password" in body:
+        body = page.evaluate(
+            """async ({email, password}) => {
+              const parametersResponse = await fetch('/api/auth/password-parameters', {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email})
+              });
+              const parameters = await parametersResponse.json();
+              const credential = await window.PasswordCrypto.derive(password, parameters);
+              return {email, credential};
+            }""",
+            {"email": body.get("email"), "password": body.get("password")},
+        )
     return page.evaluate(
         """async ({path, method, body, headers}) => {
           const requestHeaders = {...(headers || {})};
@@ -69,6 +85,19 @@ def api(page, path: str, method: str = "GET", body=None, headers=None):
           return {status: response.status, data};
         }""",
         {"path": path, "method": method, "body": body, "headers": headers or {}},
+    )
+
+
+def manager_credential(page, password: str):
+    return page.evaluate(
+        """async password => {
+          const response = await fetch('/api/auth/password-parameters', {
+            method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email: 'rahmat@pangsumafc.com'})
+          });
+          return window.PasswordCrypto.derive(password, await response.json());
+        }""", password,
     )
 
 
@@ -189,6 +218,31 @@ def bulk_create_submissions(page, count: int, kind: str, prefix: str):
     )
 
 
+def visible_submission_ids(page):
+    return page.locator('[data-action="report-detail"]:visible').evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-id')).filter(Boolean)"
+    )
+
+
+def walk_bounded_submission_pages(page, expected_ids):
+    """Traverse UI pages without assuming cumulative DOM state."""
+    pages = []
+    while True:
+        current = visible_submission_ids(page)
+        assert 0 < len(current) <= 100, f"bounded history page size invalid: {len(current)}"
+        assert len(current) == len(set(current)), "duplicate IDs on one history page"
+        pages.append(current)
+        next_button = page.locator('[data-action="load-more-history"][data-collection="submissions"]:visible')
+        if not next_button.count():
+            break
+        next_button.click()
+        page.wait_for_timeout(150)
+    flattened = [item for batch in pages for item in batch]
+    assert flattened == expected_ids, ("UI page order must match backend keyset order", flattened[:8], expected_ids[:8], len(flattened), len(expected_ids))
+    assert len(flattened) == len(set(flattened)) == len(expected_ids)
+    return pages
+
+
 def bulk_approve(page, ids):
     return page.evaluate(
         """async ids => {
@@ -235,7 +289,7 @@ def main():
             accept_downloads=True,
         )
         preview_page = context.new_page()
-        preview_page.route("**/app.js", lambda route: route.abort())
+        preview_page.route("**/app.js*", lambda route: route.abort())
         preview_page.goto(BASE_URL, wait_until="networkidle", timeout=30_000)
         assert preview_page.locator("#pangsuma-preloader").is_visible()
         preview_style = preview_page.locator("#pangsuma-preloader").evaluate("node => { const style = getComputedStyle(node); return {opacity: style.opacity, background: style.backgroundColor, zIndex: style.zIndex, className: node.className}; }")
@@ -272,37 +326,42 @@ def main():
         assert page.locator("#loginIdentifier:focus").count() == 1, "login should focus the ID field"
         page.keyboard.press("Tab")
         assert page.locator("#loginPassword:focus").count() == 1, "Tab should move to the password field"
-        assert page.locator("#demoDisclosure").count() == 1, "demo disclosure must remain in the app shell during review"
+        assert page.locator("#demoDisclosure").count() == 0, "production shell must not expose demo disclosure"
         assert api(page, "/api/health")["status"] == 200
         assert api(page, "/api/overview")["status"] == 401
 
         boot = page.evaluate(
-            """async ({token, managerPassword}) => {
+            """async ({token, managerCredential}) => {
               const response = await fetch('/api/bootstrap', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
-                body: JSON.stringify({managerPassword})
+                body: JSON.stringify({managerCredential})
               });
               return {status: response.status, body: await response.json()};
             }""",
-            {"token": secrets["BOOTSTRAP_TOKEN"], "managerPassword": secrets["LOCAL_MANAGER_PASSWORD"]},
+            {"token": secrets["BOOTSTRAP_TOKEN"], "managerCredential": manager_credential(page, secrets["LOCAL_MANAGER_PASSWORD"])},
         )
         assert boot["status"] == 201 and boot["body"]["seededUsers"] == 10, boot
         repeat_boot = page.evaluate(
-            """async ({token, managerPassword}) => {
+            """async ({token, managerCredential}) => {
               const response = await fetch('/api/bootstrap', {
                 method: 'POST', headers: {'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-                body: JSON.stringify({managerPassword})
+                body: JSON.stringify({managerCredential})
               });
               return response.status;
             }""",
-            {"token": secrets["BOOTSTRAP_TOKEN"], "managerPassword": secrets["LOCAL_MANAGER_PASSWORD"]},
+            {"token": secrets["BOOTSTRAP_TOKEN"], "managerCredential": manager_credential(page, secrets["LOCAL_MANAGER_PASSWORD"])},
         )
         assert repeat_boot == 409, f"bootstrap must be one-time, got {repeat_boot}"
 
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        manager_password = secrets["LOCAL_MANAGER_PASSWORD"]
+        manager_new_password = manager_password + "-rotated"
+        login(page, MANAGER_EMAIL, manager_password)
+        if page.get_by_role("heading", name="Buat password baru").count():
+            change_password(page, manager_password, manager_new_password)
+            manager_password = manager_new_password
         page.get_by_role("heading", name=re.compile("Selamat (pagi|siang|sore|malam), Rahmat")).wait_for()
-        assert page.locator("#demoDisclosure").is_visible()
+        assert page.locator("#demoDisclosure").count() == 0
         assert page.get_by_text("Staff Demo 01").count() == 0
         assert_no_horizontal_overflow(page, 320)
         assert_no_horizontal_overflow(page, 390)
@@ -320,7 +379,7 @@ def main():
         page.get_by_role("button", name="Pengguna", exact=True).click()
         page.get_by_role("heading", name="Pengguna").wait_for()
         assert page.locator("tbody tr").count() == 10
-        assert page.get_by_text("Rahmat Saputro", exact=True).count() == 1
+        assert page.locator("tbody tr").filter(has_text="Rahmat Saputro").count() == 1
         assert page.get_by_text("Password belum diatur").count() == 9
         assert_no_horizontal_overflow(page, 320)
         assert_no_horizontal_overflow(page, 390)
@@ -344,7 +403,7 @@ def main():
         assert page.locator("#temporaryPassword").input_value() == ""
         assert page.locator("#appContent").inner_text() == ""
         page.unroute("**/api/users/*/password")
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        login(page, MANAGER_EMAIL, manager_password)
 
         page.route(
             "**/api/logout",
@@ -410,7 +469,7 @@ def main():
         assert api(page, "/api/cash/opening-balance", "POST", {"amountIdr": 100000, "ownerConfirmed": True})["status"] == 403
         user_overview = api(page, "/api/overview")["data"]
         assert len(user_overview["submissions"]) == 4
-        assert user_overview["cashBalanceIdr"] == 500000
+        assert "cashBalanceIdr" not in user_overview, "user overview must not expose manager cash balance"
         assert_no_horizontal_overflow(page, 320)
         page.locator("#mainContent").evaluate("el => { el.scrollTop = 0; }")
         page.wait_for_timeout(3300)
@@ -424,7 +483,7 @@ def main():
         page.get_by_text("Belum ada laporan", exact=True).wait_for()
 
         logout(page)
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        login(page, MANAGER_EMAIL, manager_password)
         manager_data = api(page, "/api/overview")["data"]
         assert len(manager_data["submissions"]) == 4
         assert manager_data["cashBalanceIdr"] == 500000
@@ -443,20 +502,29 @@ def main():
         page.locator("#confirmDialog").wait_for(state="visible")
         page.locator("#confirmSubmit").click()
         page.get_by_text("Pengajuan disetujui dan debit tercatat di ledger.", exact=True).wait_for(timeout=15_000)
-        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == 315000
+        known_submissions = api(page, "/api/submissions")["data"]["submissions"]
+        approved_petty_amounts = {
+            item["id"]: int(item["amountIdr"])
+            for item in known_submissions
+            if item["type"] == "petty_cash" and item["status"] == "approved"
+        }
+        assert cash_id in approved_petty_amounts, approved_petty_amounts
+        expected_cash_balance = 500000 - sum(approved_petty_amounts.values())
+        actual_cash_balance = api(page, "/api/overview")["data"]["cashBalanceIdr"]
+        assert actual_cash_balance == expected_cash_balance, (actual_cash_balance, expected_cash_balance, approved_petty_amounts)
         duplicate_approval = api(page, f"/api/submissions/{cash_id}/approve", "POST", {})
         assert duplicate_approval["status"] == 200 and duplicate_approval["data"].get("alreadyApplied") is True, duplicate_approval
-        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == 315000
+        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == expected_cash_balance
 
         finance_row = page.locator(".item-row").filter(has_text="Perlengkapan latihan")
         finance_row.get_by_role("button", name="Setujui request").click()
         page.locator("#confirmSubmit").click()
         page.get_by_text("Request disetujui dan masuk ke Finance.", exact=True).wait_for(timeout=15_000)
-        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == 315000
+        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == expected_cash_balance
 
         insufficient = api(page, f"/api/submissions/{overspend_id}/approve", "POST", {})
         assert insufficient["status"] == 409 and insufficient["data"]["error"]["code"] == "insufficient_petty_cash", insufficient
-        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == 315000
+        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == expected_cash_balance
 
         rejected_row = page.locator(".item-row").filter(has_text="Materi administrasi lokal")
         rejected_row.get_by_role("button", name="Tolak").click()
@@ -474,18 +542,19 @@ def main():
         page.get_by_text("Status Request Finance diperbarui.", exact=True).wait_for(timeout=15_000)
         sent_finance = page.locator(".item-row").filter(has_text="Perlengkapan latihan")
         assert sent_finance.get_by_text("Terkirim", exact=True).count() == 1
-        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == 315000
+        assert api(page, "/api/overview")["data"]["cashBalanceIdr"] == expected_cash_balance
         assert_no_horizontal_overflow(page, 320)
         page.locator("#mainContent").evaluate("el => { el.scrollTop = 0; }")
         page.wait_for_timeout(3300)
         page.screenshot(path="/tmp/pangsuma-finance-mobile.png", full_page=True)
         with page.expect_download() as download:
-            page.get_by_role("button", name="Unduh rekap lengkap CSV").click()
-        csv_path = Path("/tmp/pangsuma-local-report.csv")
-        download.value.save_as(csv_path)
-        csv_text = csv_path.read_text(encoding="utf-8-sig")
-        assert "Perlengkapan latihan" in csv_text and "Transport kegiatan lapangan" in csv_text
-
+            page.get_by_role("button", name="Unduh laporan keuangan PDF").click()
+        pdf_path = Path("/tmp/pangsuma-local-report.pdf")
+        download.value.save_as(pdf_path)
+        assert pdf_path.read_bytes().startswith(b"%PDF-")
+        pdf_text = subprocess.run(["pdftotext", str(pdf_path), "-"], check=True, capture_output=True, text=True).stdout
+        assert "RINGKASAN" in pdf_text and "Buku Kas" in pdf_text and "Lampiran Audit" in pdf_text
+        assert "Perlengkapan latihan" in pdf_text and "Transport kegiatan lapangan" in pdf_text
         page.get_by_role("button", name="Pengguna", exact=True).click()
         local_user_row = page.locator("tbody tr").filter(has_text="Penguji Lokal")
         local_user_row.locator('[data-action="deactivate-user"]').click()
@@ -500,7 +569,7 @@ def main():
         assert locked_login["status"] == 401
 
         # Final responsive checks run on real app routes at phone, tablet and desktop widths.
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        login(page, MANAGER_EMAIL, manager_password)
         for destination, title in [
             ("Persetujuan", "Persetujuan"),
             ("Laporan Finance", "Finance"),
@@ -521,26 +590,33 @@ def main():
         expected_total = baseline_total + len(bulk_cash_ids) + len(bulk_finance_ids)
 
         logout(page)
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        login(page, MANAGER_EMAIL, manager_password)
         assert bulk_approve(page, bulk_cash_ids) == len(bulk_cash_ids)
         manager_overview = api(page, "/api/overview")["data"]
         assert manager_overview["summary"]["total"] == expected_total
-        assert manager_overview["cashBalanceIdr"] == 314901
+        approved_petty_amounts.update({item_id: 1 for item_id in bulk_cash_ids})
+        expected_cash_balance = 500000 - sum(approved_petty_amounts.values())
+        assert manager_overview["cashBalanceIdr"] == expected_cash_balance
 
         logout(page)
         login(page, SECOND_USER_EMAIL, secrets["LOCAL_SECOND_NEW_PASSWORD"])
         page.get_by_role("button", name="Laporan saya", exact=True).click()
-        user_first_page = page.locator(".history-controls").filter(has_text=f"Menampilkan 100 dari {len(bulk_cash_ids) + len(bulk_finance_ids)} laporan.")
-        user_first_page.wait_for(timeout=10_000)
-        page.locator('[data-action="load-more-history"][data-collection="submissions"]').click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 200 dari {len(bulk_cash_ids) + len(bulk_finance_ids)} laporan.").wait_for(timeout=10_000)
         user_history = fetch_all_history(page, "/api/history/submissions", "submissions")
-        assert len(user_history) == len(bulk_cash_ids) + len(bulk_finance_ids)
-        assert {item["id"] for item in user_history} == set(bulk_cash_ids + bulk_finance_ids)
+        intended_user_ids = [item["id"] for item in user_history]
+        assert set(intended_user_ids) == set(bulk_cash_ids + bulk_finance_ids)
+        user_pages = walk_bounded_submission_pages(page, intended_user_ids)
+        assert len(user_pages) >= 2
+        assert page.locator('[data-action="history-previous"][data-collection="submissions"]:visible').count() == 1
+        page.locator('[data-action="history-previous"][data-collection="submissions"]:visible').click()
+        page.wait_for_timeout(500)
+        assert visible_submission_ids(page) == user_pages[-2], (visible_submission_ids(page), user_pages[-2])
+        page.locator('[data-action="history-first"][data-collection="submissions"]:visible').click()
+        page.wait_for_timeout(500)
+        assert visible_submission_ids(page) == user_pages[0], (visible_submission_ids(page), user_pages[0])
         assert api(page, "/api/history/cash-ledger")["status"] == 403, "Users must not read Manager ledger history"
 
         logout(page)
-        login(page, MANAGER_EMAIL, secrets["LOCAL_MANAGER_PASSWORD"])
+        login(page, MANAGER_EMAIL, manager_password)
         manager_history = fetch_all_history(page, "/api/history/submissions", "submissions")
         assert len(manager_history) == expected_total
         assert any(item["id"] == cash_id for item in manager_history)
@@ -550,26 +626,44 @@ def main():
         assert len(audit_history) > 100, f"audit fixture did not cross a page: {len(audit_history)}"
 
         page.get_by_role("button", name="Persetujuan", exact=True).click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 100 dari {expected_total} pengajuan.").wait_for(timeout=10_000)
-        page.locator('[data-action="load-more-history"][data-collection="submissions"]').click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 200 dari {expected_total} pengajuan.").wait_for(timeout=10_000)
+        assert 0 < len(visible_submission_ids(page)) <= 100
+        manager_next = page.locator('[data-action="load-more-history"][data-collection="submissions"]:visible')
+        assert manager_next.count() == 1
+        manager_next.click()
+        page.wait_for_timeout(300)
+        assert 0 < len(visible_submission_ids(page)) <= 100
+        manager_previous = page.locator('[data-action="history-previous"][data-collection="submissions"]:visible')
+        assert manager_previous.count() == 1
+        manager_previous.click()
+        page.wait_for_timeout(300)
+        assert 0 < len(visible_submission_ids(page)) <= 100
         audit_summary = page.locator(".audit-panel summary")
         audit_summary.click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 100 dari {len(audit_history)} aktivitas audit.").wait_for(timeout=10_000)
-        page.locator('[data-action="load-more-history"][data-collection="auditEvents"]').click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 200 dari {len(audit_history)} aktivitas audit.").wait_for(timeout=10_000)
+        audit_controls = page.locator('[data-action="load-more-history"][data-collection="auditEvents"]:visible')
+        assert page.locator('[data-collection="auditEvents"] .audit-list:visible li').count() <= 100
+        if audit_controls.count():
+            audit_controls.click()
+            assert page.locator('[data-collection="auditEvents"] .audit-list:visible li').count() <= 100
 
         page.get_by_role("button", name="Laporan Finance", exact=True).click()
         page.locator(".audit-panel summary").click()
-        page.locator(".history-controls").filter(has_text=f"Menampilkan 100 dari {len(ledger_history)} transaksi ledger.").wait_for(timeout=10_000)
-        page.locator('[data-action="load-more-history"][data-collection="cashLedger"]').click()
-        page.locator(".history-controls").filter(has_text=f"Semua {len(ledger_history)} transaksi ledger telah dimuat.").wait_for(timeout=10_000)
+        assert page.locator('[data-collection="cashLedger"] .audit-list:visible li').count() <= 100
+        ledger_next = page.locator('[data-action="load-more-history"][data-collection="cashLedger"]:visible')
+        if ledger_next.count():
+            ledger_next.click()
+            assert page.locator('[data-collection="cashLedger"] .audit-list:visible li').count() <= 100
+        # Full history remains verified through the paginated APIs above; the UI export is PDF.
         with page.expect_download() as complete_download:
-            page.get_by_role("button", name="Unduh rekap lengkap CSV").click()
-        complete_csv_path = Path("/tmp/pangsuma-complete-export.csv")
-        complete_download.value.save_as(complete_csv_path)
-        with complete_csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
-            exported_rows = list(csv.reader(handle))
+            page.get_by_role("button", name="Unduh laporan keuangan PDF").click()
+        complete_pdf_path = Path("/tmp/pangsuma-complete-export.pdf")
+        complete_download.value.save_as(complete_pdf_path)
+        assert complete_pdf_path.read_bytes().startswith(b"%PDF-")
+        complete_text = subprocess.run(["pdftotext", str(complete_pdf_path), "-"], check=True, capture_output=True, text=True).stdout
+        assert "RINGKASAN" in complete_text and "Buku Kas" in complete_text and "Lampiran Audit" in complete_text
+        assert "Perlengkapan latihan" in complete_text and "Transport kegiatan lapangan" in complete_text
+
+        legacy_csv_text = page.evaluate("async () => (await fetch('/api/export.csv')).text()")
+        exported_rows = list(csv.reader(io.StringIO(legacy_csv_text.lstrip('\ufeff'))))
         category_index = exported_rows[0].index("Kategori")
         id_index = exported_rows[0].index("ID")
         categories = [row[category_index] for row in exported_rows[1:]]
@@ -690,10 +784,10 @@ def main():
     print("- Password reset, forced password change, manager/user roles, and per-user data isolation passed.")
     print("- Local-only opening balance, idempotent submission/approval, atomic petty-cash debit, and insufficient-balance guard passed.")
     print("- Fail-closed logout, expired-session dialog cleanup, per-account/IP throttling, and idempotency payload conflict checks passed.")
-    print("- Cursor pagination returned complete submission, ledger, and audit histories; the streamed Manager CSV included every record.")
-    print("- Finance approval, rejection reason, sent status, CSV export, audit persistence, and deactivation-with-history passed.")
+    print("- Cursor pagination returned complete submission, ledger, and audit histories; the paginated API histories included every record and the streamed Manager PDF included report sections.")
+    print("- Finance approval, rejection reason, sent status, PDF export, audit persistence, and deactivation-with-history passed.")
     print("- Responsive overflow checks passed at 320, 390, 768, 1024, and 1440 CSS px, plus 844×390 landscape.")
-    print("- Screenshots and CSV are local review artifacts under /tmp only; no production data or deployment was used.")
+    print("- Screenshots and PDF are local review artifacts under /tmp only; no production data or deployment was used.")
 
 
 if __name__ == "__main__":

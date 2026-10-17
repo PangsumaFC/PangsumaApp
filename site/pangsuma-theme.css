@@ -63,6 +63,15 @@ body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobil
 .brand-name { color: var(--blue-deep); font-family: var(--display-font); font-size: 19px; font-weight: 720; letter-spacing: -.035em; line-height: 1.15; }
 .brand-sub { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
+.app-update-banner { display: flex; align-items: center; gap: 12px; margin: 12px auto 0; max-width: 1120px; padding: 12px 16px; border: 1px solid #d9c27e; border-radius: 12px; color: var(--blue-deep); background: #fffaf0; }
+.app-update-banner strong { font-weight: 750; }
+.app-update-banner span { flex: 1; color: var(--muted); font-size: 13px; }
+.app-update-banner .primary-button { min-height: 38px; padding: 7px 13px; }
+@media (max-width: 560px) {
+  .app-update-banner { align-items: flex-start; flex-wrap: wrap; margin: 10px 14px 0; }
+  .app-update-banner span { flex-basis: 100%; order: 3; }
+  .app-update-banner .primary-button { margin-left: auto; }
+}
 .account-meta { display: grid; min-width: 0; gap: 2px; }
 .account-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .account-detail { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--muted); font-size: 11px; line-height: 1.3; }
@@ -83,7 +92,13 @@ body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobil
   transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
 .install-button { border-color: var(--line); color: var(--blue-deep); background: var(--paper); }
-.install-button svg { width: 18px; height: 18px; }
+ .install-button svg { width: 18px; height: 18px; }
+.account-icon-button { display: inline-grid; width: 42px; min-width: 42px; height: 42px; min-height: 42px; place-items: center; padding: 8px; border-radius: 13px; }
+.account-icon-button svg { width: 21px; height: 21px; }
+.account-password-button.is-manager .account-password-label { display: none; }
+.account-password-button.is-manager { width: 42px; min-width: 42px; padding-inline: 8px; }
+.account-users-button[aria-current="page"], .account-password-button[aria-current="page"] { color: var(--blue-deep); border-color: var(--gold); background: var(--blue-soft); box-shadow: 0 0 0 2px rgba(229,193,88,.22); }
+
 .primary-button { color: #fff; background: var(--blue-deep); }
 .primary-button:hover { background: #224966; }
 .secondary-button, .quiet-button { border-color: #ccd5dc; color: var(--blue-deep); background: var(--paper); }
@@ -355,6 +370,7 @@ tr:last-child td { border-bottom: 0; }
   .date-label { max-width: 44%; text-align: right; white-space: normal; font-size: 12px; }
   .welcome-card { grid-template-columns: 60px minmax(0, 1fr); gap: 13px; margin-bottom: 12px; padding: 16px; border-radius: 20px; }
   .welcome-avatar { width: 60px; height: 60px; font-size: 18px; }
+  .welcome-avatar-button { width: 60px; height: 60px; }
   .welcome-date { font-size: 11px; }
   .welcome-card h1 { font-size: clamp(23px, 6.4vw, 29px); }
   .metric-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 15px; }
@@ -422,7 +438,7 @@ tr:last-child td { border-bottom: 0; }
   .mobile-add:hover { transform: translateY(-2px); background: #244967; }
   .mobile-add svg { width: 27px; height: 27px; }
   .mobile-add.is-active { box-shadow: 0 0 0 2px var(--gold), var(--shadow-float); }
-  .mobile-nav.is-manager { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .mobile-nav.is-manager { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .mobile-nav.is-manager .nav-button { min-height: 58px; font-size: 10px; }
   .page-footer { gap: 9px; margin-top: 20px; padding: 16px 0 8px; }
   .login-screen { align-items: center; padding: 14px; }
@@ -453,13 +469,17 @@ tr:last-child td { border-bottom: 0; }
   .filter-chip { padding-inline: 10px; font-size: 11px; }
   .mobile-nav { padding-inline: 9px; }
 }
+.primary-button, .secondary-button, .quiet-button, .danger-button, .install-button, .nav-button, .mobile-add { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .12s ease; }
+.primary-button:focus-visible, .secondary-button:focus-visible, .quiet-button:focus-visible, .danger-button:focus-visible, .install-button:focus-visible, .nav-button:focus-visible, .mobile-add:focus-visible { outline: 3px solid rgba(21,90,171,.28); outline-offset: 2px; }
+.primary-button:active, .secondary-button:active, .quiet-button:active, .danger-button:active, .install-button:active, .nav-button:active, .mobile-add:active { transform: translateY(1px); }
+button:disabled { cursor: not-allowed; opacity: .52; transform: none !important; box-shadow: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
 
 /* Design Read: mobile-first operations ledger for Pangsuma staff and Manager, using the club's navy-and-gold identity and the owner's reference hierarchy. Dials: ENERGY 2 / RHYTHM 2 / MOTION 2. Navy marks primary actions, gold marks the club's financial accent, and the calm paper surface keeps amounts and approval decisions readable. The owner's supplied crest preloader is transient, then yields to the operational UI. */
-.pangsuma-preloader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0A0D14; opacity: 1; visibility: visible; transition: opacity .6s ease, visibility .6s ease; }
+.pangsuma-preloader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0A0D14; opacity: 1; visibility: visible; }
 .pangsuma-preloader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 .pangsuma-preloader[hidden] { display: none; }
 .pangsuma-loader-art { width: min(170px, 48vw); height: min(170px, 48vw); }
@@ -469,9 +489,12 @@ tr:last-child td { border-bottom: 0; }
 .pangsuma-loader-emblem { animation: subtleFloat 3s ease-in-out infinite; }
 @keyframes spinOuter { to { transform: rotate(360deg); } }
 @keyframes subtleFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.primary-button.is-busy, .secondary-button.is-busy, .quiet-button.is-busy, .danger-button.is-busy { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.is-busy::before { content: ''; width: 15px; height: 15px; flex: 0 0 15px; border: 2px solid rgba(229,193,88,.42); border-top-color: #E5C158; border-radius: 50%; background: url('/pangsuma-icon-192.png') center / 10px 10px no-repeat; animation: buttonBusySpin .8s linear infinite; }
+@keyframes buttonBusySpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .pangsuma-preloader { transition: none; }
   .pangsuma-loader-ring, .pangsuma-loader-emblem { animation: none; }
+  .is-busy::before { animation: none; }
 }
 .account-password-button { min-height: 44px; }
 .account-password-button svg { width: 17px; height: 17px; flex: none; }
@@ -618,6 +641,9 @@ tr:last-child td { border-bottom: 0; }
    Foto bundar konsisten dengan avatar; quotes dipisah lewat jarak, bukan kartu tambahan.
    Dialog memakai elevasi yang ada agar pengaturan tetap terpisah dari data keuangan. */
 .welcome-avatar, .user-initial { position: relative; flex: none; overflow: hidden; }
+.welcome-avatar-button { display: grid; width: 70px; height: 70px; place-items: center; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; }
+.welcome-avatar-button .welcome-avatar { width: 100%; height: 100%; }
+.welcome-avatar-button:hover .welcome-avatar { outline-color: var(--blue); }
 .welcome-avatar img, .user-initial img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .welcome-copy { min-width: 0; overflow-wrap: anywhere; }
 .welcome-quote { max-width: 60ch; margin: 10px 0 0; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
@@ -646,3 +672,145 @@ tr:last-child td { border-bottom: 0; }
   .user-page-actions { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
   .user-page-actions button { width: 100%; }
 }
+
+/* Tactile controls: restrained elevation and a clear pressed state. */
+button:not(:disabled) { box-shadow: 0 2px 0 rgba(12, 34, 52, .13), 0 4px 9px rgba(12, 34, 52, .08), inset 0 1px 0 rgba(255, 255, 255, .32); }
+button:not(:disabled):hover { box-shadow: 0 2px 0 rgba(12, 34, 52, .16), 0 6px 12px rgba(12, 34, 52, .12), inset 0 1px 0 rgba(255, 255, 255, .35); }
+button:not(:disabled):active { box-shadow: inset 0 2px 3px rgba(12, 34, 52, .16), 0 1px 2px rgba(12, 34, 52, .06); }
+button:focus-visible { outline: 3px solid rgba(21, 90, 171, .38); outline-offset: 3px; }
+button:disabled { box-shadow: none; }
+
+/* Dashboard hierarchy: the first decision on each role is visually obvious. */
+.offline-notice { margin: 10px auto 0; max-width: 1120px; padding: 9px 14px; border: 1px solid #e5d9b6; border-radius: 12px; color: #534a35; background: #faf6e9; font-size: 13px; }
+.manager-action-row { margin-top: 18px; }
+.manager-queue-primary { border-color: #c8d8e6; box-shadow: 0 8px 24px rgba(31, 58, 82, .07); }
+.user-primary-action { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 18px; padding: 20px 22px; border: 1px solid #c8d8e6; border-radius: var(--radius-lg); background: linear-gradient(135deg, #f4f8fb, #fff); box-shadow: 0 8px 24px rgba(31, 58, 82, .06); }
+.user-primary-action h2 { margin: 2px 0 5px; color: var(--blue-deep); font-size: clamp(20px, 2.4vw, 27px); letter-spacing: -.03em; }
+.user-primary-action p { margin: 0; color: var(--muted); }
+.user-status-section { margin-top: 22px; }
+.submission-timeline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -6px 0 14px; padding: 0 12px 0 20px; list-style: none; }
+.timeline-step { display: inline-flex; align-items: flex-start; gap: 6px; color: var(--muted); font-size: 12px; }
+.timeline-step strong { display: block; color: var(--ink); font-size: 12px; }
+.timeline-step small { display: block; margin-top: 2px; color: var(--muted); }
+.timeline-step.approved strong, .timeline-step.sent strong { color: #235c43; }
+.timeline-step.rejected strong { color: #5d4f56; }
+.timeline-dot { width: 9px; height: 9px; margin-top: 3px; border: 2px solid currentColor; border-radius: 50%; background: var(--paper); }
+.timeline-step.approved .timeline-dot, .timeline-step.sent .timeline-dot { color: #3c8b68; background: #dff1e7; }
+.timeline-step.rejected .timeline-dot { color: #7e6872; background: #edf1f4; }
+@media (max-width: 620px) { .user-primary-action { align-items: flex-start; flex-direction: column; padding: 17px; } .user-primary-action .primary-button { width: 100%; } .manager-action-row { align-items: flex-start; flex-direction: column; } .manager-action-row .primary-button { width: 100%; } }
+
+/* Dashboard hierarchy: first actions are visually obvious and touch-safe. */
+.offline-notice { margin: 10px auto 0; max-width: 1120px; padding: 9px 14px; border: 1px solid #e5d9b6; border-radius: 12px; color: #534a35; background: #faf6e9; font-size: 13px; }
+.manager-action-row { margin-top: 18px; }
+.manager-queue-primary { border-color: #c8d8e6; box-shadow: 0 8px 24px rgba(31, 58, 82, .07); }
+.user-primary-action { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 18px; padding: 20px 22px; border: 1px solid #c8d8e6; border-radius: var(--radius-lg); background: linear-gradient(135deg, #f4f8fb, #fff); box-shadow: 0 8px 24px rgba(31, 58, 82, .06); }
+.user-primary-action h2 { margin: 2px 0 5px; color: var(--blue-deep); font-size: clamp(20px, 2.4vw, 27px); letter-spacing: -.03em; }
+.user-primary-action p { margin: 0; color: var(--muted); }
+.user-status-section { margin-top: 22px; }
+.submission-timeline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -6px 0 14px; padding: 0 12px 0 20px; list-style: none; }
+.timeline-step { display: inline-flex; align-items: flex-start; gap: 6px; color: var(--muted); font-size: 12px; }
+.timeline-step strong { display: block; color: var(--ink); font-size: 12px; }
+.timeline-step small { display: block; margin-top: 2px; color: var(--muted); }
+.timeline-step.approved strong, .timeline-step.sent strong { color: #235c43; }
+.timeline-step.rejected strong { color: #5d4f56; }
+.timeline-dot { width: 9px; height: 9px; margin-top: 3px; border: 2px solid currentColor; border-radius: 50%; background: var(--paper); }
+.timeline-step.approved .timeline-dot, .timeline-step.sent .timeline-dot { color: #3c8b68; background: #dff1e7; }
+.timeline-step.rejected .timeline-dot { color: #7e6872; background: #edf1f4; }
+@media (max-width: 620px) { .user-primary-action { align-items: flex-start; flex-direction: column; padding: 17px; } .user-primary-action .primary-button { width: 100%; } .manager-action-row { align-items: flex-start; flex-direction: column; } .manager-action-row .primary-button { width: 100%; } }
+
+.cash-flow-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: -4px 0 20px; }
+.cash-flow-summary > div { min-width: 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.cash-flow-summary dt { color: var(--muted); font-size: 12px; }
+.cash-flow-summary dd { margin: 4px 0 0; color: var(--blue-deep); font-size: clamp(14px, 2vw, 19px); font-weight: 730; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* Cash insights: compact, exact-value and usable at narrow mobile widths. */
+.cash-insights-region { display: grid; gap: 12px; margin: 18px 0; min-width: 0; }
+.cash-health-card, .cash-trend-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+.cash-health-card { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; background: linear-gradient(135deg, #f7fbfd, #fff); }
+.cash-insights-kicker { margin: 0 0 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.cash-health-card h2, .cash-trend-card h2 { margin: 0; color: var(--blue-deep); font-size: 17px; }
+.cash-health-status, .cash-trend-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cash-health-threshold { min-width: 150px; text-align: right; font-size: 11px; color: var(--muted); }
+.cash-health-threshold strong { display: block; margin: 2px 0; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.cash-minimum-form { margin-top: 8px; text-align: left; }
+.cash-minimum-form label { display: block; color: var(--ink); font-size: 12px; font-weight: 650; }
+.cash-minimum-form input { width: 100%; min-height: 38px; margin: 5px 0; box-sizing: border-box; }
+.cash-minimum-form .form-actions { margin-top: 7px; gap: 6px; }
+.cash-minimum-form .form-actions button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+.cash-trend-card .section-row { align-items: flex-start; }
+.cash-trend-change { color: var(--blue-deep); font-size: 12px; text-align: right; }
+.cash-trend-card details { margin-top: 10px; }
+.cash-chart-caption { margin-bottom: 8px !important; }
+.cash-trend-chart { display: block; width: 100%; max-height: 145px; overflow: visible; fill: #4e87b5; stroke: #7894a9; stroke-width: .7; }
+.cash-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0 10px; color: var(--muted); font-size: 11px; }
+.cash-chart-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; background: #4e87b5; }
+.cash-daily-table { min-width: 620px; font-size: 12px; }
+.cash-daily-table caption { padding: 7px 0; color: var(--muted); font-size: 12px; text-align: left; }
+@media (max-width: 520px) { .cash-health-card { flex-direction: column; } .cash-health-threshold { min-width: 0; width: 100%; text-align: left; } .cash-trend-change { text-align: left; } }
+@media (max-width: 320px) { .cash-health-card, .cash-trend-card { padding: 12px; } .cash-trend-card .section-row { display: block; } .cash-chart-legend { display: block; } .cash-chart-legend span { display: block; margin-top: 4px; } }
+
+/* Cash insights: compact, exact-value and usable at narrow mobile widths. */
+.cash-insights-region { display: grid; gap: 12px; margin: 18px 0; min-width: 0; }
+.cash-health-card, .cash-trend-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+.cash-health-card { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; background: linear-gradient(135deg, #f7fbfd, #fff); }
+.cash-insights-kicker { margin: 0 0 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.cash-health-card h2, .cash-trend-card h2 { margin: 0; color: var(--blue-deep); font-size: 17px; }
+.cash-health-status, .cash-trend-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cash-health-threshold { min-width: 150px; text-align: right; font-size: 11px; color: var(--muted); }
+.cash-health-threshold strong { display: block; margin: 2px 0; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.cash-minimum-form { margin-top: 8px; text-align: left; }
+.cash-minimum-form label { display: block; color: var(--ink); font-size: 12px; font-weight: 650; }
+.cash-minimum-form input { width: 100%; min-height: 38px; margin: 5px 0; box-sizing: border-box; }
+.cash-minimum-form .form-actions { margin-top: 7px; gap: 6px; }
+.cash-minimum-form .form-actions button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+.cash-trend-card .section-row { align-items: flex-start; }
+.cash-trend-change { color: var(--blue-deep); font-size: 12px; text-align: right; }
+.cash-trend-card details { margin-top: 10px; }
+.cash-chart-caption { margin-bottom: 8px !important; }
+.cash-trend-chart { display: block; width: 100%; max-height: 145px; overflow: visible; fill: #4e87b5; stroke: #7894a9; stroke-width: .7; }
+.cash-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0 10px; color: var(--muted); font-size: 11px; }
+.cash-chart-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; background: #4e87b5; }
+.cash-daily-table { min-width: 620px; font-size: 12px; }
+.cash-daily-table caption { padding: 7px 0; color: var(--muted); font-size: 12px; text-align: left; }
+@media (max-width: 520px) { .cash-health-card { flex-direction: column; } .cash-health-threshold { min-width: 0; width: 100%; text-align: left; } .cash-trend-change { text-align: left; } }
+@media (max-width: 320px) { .cash-health-card, .cash-trend-card { padding: 12px; } .cash-trend-card .section-row { display: block; } .cash-chart-legend { display: block; } .cash-chart-legend span { display: block; margin-top: 4px; } }
+
+.cash-insights-region { display:grid; gap:12px; margin:18px 0; min-width:0; }
+.cash-health-card,.cash-trend-card { min-width:0; padding:14px 16px; border:1px solid var(--line); border-radius:16px; background:var(--paper); }
+.cash-health-card { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:linear-gradient(135deg,#f7fbfd,#fff); }
+.cash-insights-kicker { margin:0 0 3px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; }
+.cash-health-card h2,.cash-trend-card h2 { margin:0; color:var(--blue-deep); font-size:17px; }
+.cash-health-status,.cash-trend-card p { margin:5px 0 0; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.cash-health-threshold { min-width:150px; text-align:right; font-size:11px; color:var(--muted); }
+.cash-health-threshold strong { display:block; margin:2px 0; color:var(--ink); font-size:14px; overflow-wrap:anywhere; }
+.cash-minimum-form { margin-top:8px; text-align:left; }.cash-minimum-form label { display:block; color:var(--ink); font-size:12px; font-weight:650; }.cash-minimum-form input { width:100%; min-height:38px; margin:5px 0; box-sizing:border-box; }.cash-minimum-form .form-actions { margin-top:7px; gap:6px; }.cash-minimum-form .form-actions button { min-height:34px; padding:6px 10px; font-size:12px; }
+.cash-trend-card .section-row { align-items:flex-start; }.cash-trend-change { color:var(--blue-deep); font-size:12px; text-align:right; }.cash-trend-card details { margin-top:10px; }.cash-chart-caption { margin-bottom:8px!important; }.cash-trend-chart { display:block; width:100%; max-height:145px; fill:#4e87b5; stroke:#7894a9; stroke-width:.7; }.cash-chart-legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin:6px 0 10px; color:var(--muted); font-size:11px; }.cash-chart-legend i { display:inline-block; width:9px; height:9px; margin-right:3px; background:#4e87b5; }.cash-daily-table { min-width:620px; font-size:12px; }.cash-daily-table caption { padding:7px 0; color:var(--muted); font-size:12px; text-align:left; }
+@media (max-width:520px) { .cash-health-card { flex-direction:column; }.cash-health-threshold { min-width:0; width:100%; text-align:left; }.cash-trend-change { text-align:left; } } @media (max-width:320px) { .cash-health-card,.cash-trend-card { padding:12px; }.cash-trend-card .section-row { display:block; }.cash-chart-legend { display:block; }.cash-chart-legend span { display:block; margin-top:4px; } }
+
+/* Accessible report workspace. */
+.manager-report-filters { margin: 20px 0 28px; padding: clamp(14px, 3vw, 22px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); }
+.manager-report-filters fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.report-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.report-filter-grid label { display: grid; gap: 6px; min-width: 0; color: var(--ink); font-size: 13px; font-weight: 600; }
+.report-filter-grid input, .report-filter-grid select { width: 100%; min-width: 0; min-height: 46px; padding: 10px 12px; color: var(--ink); border: 1px solid #8998a6; border-radius: var(--radius-sm); background: var(--paper); font: inherit; }
+.report-filter-search { grid-column: span 2; }
+.report-filter-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.manager-filtered-results { margin-top: 14px; }
+button, .text-button, .primary-button, .secondary-button, .choice-close { min-height: 44px; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
+.archive-kicker, .choice-kicker, .cash-insights-kicker { color: var(--focus); }
+#reportActivityDialog .dialog-panel { overflow-wrap: anywhere; }
+#reportActivityDialog .audit-list li p { margin: 5px 0; color: var(--ink); }
+@media (max-width: 620px) {
+  .report-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .report-filter-search { grid-column: 1 / -1; }
+  .report-filter-actions > button { flex: 1; }
+}
+@media (max-width: 350px) { .report-filter-grid { grid-template-columns: minmax(0, 1fr); } }
+.cash-health-equation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 14px 0; }
+.cash-health-equation > div { min-width: 0; }
+.cash-health-equation dt { color: var(--muted); font-size: 11px; }
+.cash-health-equation dd { margin: 3px 0 0; color: var(--blue-deep); font-size: 14px; font-weight: 730; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cash-health-equation > span { color: var(--muted); font-weight: 700; }
+.cash-minimum-status { margin: 3px 0 6px; color: var(--ink); font-size: 12px; font-weight: 650; }
+@media (max-width: 420px) { .cash-health-equation { column-gap: 8px; } .cash-health-equation > div { flex: 1 1 38%; } .cash-health-equation > span { display: none; } }

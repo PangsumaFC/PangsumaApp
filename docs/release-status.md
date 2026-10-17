@@ -1,47 +1,33 @@
-# Rilis Manager, CSV, foto, dan gerbang tes
+# Kandidat rilis PDF dan kontrol keuangan
+
+## Status saat ini
+
+Kandidat disiapkan di branch `feat/corporate-pdf-controls-20261018`, berbasis `3315b04`. Branch produksi `main` masih berada pada commit tersebut saat diperiksa. Kandidat **belum di-deploy** dan tidak menjalankan migrasi atau transaksi produksi. Riwayat rilis CSV sebelumnya tetap tersedia dalam Git; instruksi lama bukan persetujuan untuk migrasi baru.
 
 ## Perubahan utama
 
-Manager aktif dapat membuat pengajuan sendiri. Pengajuan Manager otomatis disetujui dan masuk agregasi; petty cash mendebit saldo tersedia tepat sekali, sedangkan permintaan Finance masuk antrean Finance. Saldo tidak mencukupi membatalkan seluruh batch. Keputusan manual atas pengajuan sendiri tetap ditolak.
+Unduhan Manager menjadi PDF korporat: periode, ringkasan saldo/arus kas, buku kas bersaldo berjalan, pengajuan User/Manager terpisah menurut jenis, status, catatan lengkap, audit, header tabel berulang, dan nomor halaman. Tabel pengajuan memakai nomor urut, bukan UUID panjang yang menghabiskan ruang. Ekspor mencakup semua hasil filter, bukan halaman yang sedang terlihat. Endpoint CSV lama tetap ada hanya untuk kompatibilitas.
 
-Ekspor CSV mendukung BOM, kolom lengkap, escaping, dan perlindungan formula spreadsheet. Validasi foto memiliki fallback decoder, mengenali metadata MIME kosong, dan mempertahankan draf bila foto pengganti tidak valid.
+Dashboard Manager menonjolkan saldo, kesehatan kas, antrean, isi ulang atomik, riwayat terperinci WIB, ledger harian, dan tren 30 hari. User memiliki satu CTA utama, status/timeline berdasarkan data nyata, serta draf tahan offline/gagal kirim. Pemberitahuan versi tidak memaksa reload dan melindungi draf/transaksi aktif; navigasi lokal tidak menunggu jaringan.
 
-Autentikasi password tetap aktif dan passkey tetap nonaktif. Rilis tidak menjalankan bootstrap ulang, mengubah saldo awal, mengatur ulang akun, atau mengubah DNS/domain.
+Kontrol tambahan mencakup rekonsiliasi akhir bulan tanpa koreksi saldo, nota JPEG/PNG privat, pengaturan ambang organisasi opt-in dengan audit versi, daftar laporan melewati batas usia, dan deteksi duplikasi yang hanya memperingatkan. Riwayat serta pencarian memakai cursor dan jumlah baris UI terbatas. Detail akses nota, batas berkas, dan kontrak fitur ada di README.
+
+Tampilan diuji pada 320/390px, landscape, dan desktop. Aksi Finance dibuat dua kolom di HP agar konten utama tidak tertutup tombol. Safe-area, viewport keyboard, dialog, fokus, target sentuh, disabled/busy states, dan reduced motion mendapat penjagaan tambahan. Emulasi browser bukan bukti kompatibilitas perangkat fisik tertentu.
 
 ## Validasi lokal
 
-- JavaScript: 42 tes lulus.
-- SQLite profil: 9 tes lulus.
-- SQLite pengajuan Manager: 7 tes lulus.
-- E2E lokal Manager/CSV/foto: lulus, termasuk persetujuan otomatis, debit sekali, rollback saldo tidak mencukupi, penolakan keputusan sendiri, unduhan CSV, dan fallback foto.
-- `git diff --check`: lulus.
+- Suite JavaScript/SQLite: **200 tes lulus**.
+- SQLite profil: **9 tes lulus**.
+- E2E kontrol keuangan: lulus untuk selisih rekonsiliasi tanpa perubahan saldo, pengaturan, duplikasi non-blocking, nota privat, respons unggahan hilang/retry dengan kunci sama, pagination 25 baris, seluruh 83 hasil filter di PDF, serta empat ukuran layar.
+- Regresi operasional dan passkey penuh: **lulus**. Cakupan mencakup debit sekali, rollback, cursor tanpa duplikasi/gap, keputusan Finance, status, ekspor, audit, dan akun. Skenario request-budget passkey menggunakan reset counter fixture `--local` agar terpisah dari skenario signature/replay sebelumnya; kebijakan keamanan aplikasi tidak diturunkan.
+- `git diff --check` dan sintaks workflow YAML: lulus.
 
-Hasil lokal bukan bukti deployment produksi. Status akhir harus merujuk hasil GitHub Actions dan pemeriksaan aplikasi live untuk commit yang dirilis.
+Hasil lokal bukan bukti deployment. Status CI branch tetap harus lulus sebelum merge. Tidak ada klaim reproduksi pada perangkat fisik pengguna atau ekspor terautentikasi produksi.
 
-## Persetujuan dan urutan produksi
+## Prasyarat produksi yang belum disetujui
 
-Pemilik telah menyetujui penerapan `migrations/0004_manager_submissions.sql` ke D1 produksi, commit, dan deploy. Targetnya Pages `pangsuma-app`, branch produksi `main`, domain `https://app.pangsumafc.com`, dan D1 `pangsuma-app-prod` (`be808421-88ce-4a48-9dcd-eb0f39ae0314`).
+Migrasi `0005_cash_topups.sql` membangun ulang ledger untuk jenis isi ulang sambil menyalin ID/baris lama dan memulihkan proteksi. `0006_financial_controls.sql`, `0007_submission_receipts.sql`, dan `0008_financial_alert_settings.sql` menambahkan rekonsiliasi, nota privat, pengaturan, serta audit/proteksi. Persetujuan 0004 sebelumnya **tidak mencakup** paket baru ini.
 
-Akses Cloudflare memakai secret GitHub Actions yang sudah ada. Paket harus di-commit dan di-push ke branch kerja agar workflow dapat menjalankan migrasi; aplikasi baru belum dipublikasikan pada tahap ini. Jalankan workflow deploy pada branch kerja dengan input `apply_manager_migration=true`. Mode ini menjalankan tes dan migrasi 0004 saja, tanpa deploy. Operator mengunci akun/database, checksum SQL, serta daftar migrasi sebelumnya dan mengambil bookmark pemulihan D1 sebelum perubahan.
+Penerapan 0005–0008 memerlukan persetujuan pemilik yang spesifik, backup/bookmark pemulihan, pemilihan target database yang dikunci, dan pembandingan saldo, identitas/jumlah baris ledger, audit, serta trigger sebelum/sesudah. Jangan mengisi saldo, membuat transaksi contoh, mengoreksi selisih rekonsiliasi, atau mengubah akun/DNS sebagai bagian rilis ini.
 
-Setelah migrasi berhasil dan trigger diverifikasi, fast-forward commit yang sama ke `main` untuk menjalankan deploy biasa. Gerbang tes, domain terpasang, kolom autentikasi/profil, dan trigger 0004 wajib lulus sebelum upload. Push biasa tidak menerapkan migrasi otomatis. Concurrency produksi tidak membatalkan operasi yang sedang berjalan.
-
-Tidak ada transaksi uji atau perubahan akun yang perlu dilakukan di produksi. Verifikasi pascarilis memakai health check, respons halaman, dan kecocokan aset terhadap commit yang dirilis. Panduan profil lama tetap relevan untuk 0003; prosedur 0004 mengikuti dokumen ini.
-
-## Rilis 2026.10.18.2: kompatibilitas galeri dan unduhan
-
-Aset `app.js` dan `sw.js` pada domain produksi sebelum perubahan cocok byte-for-byte dengan commit `ba3e864`. Rute `/api/export.csv` tanpa sesi mengembalikan 401 JSON, bukan halaman HTML atau 404. Header shell `no-cache`, API `no-store`, dan service worker tidak mengintersep API. Ini tidak membuktikan halaman yang sudah terbuka di perangkat pengguna telah memuat kode baru.
-
-Kasus yang berhasil direproduksi: PNG valid dari pemilih berkas dengan MIME `application/octet-stream` ditolak oleh `ba3e864`. Kandidat baru menormalkan metadata generik dari ekstensi yang dikenal, tetap memvalidasi isi lewat decoder, mengonversinya ke JPEG, lalu mempertahankan validasi server. Pemilih kini memakai input native yang menerima ketukan langsung, bukan pemanggilan klik sintetis. HEIC/HEIF hanya didukung bila decoder native browser dapat membacanya; browser tanpa dukungan menerima pesan untuk memilih JPG/PNG. Tidak ada klaim decoder HEIC universal.
-
-CSV memakai attachment langsung untuk Android WebView dan iOS, dengan Blob untuk Chrome/desktop. Panel “File tidak muncul?” menyediakan tautan unduh langsung dan saran membuka Chrome/Safari. Notifikasi tidak menyatakan berkas sudah tersimpan. Tidak ada perubahan query CSV, otorisasi, database, migrasi, akun, saldo, atau data produksi. Versi `2026.10.18.2` terlihat di halaman; URL aset memakai penanda versi dan cache shell dinaikkan ke v17 tanpa reload otomatis yang menghapus draf.
-
-Validasi kandidat:
-
-- 71 tes JavaScript dan 16 tes schema SQLite lulus.
-- E2E profil lengkap lulus, termasuk isolasi foto, konflik versi, CSRF, penolakan gambar rusak, dan data keuangan tetap sama.
-- Chromium dan WebKit HTTPS lokal: klik pemilih berkas nyata, simpan foto Manager sendiri dan user, reload, serta avatar `naturalWidth > 0`; termasuk PNG bermetadata octet-stream.
-- Emulasi Chromium dengan UA Android WebView dan Android Chrome: tombol utama serta tautan unduh langsung menghasilkan berkas tersimpan yang diperiksa isinya (BOM tunggal, 19 kolom, fixture pengajuan/ledger/audit, teks formula dinetralkan). Sesi tetap berlaku; ekspor tanpa sesi tetap 401.
-- Pembandingan baseline: tes pemilih dengan PNG bermetadata normal lulus pada `ba3e864`; tes octet-stream gagal pada baseline dan lulus pada kandidat. Kegagalan `showPicker()` terjadi pada kandidat sementara yang dibuang, bukan bukti bug rilis lama.
-
-Batas: belum ada reproduksi pada perangkat fisik pengguna atau ekspor terautentikasi produksi. Emulasi UA bukan Android WebView native. [Android WebView menyerahkan pemilih berkas kepada aplikasi host dan membatalkan permintaan secara default bila tidak ditangani](https://developer.android.com/reference/android/webkit/WebChromeClient#onShowFileChooser(android.webkit.WebView,%20android.webkit.ValueCallback%3Candroid.net.Uri[]%3E,%20android.webkit.WebChromeClient.FileChooserParams)); [unduhan juga diberitahukan ke aplikasi host](https://developer.android.com/reference/android/webkit/DownloadListener). Jika pengguna masih gagal, diperlukan URL yang dibuka, versi yang terlihat, perangkat/OS, browser atau aplikasi tempat tautan dibuka, tahap kegagalan dan pesan layar, serta contoh format/MIME foto. Jangan menyimpulkan masalah pengguna selesai hanya karena semua tes lokal lulus.
+Workflow deploy hanya memeriksa kolom dan trigger secara read-only; ia tidak menerapkan 0005–0008 dan akan menghentikan deployment jika skema belum lengkap. Jangan melewati gate tersebut atau mengaktifkan jalur migrasi 0004 lama untuk menerapkan paket baru. Setelah prosedur migrasi yang disetujui selesai, verifikasi skema dan deploy commit yang sama melalui gerbang CI biasa; pemeriksaan live harus tetap read-only.

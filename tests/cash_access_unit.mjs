@@ -53,6 +53,7 @@ test('User overview tidak memuat atau meng-query saldo kas', async () => {
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(Object.hasOwn(payload, 'cashBalanceIdr'), false);
+  assert.equal(Object.hasOwn(payload, 'cashFlow'), false);
   assert.equal(Object.hasOwn(payload, 'cashLedger'), false);
   assert.equal(Object.hasOwn(payload, 'auditEvents'), false);
   assert.equal(db.calls.some(sql => /cash_accounts|cash_ledger|audit_events/.test(sql)), false);
@@ -62,7 +63,8 @@ test('User ditolak dari ledger kas, opening balance, dan export', async () => {
   for (const [path, method, body] of [
     ['/history/cash-ledger', 'GET'],
     ['/cash/opening-balance', 'POST', { amountIdr: 1, ownerConfirmed: true }],
-    ['/export.csv', 'GET']
+    ['/export.csv', 'GET'],
+    ['/export.pdf', 'GET']
   ]) {
     const db = fakeDb();
     const response = await call(path, db, method, body);

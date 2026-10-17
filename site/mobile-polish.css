@@ -1,0 +1,155 @@
+/* Pangsuma mobile polish layer. Loaded after the product styles; intentionally additive and local. */
+:root {
+  --mp-safe-top: env(safe-area-inset-top, 0px);
+  --mp-safe-right: env(safe-area-inset-right, 0px);
+  --mp-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mp-safe-left: env(safe-area-inset-left, 0px);
+  --mp-dock-height: 72px;
+  --mp-content-bottom: calc(var(--mp-dock-height) + env(safe-area-inset-bottom, 0px) + 20px);
+  --mp-focus: #795b17;
+}
+
+/* Keep app chrome and the primary scroll container inside the visual viewport. */
+html { min-width: 320px; min-height: 100%; }
+body { min-height: 100dvh; padding-top: var(--mp-safe-top); }
+.topbar { padding-left: max(14px, var(--mp-safe-left)); padding-right: max(14px, var(--mp-safe-right)); }
+main { min-height: 0; }
+
+/* Do not let the mobile dock cover the last form control or submit action. */
+.mobile-nav {
+  min-height: var(--mp-dock-height);
+  padding-right: max(14px, var(--mp-safe-right));
+  padding-bottom: max(5px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(14px, var(--mp-safe-left));
+}
+main { padding-bottom: max(38px, var(--mp-content-bottom)); }
+.mobile-add { min-width: 66px; min-height: 66px; }
+
+/* Dynamic viewport units avoid the address-bar jump on current Android Chrome. */
+@supports (height: 100dvh) {
+  body { min-height: 100dvh; }
+  .login-screen { min-height: 100dvh; }
+  .app-shell { min-height: 0; }
+}
+
+/* Keyboard-aware hook for the optional viewport observer. It never overlays fields. */
+body.keyboard-open main,
+body[data-keyboard-open="true"] main {
+  padding-bottom: max(24px, var(--mp-safe-bottom));
+}
+body.keyboard-open .mobile-nav,
+body[data-keyboard-open="true"] .mobile-nav {
+  display: none;
+}
+body.keyboard-open .mobile-add,
+body[data-keyboard-open="true"] .mobile-add {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Touch targets and keyboard focus remain predictable on narrow portrait widths. */
+button, a, summary, select, input[type="checkbox"], input[type="radio"] { touch-action: manipulation; }
+.primary-button, .secondary-button, .quiet-button, .danger-button, .install-button,
+.text-button, .filter-chip, .nav-button, .choice-option, .choice-close,
+.mobile-add, .profile-gallery-picker { min-height: 44px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--mp-focus);
+  outline-offset: 3px;
+}
+button:disabled, [aria-disabled="true"] { cursor: not-allowed; opacity: .65; transform: none; }
+button:disabled:hover, button:disabled:active { transform: none; }
+
+/* Cards and amounts keep their hierarchy without clipping financial precision. */
+.item-row, .metric, .surface, .form-card, .manager-ledger, .manager-queue,
+.hero-panel, .welcome-card, .guide-card, .ledger-band { min-width: 0; }
+.item-title, .item-meta, .item-copy, .item-note, .decision-reason,
+.metric-label, .metric-value, .section-row h2 { min-width: 0; overflow-wrap: anywhere; }
+.item-amount, .metric-value, .ledger-count strong, .balance-panel strong,
+.archive-total, td[data-label*="Nominal"], td[data-label*="Saldo"],
+[class*="amount"], [class*="balance"] { font-variant-numeric: tabular-nums; }
+.item-amount { max-width: 48%; overflow-wrap: anywhere; white-space: normal; }
+.item-side { min-width: 0; max-width: min(48%, 230px); }
+
+/* Tables scroll as a component only; do not create a page-wide horizontal scroller. */
+.table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.table-wrap table { min-width: 560px; }
+
+/* Dialogs use an internal scroll region and keep actions visible without covering text. */
+dialog.report-choice, dialog.app-dialog {
+  width: min(560px, calc(100% - 24px));
+  max-width: calc(100% - 24px);
+  max-height: min(90dvh, calc(100dvh - var(--mp-safe-top) - var(--mp-safe-bottom) - 24px));
+  margin: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.choice-panel, .dialog-panel { padding-top: max(20px, var(--mp-safe-top)); padding-right: max(18px, var(--mp-safe-right)); padding-bottom: max(20px, var(--mp-safe-bottom)); padding-left: max(18px, var(--mp-safe-left)); }
+.dialog-heading, .choice-heading { position: sticky; top: 0; z-index: 1; padding-bottom: 10px; background: var(--paper); }
+.dialog-actions { position: sticky; bottom: 0; z-index: 1; margin-inline: calc(-1 * max(18px, var(--mp-safe-right))) calc(-1 * max(18px, var(--mp-safe-left))); padding: 12px max(18px, var(--mp-safe-right)) max(4px, var(--mp-safe-bottom)); background: var(--paper); box-shadow: 0 -1px 0 var(--line); }
+
+/* Loading and status states communicate with text, not color or motion alone. */
+.pangsuma-preloader[aria-busy="false"], .pangsuma-preloader.is-hidden { pointer-events: none; }
+.is-busy { cursor: wait; }
+.status, .login-error, .field-error, [role="alert"], [role="status"] { overflow-wrap: anywhere; }
+
+/* Compact toolbar/action rows wrap instead of floating over content. */
+.page-heading, .section-row, .archive-filter-row, .user-actions, .item-actions, .form-actions { min-width: 0; }
+.page-heading > *, .section-row > * { max-width: 100%; }
+.form-actions { align-items: stretch; }
+
+@media (max-width: 760px) {
+  body { padding-top: 0; }
+  .app-shell { min-height: 0; height: 100%; }
+  main { min-height: 0; padding-right: max(12px, var(--mp-safe-right)); padding-bottom: max(var(--mp-content-bottom), 38px); padding-left: max(12px, var(--mp-safe-left)); }
+  .mobile-nav { flex: 0 0 auto; }
+  .page-heading, .section-row { align-items: flex-start; flex-wrap: wrap; }
+  .page-heading > button, .section-row > button { flex: 1 1 auto; }
+  .form-actions { grid-template-columns: minmax(0, 1fr); }
+  .form-actions button { width: 100%; }
+  .dialog-actions { grid-template-columns: minmax(0, 1fr); }
+  .table-wrap table { min-width: 520px; }
+  .item-row { grid-template-columns: minmax(0, 1fr) minmax(0, 45%); }
+  .item-amount { font-size: clamp(12px, 3.5vw, 15px); }
+}
+
+@media (max-width: 390px) {
+  main { padding-right: max(10px, var(--mp-safe-right)); padding-left: max(10px, var(--mp-safe-left)); }
+  .metric-row { gap: 7px; }
+  .metric { padding-inline: 8px; }
+  .metric-value { font-size: clamp(15px, 4.6vw, 20px); }
+  .item-row { grid-template-columns: minmax(0, 1fr); }
+  .item-side { grid-column: 1; justify-items: start; max-width: 100%; }
+  .item-amount { text-align: left; max-width: 100%; }
+  .dialog-actions { margin-inline: -18px; padding-inline: 18px; }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .topbar { min-height: 56px; }
+  .mobile-nav { --mp-dock-height: 60px; }
+  main { padding-top: 12px; }
+  .login-screen { align-items: start; }
+}
+
+@media (prefers-contrast: more) {
+  .status, .notice, .form-note, .field-error, .login-error { border: 1px solid currentColor; }
+  .mobile-nav, .table-wrap, .item-row, .surface { border-color: currentColor; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  .pangsuma-loader-ring, .pangsuma-loader-emblem, .is-busy::before { animation: none !important; }
+}
+
+/* The native keyboard changes the visible viewport, not always 100dvh. */
+.app-dialog .dialog-panel { max-height: min(90dvh, calc(var(--visual-viewport-height, 100dvh) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px)); }
+
+@media (max-width: 900px) {
+  body.keyboard-open .app-shell { height: var(--visual-viewport-height, 100dvh); min-height: 0; max-height: var(--visual-viewport-height, 100dvh); }
+}
+
+@media (max-width: 900px) {
+  .page-heading .heading-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; align-items: stretch; }
+  .page-heading .heading-actions > button { min-width: 0; width: 100%; min-height: 48px; height: auto; padding: 10px; white-space: normal; font-size: 13px; line-height: 1.35; }
+  .page-heading .heading-actions > .pdf-fallback { grid-column: 1 / -1; }
+}

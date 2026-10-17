@@ -26,6 +26,21 @@ import { handlePasskeyApi } from '../_lib/webauthn.js';
 import { validProfileImage } from '../_lib/profile-photo.js';
 import { ensureUserProfilesSchema } from '../_lib/migration-guard.js';
 import { csvLine, csvHeader } from '../_lib/csv-export.js';
+import { buildFinancialReport } from '../_lib/pdf-report.js';
+import { createCashTopup } from '../_lib/cash-topup.js';
+import { getCashReconciliations, createCashReconciliation } from '../_lib/cash-reconciliation.js';
+import { listSubmissionReceipts, createSubmissionReceipt, getSubmissionReceipt } from '../_lib/submission-receipts.js';
+import { getFinancialSettings, updateFinancialSettings, getFinancialAlerts, findPotentialDuplicates } from '../_lib/financial-alerts.js';
+import { getPaginatedReports } from '../_lib/report-pagination.js';
+import { getReportActivity } from '../_lib/report-activity.js';
+import { getCashInsights } from '../_lib/cash-insights.js';
+import {
+  parseReportFilters,
+  buildSubmissionFilterSql,
+  hasSubmissionSpecificFilter,
+  reportFilterDescription,
+  reportPeriodLabel
+} from '../_lib/report-filters.js';
 
 const PASSWORD_PATH = '/account/password';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -39,6 +54,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function wibBoundary(date, end = false) {
+  const value = new Date(`${date}T00:00:00+07:00`);
+  if (end) value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString();
 }
 
 function apiPath(request) {
@@ -210,6 +231,16 @@ async function requireUser(request, db, options = {}) {
 
 function requireManager(user) {
   if (user.role !== 'manager') throw new ApiError(403, 'manager_required', 'Aksi ini hanya tersedia untuk Manager.');
+}
+
+async function cashInsights(context, db) {
+  ensureMethod(context.request, 'GET');
+  const user = await requireUser(context.request, db);
+  requireManager(user);
+  const url = new URL(context.request.url);
+  const today = url.searchParams.get('today') || undefined;
+  if (today && !isValidIsoDate(today)) throw new ApiError(400, 'invalid_date', 'Tanggal analisis WIB tidak valid.');
+  return jsonResponse(await getCashInsights(db, context.env, { today }));
 }
 
 async function rateKey(scope, identifier) {
@@ -492,6 +523,21 @@ function historyMetadata(page, total) {
   };
 }
 
+async function completeCashFlow(db) {
+  let incoming = 0n, outgoing = 0n, cursor = null, openingConfigured = false;
+  for (;;) {
+    const rows = (await db.prepare(`SELECT id,event_type,direction,CAST(amount_idr AS TEXT) AS amount_idr FROM cash_ledger ${cursor === null ? '' : 'WHERE id < ?'} ORDER BY id DESC LIMIT 500`).bind(...(cursor === null ? [] : [cursor])).all()).results || [];
+    for (const row of rows) {
+      const amount = BigInt(row.amount_idr || 0);
+      if (row.direction === 'credit') incoming += amount;
+      else if (row.direction === 'debit') outgoing += amount;
+      if (row.event_type === 'opening_balance' && amount > 0n) openingConfigured = true;
+    }
+    if (rows.length < 500) break;
+    cursor = rows.at(-1).id;
+  }
+  return { incomingIdr:incoming.toString(), outgoingIdr:outgoing.toString(), openingConfigured };
+}
 async function overview(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
@@ -528,7 +574,7 @@ async function overview(context, db) {
   ]);
   const cashBalanceIdr = Number(cash?.balance_idr || 0);
   const submissions = submissionPage.items;
-  const [summaryRow, usersResult, ledgerPage, auditPage, ledgerCount, auditCount] = await Promise.all([
+  const [summaryRow, usersResult, ledgerPage, auditPage, ledgerCount, auditCount, cashFlow] = await Promise.all([
     db.prepare(`
       SELECT
         COUNT(*) AS total_count,
@@ -553,11 +599,13 @@ async function overview(context, db) {
     cashLedgerPage(db),
     auditEventsPage(db),
     db.prepare('SELECT COUNT(*) AS count FROM cash_ledger').first(),
-    db.prepare('SELECT COUNT(*) AS count FROM audit_events').first()
+    db.prepare('SELECT COUNT(*) AS count FROM audit_events').first(),
+    completeCashFlow(db)
   ]);
   return jsonResponse({
     user: safeUser(user),
     cashBalanceIdr,
+    cashFlow,
     submissions,
     history: {
       submissions: historyMetadata(submissionPage, summaryRow?.total_count),
@@ -1164,6 +1212,109 @@ async function exportCsv(context, db) {
   });
 }
 
+// Read every page rather than exporting only the dashboard's first 100 rows.
+async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilters()) {
+  const submissions = [], ledger = [], audits = [];
+  const submissionFilter = buildSubmissionFilterSql(filters);
+  const hasSpecific = hasSubmissionSpecificFilter(filters);
+  let cursor = null;
+  while (true) {
+    const rows = (await db.prepare(`
+      SELECT s.*, creator.name AS created_by_name, creator.position AS created_by_position,
+             creator.role AS created_by_role, resolver.name AS resolved_by_name
+      FROM submissions s
+      JOIN users creator ON creator.id = s.created_by
+      LEFT JOIN users resolver ON resolver.id = s.resolved_by
+      WHERE s.created_at <= ? AND ${submissionFilter.where} ${cursor ? 'AND (s.created_at < ? OR (s.created_at = ? AND s.id < ?))' : ''}
+      ORDER BY s.created_at DESC, s.id DESC LIMIT ${EXPORT_PAGE_SIZE}
+    `).bind(...(cursor ? [snapshotAt, ...submissionFilter.params, cursor.created_at, cursor.created_at, cursor.id] : [snapshotAt, ...submissionFilter.params])).all()).results || [];
+    submissions.push(...rows);
+    if (rows.length < EXPORT_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1];
+  }
+  cursor = null;
+  const ledgerWhere = ['l.created_at <= ?'];
+  const ledgerParams = [snapshotAt];
+  if (filters.startDate) { ledgerWhere.push('l.created_at >= ?'); ledgerParams.push(wibBoundary(filters.startDate)); }
+  if (filters.endDate) { ledgerWhere.push('l.created_at < ?'); ledgerParams.push(wibBoundary(filters.endDate, true)); }
+  if (hasSpecific) {
+    ledgerWhere.push('l.submission_id IS NOT NULL AND s.id IS NOT NULL', submissionFilter.where);
+    ledgerParams.push(...submissionFilter.params);
+  }
+  while (true) {
+    const rows = (await db.prepare(`
+      SELECT l.*, u.name AS actor_name, s.description AS description, s.date AS submission_date,
+             creator.name AS created_by_name
+      FROM cash_ledger l
+      LEFT JOIN users u ON u.id = l.actor_id
+      LEFT JOIN submissions s ON s.id = l.submission_id
+      LEFT JOIN users creator ON creator.id = s.created_by
+      WHERE ${ledgerWhere.join(' AND ')} ${cursor ? 'AND l.id < ?' : ''}
+      ORDER BY l.id DESC LIMIT ${EXPORT_PAGE_SIZE}
+    `).bind(...(cursor ? [...ledgerParams, cursor.id] : ledgerParams)).all()).results || [];
+    ledger.push(...rows);
+    if (rows.length < EXPORT_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1];
+  }
+  let openingBalanceIdr = null, closingBalanceIdr = null;
+  if (filters.startDate) {
+    const before = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE created_at < ? AND created_at <= ? ORDER BY id DESC LIMIT 1`).bind(wibBoundary(filters.startDate), snapshotAt).first();
+    openingBalanceIdr = before?.balance_after_idr ?? 0;
+  } else if (hasSpecific) {
+    const initial = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE event_type = 'opening_balance' AND amount_idr > 0 AND created_at <= ? ORDER BY id ASC LIMIT 1`).bind(snapshotAt).first();
+    openingBalanceIdr = initial?.balance_after_idr ?? 0;
+  }
+  if (filters.startDate || hasSpecific) {
+    const latest = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE created_at <= ? ${filters.endDate ? 'AND created_at < ?' : ''} ORDER BY id DESC LIMIT 1`).bind(...(filters.endDate ? [snapshotAt, wibBoundary(filters.endDate, true)] : [snapshotAt])).first();
+    closingBalanceIdr = latest?.balance_after_idr ?? 0;
+  }
+  cursor = null;
+  const auditWhere = ['a.created_at <= ?'];
+  const auditParams = [snapshotAt];
+  if (filters.startDate) { auditWhere.push('a.created_at >= ?'); auditParams.push(wibBoundary(filters.startDate)); }
+  if (filters.endDate) { auditWhere.push('a.created_at < ?'); auditParams.push(wibBoundary(filters.endDate, true)); }
+  if (hasSpecific) {
+    auditWhere.push("a.entity_type = 'submission' AND s.id IS NOT NULL", submissionFilter.where);
+    auditParams.push(...submissionFilter.params);
+  }
+  while (true) {
+    const rows = (await db.prepare(`
+      SELECT a.*, COALESCE(u.name, 'Sistem') AS actor_name
+      FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
+      LEFT JOIN submissions s ON a.entity_type = 'submission' AND s.id = a.entity_id
+      LEFT JOIN users creator ON creator.id = s.created_by
+      WHERE ${auditWhere.join(' AND ')} ${cursor ? 'AND a.id < ?' : ''}
+      ORDER BY a.id DESC LIMIT ${EXPORT_PAGE_SIZE}
+    `).bind(...(cursor ? [...auditParams, cursor.id] : auditParams)).all()).results || [];
+    audits.push(...rows);
+    if (rows.length < EXPORT_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1];
+  }
+  const orderedLedger = [...ledger].sort((a, b) => Number(a.id) - Number(b.id));
+  return { submissions, ledger: orderedLedger, audits, filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered: Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q), ledgerIsPartial: hasSpecific, openingBalanceIdr, closingBalanceIdr };
+}
+async function reports(context, db) {
+  const user = await requireUser(context.request, db);
+  requireManager(user);
+  const { rows, ...metadata } = await getPaginatedReports(context, db, user);
+  return jsonResponse({ ...metadata, items: rows.map(mapSubmission) });
+}
+
+async function exportPdf(context, db) {
+  ensureMethod(context.request, 'GET');
+  const user = await requireUser(context.request, db);
+  requireManager(user);
+  const snapshotAt = nowIso();
+  const data = await fullFinancialReportData(db, snapshotAt, parseReportFilters(new URL(context.request.url).searchParams));
+  const bytes = await buildFinancialReport({ ...data, snapshotAt, managerName: user.name });
+  return new Response(bytes, { headers: {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="pangsuma-laporan-keuangan-${jakartaToday()}.pdf"`,
+    'Cache-Control': 'no-store, max-age=0',
+    'Pragma': 'no-cache',
+    'X-Content-Type-Options': 'nosniff'
+  } });
+}
 async function dispatch(context, db, path) {
   const { request } = context;
   // Fail closed before profile-dependent auth/account queries, including login.
@@ -1182,8 +1333,45 @@ async function dispatch(context, db, path) {
   if (path === '/session') return session(context, db);
   if (path === '/logout') return logout(context, db);
   if (path === '/overview') return overview(context, db);
+  if (path === '/cash/insights') return cashInsights(context, db);
   if (path === '/cash/opening-balance') return setOpeningBalance(context, db);
+  if (path === '/cash/reconciliations') {
+    const actor = await requireUser(request, db); requireManager(actor);
+    if (request.method === 'GET') return getCashReconciliations(db, actor, new URL(request.url).searchParams);
+    return createCashReconciliation(context, db, actor);
+  }
+  if (path === '/financial/settings' || path === '/financial/alerts') {
+    const actor = await requireUser(request, db); requireManager(actor);
+    if (path === '/financial/alerts') {
+      ensureMethod(request, 'GET');
+      return jsonResponse(await getFinancialAlerts({ request, cursor: new URL(request.url).searchParams.get('cursor') }, db, actor));
+    }
+    if (request.method === 'GET') return jsonResponse(await getFinancialSettings(context, db, actor));
+    ensureMethod(request, 'PUT'); ensureSameOrigin(request);
+    return jsonResponse(await updateFinancialSettings({ ...context, body: await readJson(request) }, db, actor));
+  }
+  if (path === '/submissions/duplicate-check') {
+    ensureMethod(request, 'POST'); ensureSameOrigin(request);
+    const actor = await requireUser(request, db);
+    return jsonResponse(await findPotentialDuplicates({ ...context, body: await readJson(request) }, db, actor));
+  }
+  const receiptListMatch = path.match(/^\/submissions\/([^/]+)\/receipts$/);
+  if (receiptListMatch) {
+    const actor = await requireUser(request, db), id = decodeURIComponent(receiptListMatch[1]);
+    if (request.method === 'GET') return listSubmissionReceipts(context, db, actor, id);
+    ensureSameOrigin(request);
+    return createSubmissionReceipt(context, db, actor, id);
+  }
+  const receiptMatch = path.match(/^\/receipts\/([^/]+)$/);
+  if (receiptMatch) return getSubmissionReceipt(context, db, await requireUser(request, db), decodeURIComponent(receiptMatch[1]));
+  if (path === '/cash/topups') {
+    const actor = await requireUser(request, db);
+    requireManager(actor);
+    return createCashTopup(context, db, actor);
+  }
   if (path === '/export.csv') return exportCsv(context, db);
+  if (path === '/export.pdf') return exportPdf(context, db);
+  if (path === '/reports') return reports(context, db);
   const historyMatch = path.match(/^\/history\/(submissions|cash-ledger|audit-events)$/);
   if (historyMatch) return historyPage(context, db, historyMatch[1]);
   if (path === '/submissions') {
@@ -1204,6 +1392,11 @@ async function dispatch(context, db, path) {
     const action = submissionMatch[2];
     if (action === 'send') return markFinanceSent(context, db, id);
     return decideSubmission(context, db, id, action);
+  }
+  const activityMatch = path.match(/^\/submissions\/([^/]+)\/activity$/);
+  if (activityMatch) {
+    const actor = await requireUser(request, db);
+    return getReportActivity(context, db, actor, decodeURIComponent(activityMatch[1]));
   }
   const userMatch = path.match(/^\/users\/([^/]+)\/(password|deactivate)$/);
   if (userMatch) {

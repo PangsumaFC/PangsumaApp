@@ -10,6 +10,7 @@ const REVALIDATED = [
   '/sw.js',
   '/pangsuma-theme.css',
   '/manifest.webmanifest',
+  '/version.json',
 ];
 
 test('shell paths receive exact no-cache revalidation while APIs stay no-store', async () => {

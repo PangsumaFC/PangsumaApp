@@ -5,14 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
   <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
-  <meta name="app-build" content="2026.10.18.2">
+  <meta name="app-build" content="2026.10.18.4">
   <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.2">
-  <script src="/password-crypto.js?v=2026.10.18.2" defer></script>
-  <script src="/app.js?v=2026.10.18.2" defer></script>
+  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.4">
+  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.18.4">
+  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.18.4">
+  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.18.4">
+  <script src="/password-crypto.js?v=2026.10.18.4" defer></script>
+  <script src="/report-filters.js?v=2026.10.18.4" defer></script>
+  <script src="/financial-controls.js?v=2026.10.18.4" defer></script>
+  <script src="/report-evidence.js?v=2026.10.18.4" defer></script>
+  <script src="/bounded-history.js?v=2026.10.18.4" defer></script>
+  <script src="/mobile-viewport.js?v=2026.10.18.4" defer></script>
+  <script src="/app.js?v=2026.10.18.4" defer></script>
 </head>
 <body class="logged-out" aria-busy="true">
   <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
@@ -81,7 +89,7 @@
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
-          <p class="field-help">Versi 2026.10.18.2</p>
+          <p class="field-help">Versi 2026.10.18.4</p>
           <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
             <p class="passkey-divider">Atau masuk tanpa password</p>
             <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
@@ -111,9 +119,12 @@
         <span class="account-name" id="accountName"></span>
         <span class="account-detail" id="accountRole"></span>
       </div>
-      <button class="quiet-button account-password-button" type="button" data-page="change-password" aria-label="Ganti password" title="Ganti password">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke-linecap="round"/></svg>
-        <span>Password</span>
+      <button class="quiet-button account-icon-button account-users-button" type="button" data-page="users" aria-label="Pengguna" title="Pengguna" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3 2.3-4.5 5.5-4.5s5 1.5 5.5 4.5M17 8h4m-2-2v4m-2 6c2.1.2 3.4 1.2 4 3" stroke-linecap="round"/></svg>
+      </button>
+      <button class="quiet-button account-password-button account-icon-button" type="button" data-page="change-password" aria-label="Ganti password" title="Ganti password">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke-linecap="round"/></svg>
+        <span class="account-password-label">Password</span>
       </button>
       <button class="quiet-button logout-button" id="logoutButton" type="button">Keluar</button>
       <button class="install-button" id="installButton" type="button" aria-label="Pasang Pangsuma App">
@@ -123,15 +134,21 @@
     </div>
   </header>
 
+  <section class="app-update-banner" id="appUpdateBanner" role="status" aria-live="polite" hidden>
+    <strong>Pembaruan aplikasi tersedia</strong>
+    <span id="appUpdateVersion">Versi baru tersedia.</span>
+    <button class="primary-button" id="appUpdateReload" type="button">Muat ulang</button>
+  </section>
+  <div class="offline-notice" id="offlineNotice" role="status" aria-live="polite" hidden>Koneksi terputus. Data terakhir tetap tampil; sambungkan kembali sebelum mengirim.</div>
+
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigasi utama">
       <div><p class="nav-caption">Menu</p><nav class="nav-list" id="desktopNav"></nav></div>
-      <div class="side-note"><strong>Data akun</strong>Informasi dimuat dari layanan Pangsuma setelah Anda masuk.</div>
     </aside>
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
         <div id="appContent" aria-live="off"></div>
-        <p class="field-help">Versi 2026.10.18.2</p>
+        <p class="field-help">Versi 2026.10.18.4</p>
       </div>
     </main>
   </div>
@@ -211,6 +228,15 @@
       <label class="confirmation-check"><input id="ownerConfirmed" name="ownerConfirmed" type="checkbox" required><span>Saya mengonfirmasi angka ini diberikan pemilik sebagai saldo awal aktual.</span></label>
       <div class="form-note">Nilai ini dan nama Manager dicatat pada ledger serta riwayat audit.</div>
       <div class="form-actions dialog-actions"><button class="primary-button" id="openingBalanceSubmit" type="submit">Tetapkan saldo</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+    </form>
+  </dialog>
+  <dialog class="app-dialog" id="cashTopupDialog" aria-labelledby="cashTopupTitle" aria-describedby="cashTopupDescription">
+    <form class="dialog-panel" id="cashTopupForm">
+      <div class="dialog-heading"><div><p class="choice-kicker">Keuangan operasional</p><h2 id="cashTopupTitle">Tambah / isi ulang petty cash</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <p class="dialog-description" id="cashTopupDescription">Tambahan ini langsung menambah saldo kas nyata dan dicatat bersama waktu serta nama pencatat.</p>
+      <div class="field"><label for="cashTopupAmount">Nominal (rupiah)</label><input id="cashTopupAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Masukkan nominal"></div>
+      <div class="field"><label for="cashTopupNote">Sumber / keterangan dana</label><textarea id="cashTopupNote" name="note" minlength="3" maxlength="500" required rows="3" placeholder="Contoh: Transfer pemilik untuk operasional Oktober"></textarea><span class="field-help">Wajib 3–500 karakter.</span></div>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="cashTopupSubmit" type="submit">Tambah saldo</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
     </form>
   </dialog>
 </body>

@@ -20,7 +20,7 @@ trap cleanup EXIT INT TERM
 
 if [[ ! -f "$vars_file" ]]; then
   python3 - <<'PY' > "$vars_file"
-import secrets
+import secrets, base64
 for name in (
     "BOOTSTRAP_TOKEN",
     "LOCAL_MANAGER_PASSWORD",
@@ -29,11 +29,18 @@ for name in (
     "LOCAL_SECOND_TEMP_PASSWORD",
     "LOCAL_SECOND_NEW_PASSWORD",
     "MANAGER_ENROLLMENT_SECRET",
+    "PASSWORD_PEPPER",
 ):
-    print(name + "=" + secrets.token_urlsafe(48))
+    print(name + "=" + (base64.b64encode(secrets.token_bytes(32)).decode() if name == "PASSWORD_PEPPER" else secrets.token_urlsafe(48)))
 PY
   chmod 600 "$vars_file"
   created_vars=1
+fi
+if ! grep -q '^PASSWORD_PEPPER=' "$vars_file"; then
+  python3 - <<'PY' >> "$vars_file"
+import secrets, base64
+print("PASSWORD_PEPPER=" + base64.b64encode(secrets.token_bytes(32)).decode())
+PY
 fi
 if ! grep -q '^BOOTSTRAP_TOKEN=' "$vars_file" || ! grep -q '^MANAGER_ENROLLMENT_SECRET=' "$vars_file"; then
   echo "tests/.dev.vars must contain local BOOTSTRAP_TOKEN and MANAGER_ENROLLMENT_SECRET values." >&2
@@ -42,8 +49,9 @@ fi
 
 project_dir="$state_dir/project"
 mkdir -p "$project_dir"
-ln -s "$repo_root/functions" "$project_dir/functions"
-ln -s "$repo_root/site" "$project_dir/site"
+cp -a "$repo_root/functions" "$project_dir/functions"
+cp -a "$repo_root/site" "$project_dir/site"
+ln -s "$repo_root/node_modules" "$project_dir/node_modules"
 ln -s "$repo_root/migrations" "$project_dir/migrations"
 ln -s "$vars_file" "$project_dir/.dev.vars"
 port="$(python3 - <<'PY'
@@ -85,7 +93,7 @@ CI=1 npx wrangler d1 migrations apply pangsuma-app-local-test \
 server_pid=$!
 ready=0
 for _ in $(seq 1 60); do
-  if curl --silent --fail "$base_url/api/health" >/dev/null; then
+  if curl --connect-timeout 1 --max-time 3 --silent --fail "$base_url/api/health" >/dev/null; then
     ready=1
     break
   fi
@@ -100,10 +108,17 @@ fi
 
 export PANGSUMA_LOCAL_URL="$base_url"
 export PANGSUMA_LOCAL_STATE_DIR="$state_dir"
+export PROFILE_REVIEW_DIR="${PROFILE_REVIEW_DIR:-$state_dir/screenshots}"
+set -a
+source "$vars_file"
+set +a
 export PYTHONDONTWRITEBYTECODE=1
 node tests/webauthn_unit.mjs
 node tests/passkey_rollout_unit.mjs
-if [[ "${1:-}" == "--manager-only" ]]; then
+if [[ "${1:-}" == "--dashboard-design" ]]; then
+  node tests/dashboard_design_unit.mjs
+  timeout -k 5s 150s python3 -B tests/dashboard_design_e2e.py
+elif [[ "${1:-}" == "--manager-only" ]]; then
   python3 -B tests/manager_passkey_e2e.py
 else
   if [[ "${1:-}" != "--passkeys-only" ]]; then python3 -B tests/e2e_local.py; fi

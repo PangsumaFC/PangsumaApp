@@ -6,7 +6,7 @@ import { webcrypto } from 'node:crypto';
 
 const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8');
 const start = source.indexOf('function newSubmissionKey(');
-const code = source.slice(start < 0 ? source.indexOf('async function performNewSubmission(') : start, source.indexOf('\nasync function downloadCsv('));
+const code = source.slice(start < 0 ? source.indexOf('async function performNewSubmission(') : start, source.indexOf('\nasync function downloadPdf('));
 function harness({ crypto = webcrypto, refreshFails = false, saveFails = false } = {}) {
   const button = { isConnected: true, disabled: false };
   const form = { reportValidity: () => true, querySelector: () => button };
@@ -55,4 +55,23 @@ test('retry setelah POST gagal tetap memakai kunci idempotensi yang sama', async
   assert.equal(h.calls.posts.length, 2);
   assert.equal(h.calls.posts[0].headers['Idempotency-Key'], h.calls.posts[1].headers['Idempotency-Key']);
   assert.equal(h.context.currentPage, 'new-report');
+});
+
+test('perubahan draf sesudah gagal kirim mendapat kunci baru, retry isi sama mempertahankannya', async () => {
+  const h = harness({ saveFails: true });
+  let draft = null;
+  h.context.readDraft = () => draft;
+  h.context.writeDraft = (_kind, _type, value) => { draft = value; };
+  await h.submit();
+  assert.ok(draft.submittedFingerprint);
+  const firstKey = h.calls.posts[0].headers['Idempotency-Key'];
+  const fields = { ...h.calls.posts[0].body, amountIdr: '126000' };
+  // Autosave updates the visible fields but preserves the last attempted payload.
+  draft = { ...draft, amountIdr: fields.amountIdr };
+  h.context.FormData = class { get(name) { return fields[name]; } };
+  await h.submit();
+  const secondKey = h.calls.posts[1].headers['Idempotency-Key'];
+  assert.notEqual(secondKey, firstKey);
+  await h.submit();
+  assert.equal(h.calls.posts[2].headers['Idempotency-Key'], secondKey);
 });

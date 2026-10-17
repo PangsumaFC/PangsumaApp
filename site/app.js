@@ -1,3 +1,4 @@
+let activeApiTransactions = 0;
 'use strict';
 
 const $ = selector => document.querySelector(selector);
@@ -7,10 +8,11 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character =>
 }[character]));
 const money = value => new Intl.NumberFormat('id-ID', {
   style: 'currency', currency: 'IDR', maximumFractionDigits: 0
-}).format(Number(value) || 0);
+}).format(typeof value === 'bigint' ? value : typeof value === 'string' && /^-?\d+$/.test(value) ? BigInt(value) : Number(value) || 0);
 const compactMoney = value => new Intl.NumberFormat('id-ID', {
   style: 'currency', currency: 'IDR', notation: 'compact', maximumFractionDigits: 1
 }).format(Number(value) || 0).replace(/\s/g, '');
+const APP_BUILD = document.querySelector('meta[name="app-build"]')?.content || '';
 const todayISO = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -28,7 +30,16 @@ const dateTimeLong = value => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Waktu tidak tersedia';
   return new Intl.DateTimeFormat('id-ID', {
-    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta', timeZoneName: 'short'
+  }).format(date);
+};
+const dateTimeWibFull = value => {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Waktu tidak tersedia';
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'Asia/Jakarta', timeZoneName: 'short'
   }).format(date);
 };
 const monthLabel = key => {
@@ -51,8 +62,7 @@ const navByRole = {
   manager: [
     { id: 'overview', label: 'Ringkasan', icon: 'overview' },
     { id: 'approvals', label: 'Persetujuan', icon: 'review' },
-    { id: 'finance', label: 'Laporan Finance', icon: 'finance' },
-    { id: 'users', label: 'Pengguna', icon: 'users' }
+    { id: 'finance', label: 'Laporan Finance', icon: 'finance' }
   ],
   user: [
     { id: 'overview', label: 'Beranda', icon: 'overview' },
@@ -77,13 +87,18 @@ const state = {
   summary: {},
   history: emptyHistory(),
   archiveType: 'all',
-  archiveSearch: ''
+  archiveSearch: '',
+  cashInsights: null,
+  cashInsightsDailyLimit: 14
 };
 let currentPage = 'overview';
 let lastRenderedPage = '';
 let authEpoch = 0;
 let reportTypePreset = 'petty_cash';
 let submissionIdempotencyKey = '';
+let cashTopupIdempotencyKey = '';
+let cashTopupFingerprint = '';
+let cashTopupBusy = false;
 let toastTimer = 0;
 let installPrompt = null;
 let confirmAction = null;
@@ -94,8 +109,83 @@ let profileSyncBusy = false;
 let managerSyncBusy = false;
 let managerSyncLastAt = 0;
 let managerSyncRerenderPending = false;
+let cashInsightsRequestEpoch = 0;
+let cashInsightsRequestBusy = false;
 const managerSyncIntervalMs = 20_000;
 const managerSyncMinIntervalMs = 15_000;
+let updateCheckBusy = false;
+let availableBuild = '';
+const updateCheckIntervalMs = 60_000;
+function draftKey(kind, type = '') { return `pangsuma:${kind}:${state.user?.id || 'anonymous'}:${type || 'default'}`; }
+function readDraft(kind, type = '') { try { const raw = sessionStorage.getItem(draftKey(kind, type)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+function writeDraft(kind, type, value) { try { sessionStorage.setItem(draftKey(kind, type), JSON.stringify(value)); } catch {} }
+function clearDraft(kind, type = '') { try { sessionStorage.removeItem(draftKey(kind, type)); } catch {} }
+function reportDraft(type = reportTypePreset) { return readDraft('report', type) || {}; }
+function persistReportDraft() { const form = $('#reportForm'); if (!state.user || !form) return; writeDraft('report', reportTypePreset, { type: reportTypePreset, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(reportTypePreset).submittedFingerprint || '' }); }
+function persistCashTopupDraft() { if (!state.user || !$('#cashTopupForm')) return; writeDraft('cash-topup', '', { amountIdr: String($('#cashTopupAmount')?.value || '').slice(0, 20), note: String($('#cashTopupNote')?.value || '').slice(0, 500), idempotencyKey: cashTopupIdempotencyKey || '', fingerprint: cashTopupFingerprint || '' }); }
+
+function hasUnsavedDraft() {
+  if (typeof ReportEvidence !== 'undefined' && ReportEvidence.hasPending?.()) return true;
+  if (profileDraft?.photoDataUrl !== undefined) return true;
+  if ([...document.querySelectorAll('input[type="file"]')].some(field => field.files?.length && (!field.closest?.('dialog') || field.closest('dialog').open) && !field.closest?.('[hidden]'))) return true;
+  return [...document.querySelectorAll('form:not(#loginForm)')].some(form => {
+    const dialog = form.closest('dialog');
+    if ((dialog && !dialog.open) || form.closest('[hidden]')) return false;
+    return [...form.elements].some(field => {
+      if (field.disabled || ['submit', 'button', 'hidden'].includes(field.type)) return false;
+      if (field.type === 'file') return Boolean(field.files?.length);
+      if (['checkbox', 'radio'].includes(field.type)) return field.checked !== field.defaultChecked;
+      if (field.tagName === 'SELECT') return [...field.options].some(option => option.selected !== option.defaultSelected);
+      return String(field.value || '') !== String(field.defaultValue || '');
+    });
+  });
+}
+
+function transactionInFlight() {
+  return Boolean((typeof ReportEvidence !== 'undefined' && ReportEvidence.isBusy?.()) || (typeof activeApiTransactions !== 'undefined' && activeApiTransactions > 0) || profileDraft?.saving || profileDraft?.processing || document.querySelector('[aria-busy="true"]'));
+}
+
+function setUpdateBanner(build = '') {
+  availableBuild = build && build !== APP_BUILD ? String(build) : '';
+  const banner = $('#appUpdateBanner');
+  if (!banner) return;
+  const visible = Boolean(availableBuild && state.user?.role === 'manager');
+  banner.hidden = !visible;
+  if (visible) $('#appUpdateVersion').textContent = `Versi ${availableBuild} tersedia.`;
+}
+
+async function checkForAppUpdate() {
+  if (updateCheckBusy || document.hidden || navigator.onLine === false) return false;
+  updateCheckBusy = true;
+  try {
+    const response = await fetch(`/version.json?check=${Date.now()}`, {
+      cache: 'no-store', credentials: 'same-origin', headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    const build = payload?.build || payload?.version;
+    setUpdateBanner(build);
+    return Boolean(availableBuild);
+  } catch {
+    return false;
+  } finally {
+    updateCheckBusy = false;
+  }
+}
+
+async function reloadToLatestBuild() {
+  if (transactionInFlight()) {
+    showToast('Sedang menyimpan transaksi. Tunggu sampai selesai sebelum memuat ulang.');
+    return;
+  }
+  if (hasUnsavedDraft() && !window.confirm('Ada draf yang belum disimpan. Muat ulang tetap dilakukan dan draf akan hilang?')) return;
+  const button = $('#appUpdateReload');
+  if (button) button.disabled = true;
+  try {
+    navigator.serviceWorker?.getRegistration?.().then(registration => registration?.update?.()).catch(() => {});
+  } catch { /* Reload tetap aman walau service worker belum tersedia. */ }
+  window.location.reload();
+}
 
 function profileAvatar(user, className = 'welcome-avatar') {
   const name = user.nickname || user.name || 'Pengguna';
@@ -104,10 +194,10 @@ function profileAvatar(user, className = 'welcome-avatar') {
 }
 
 function welcomeClock(now = new Date()) {
-  const hour = now.getHours();
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(now));
   return {
     greeting: hour < 5 ? 'Selamat malam' : hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam',
-    date: new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now)
+    date: new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now)
   };
 }
 
@@ -134,6 +224,96 @@ async function refreshProfile() {
   }
 }
 
+function cashInsightInteger(value) {
+  try { return typeof value === 'bigint' ? value : BigInt(String(value ?? '0')); } catch { return 0n; }
+}
+function cashInsightMoney(value) { return money(cashInsightInteger(value)); }
+function cashInsightMinimumKey() { return `pangsuma:cash-minimum-idr:${state.user?.id || 'anonymous'}`; }
+function getCashInsightMinimum(insight = state.cashInsights) {
+  try {
+    const stored = localStorage.getItem(cashInsightMinimumKey());
+    if (stored !== null && /^\d+$/.test(stored)) return stored;
+  } catch {}
+  return insight?.minimumIdr === null || insight?.minimumIdr === undefined ? null : String(insight.minimumIdr);
+}
+function cashInsightThresholdLabel(insight) {
+  const value = getCashInsightMinimum(insight);
+  return value === null ? 'Belum diatur' : cashInsightMoney(value);
+}
+function cashInsightTrendText(insight) {
+  if (!insight?.trend) return 'Belum ada data tren.';
+  const current = cashInsightInteger(insight.trend.outgoingIdr);
+  const previous = cashInsightInteger(insight.trend.precedingOutgoingIdr);
+  if (previous === 0n) return 'Belum ada pembanding';
+  const difference = current - previous;
+  const magnitude = difference < 0n ? -difference : difference;
+  const tenths = (magnitude * 1000n + previous / 2n) / previous;
+  return `${difference < 0n ? '-' : difference > 0n ? '+' : ''}${tenths / 10n},${tenths % 10n}% dibanding 30 hari sebelumnya`;
+}
+
+function cashInsightDailyRows(insight, limit = 14) {
+  const rows = Array.isArray(insight?.daily) ? [...insight.daily].sort((a,b) => String(a.day).localeCompare(String(b.day))) : [];
+  return rows.map(row => ({...row, openingIdr: String(row.openingIdr ?? '0'), endingIdr: String(row.closingIdr ?? row.endingIdr ?? '0')})).slice(-limit).reverse();
+}
+function cashInsightsRegion() {
+  const insight = state.cashInsights;
+  if (!insight) return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><p class="field-help">${state.cashInsightsError ? escapeHTML(state.cashInsightsError) : 'Memuat kesehatan petty cash…'}</p>${state.cashInsightsError ? '<button class="secondary-button" type="button" data-action="refresh-cash-insights">Coba lagi</button>' : ''}</section>`;
+  const totals = insight.totals || {};
+  const account = cashInsightInteger(insight.account?.balanceIdr);
+  const expected = cashInsightInteger(insight.accounting?.expectedBalanceIdr);
+  const discrepancy = cashInsightInteger(insight.accounting?.discrepancyIdr);
+  const balanced = insight.accounting?.isBalanced === true;
+  const rows = cashInsightDailyRows(insight, state.cashInsightsDailyLimit || 14);
+  const coverage = insight.trend?.window ? `${dateLong(insight.trend.window.start)} – ${dateLong(insight.trend.window.end)}` : '30 hari terakhir';
+  const window = insight.trend?.window || {};
+  const chartRows = (insight.trend?.days || []).filter(row => row.day >= window.start && row.day <= window.end);
+  const maximum = chartRows.reduce((value, row) => cashInsightInteger(row.outgoingIdr) > value ? cashInsightInteger(row.outgoingIdr) : value, 0n);
+  const bars = chartRows.map((row, index) => {
+    const height = maximum > 0n ? Number(cashInsightInteger(row.outgoingIdr) * 6000n / maximum) / 100 : 0;
+    return `<rect x="${index * (100 / Math.max(1, chartRows.length)) + 0.2}" y="${76 - height}" width="${88 / Math.max(1, chartRows.length)}" height="${height}" rx="0.3" aria-hidden="true"></rect>`;
+  }).join('');
+  const minimum = getCashInsightMinimum(insight);
+  const minimumStatus = minimum === null ? 'Belum ada batas peringatan' : account < cashInsightInteger(minimum) ? 'Di bawah batas minimum' : 'Batas minimum terpenuhi';
+  const equation = `<dl class="cash-health-equation"><div><dt>Saldo awal</dt><dd>${cashInsightMoney(totals.openingIdr)}</dd></div><span aria-hidden="true">+</span><div><dt>Penambahan</dt><dd>${cashInsightMoney(totals.topupsIdr)}</dd></div><span aria-hidden="true">−</span><div><dt>Pengeluaran</dt><dd>${cashInsightMoney(totals.outgoingIdr)}</dd></div><span aria-hidden="true">=</span><div><dt>Saldo hitung</dt><dd>${cashInsightMoney(expected)}</dd></div></dl>`;
+  return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo ter-rekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>Batas minimum perangkat ini</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
+}
+function renderCashInsightsRegion(force = false) {
+  const form = $('#cashMinimumForm');
+  if (!force && form && !form.hidden) return;
+  const region = $('.cash-insights-region');
+  if (region && currentPage === 'overview' && state.user?.role === 'manager') region.outerHTML = cashInsightsRegion();
+}
+async function loadCashInsights() {
+  if (!state.user || state.user.role !== 'manager' || state.user.mustChangePassword || cashInsightsRequestBusy) return;
+  const requestedUser = state.user; const requestEpoch = authEpoch; const requestId = ++cashInsightsRequestEpoch;
+  cashInsightsRequestBusy = true;
+  try {
+    const result = await api('/cash/insights');
+    if (requestEpoch !== authEpoch || !state.user || state.user.id !== requestedUser.id || requestId !== cashInsightsRequestEpoch) return;
+    state.cashInsights = result;
+    state.cashInsightsError = '';
+    renderCashInsightsRegion();
+  } catch (error) {
+    if (requestEpoch === authEpoch && state.user?.id === requestedUser.id) { state.cashInsightsError = friendlyError(error); renderCashInsightsRegion(); }
+  } finally { cashInsightsRequestBusy = false; }
+}
+function configureCashMinimum(button = null) {
+  const form = $('#cashMinimumForm'); if (!form) return;
+  const opening = form.hidden; form.hidden = !opening;
+  (button || document.querySelector('[data-action="configure-cash-minimum"]'))?.setAttribute('aria-expanded', String(opening));
+  if (opening) $('#cashMinimumInput')?.focus();
+}
+function saveCashMinimum(value) {
+  const trimmed = String(value ?? '').trim();
+  try {
+    if (!trimmed) localStorage.removeItem(cashInsightMinimumKey());
+    else if (/^\d{1,16}$/.test(trimmed) && BigInt(trimmed) <= BigInt(Number.MAX_SAFE_INTEGER)) localStorage.setItem(cashInsightMinimumKey(), BigInt(trimmed).toString());
+    else { showToast('Masukkan angka rupiah tanpa titik atau simbol.'); return false; }
+    renderCashInsightsRegion(true); showToast(trimmed ? 'Batas minimum perangkat disimpan.' : 'Batas minimum perangkat dihapus.'); return true;
+  } catch { showToast('Batas minimum belum dapat disimpan di perangkat ini.'); return false; }
+}
+function clearCashMinimum() { saveCashMinimum(''); }
+
 function managerOverviewSnapshot() {
   return JSON.stringify({
     cashBalanceIdr: state.cashBalanceIdr,
@@ -141,7 +321,8 @@ function managerOverviewSnapshot() {
     summary: state.summary,
     cashLedger: state.cashLedger,
     auditEvents: state.auditEvents,
-    history: state.history
+    history: state.history,
+    cashInsights: state.cashInsights
   });
 }
 
@@ -196,19 +377,22 @@ class ApiFailure extends Error {
 }
 
 async function api(path, options = {}) {
+  const mutation = !['GET', 'HEAD'].includes(String(options.method || 'GET').toUpperCase());
+  if (mutation) activeApiTransactions++;
+  try {
   const requestEpoch = authEpoch;
   const headers = new Headers(options.headers || {});
   let body;
   if (options.body !== undefined) {
     headers.set('Content-Type', 'application/json');
-    body = JSON.stringify(options.body);
+    body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
   }
   const response = await fetch(`/api${path}`, {
     method: options.method || 'GET',
     credentials: 'same-origin',
     cache: 'no-store',
     headers,
-    body
+    body, signal: options.signal
   });
   let payload = {};
   try { payload = await response.json(); } catch { payload = {}; }
@@ -226,6 +410,7 @@ async function api(path, options = {}) {
     throw new ApiFailure(401, 'session_changed', 'Sesi telah berakhir atau berubah. Masuk kembali untuk melanjutkan.');
   }
   return payload;
+  } finally { if (mutation) activeApiTransactions = Math.max(0, activeApiTransactions - 1); }
 }
 
 function webAuthnBuffer(value) {
@@ -309,6 +494,7 @@ async function completeLogin(result, form = null) {
   state.user = result.user;
   if (state.user.mustChangePassword) {
     state.cashBalanceIdr = 0;
+  state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
     state.submissions = [];
     state.users = [];
     state.cashLedger = [];
@@ -391,17 +577,26 @@ function showToast(message) {
 }
 
 function showLogin(message = '') {
+  if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.clear();
+  if (typeof FinancialControls !== 'undefined') FinancialControls.clear();
+  if (typeof ReportEvidence !== 'undefined') ReportEvidence.clear();
+  if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
   authEpoch += 1;
   closeDialogs();
   $$('form').forEach(form => form.reset());
   $$('input[type="password"], textarea, input[type="number"]').forEach(input => { input.value = ''; });
   state.user = null;
   state.cashBalanceIdr = 0;
+  state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
   state.submissions = [];
   state.users = [];
   state.cashLedger = [];
   state.auditEvents = [];
   state.summary = {};
+  state.cashInsights = null;
+  state.cashInsightsError = '';
+  state.cashInsightsDailyLimit = 14;
+  cashInsightsRequestEpoch += 1;
   state.history = emptyHistory();
   state.archiveType = 'all';
   state.archiveSearch = '';
@@ -409,6 +604,9 @@ function showLogin(message = '') {
   lastRenderedPage = '';
   reportTypePreset = 'petty_cash';
   submissionIdempotencyKey = '';
+  cashTopupIdempotencyKey = '';
+  cashTopupFingerprint = '';
+  cashTopupBusy = false;
   confirmAction = null;
   resetTargetId = '';
   $('#appContent').replaceChildren();
@@ -428,13 +626,9 @@ function hidePreloader() {
   const preloader = $('#pangsuma-preloader');
   document.body.removeAttribute('aria-busy');
   if (!preloader || preloader.hidden) return;
-  const dismiss = () => {
-    preloader.classList.add('is-hidden');
-    preloader.setAttribute('aria-hidden', 'true');
-    window.setTimeout(() => { preloader.hidden = true; }, 620);
-  };
-  if (document.readyState === 'complete') dismiss();
-  else window.addEventListener('load', dismiss, { once: true });
+  preloader.classList.add('is-hidden');
+  preloader.setAttribute('aria-hidden', 'true');
+  preloader.hidden = true;
 }
 
 async function refreshOverview() {
@@ -447,13 +641,20 @@ async function refreshOverview() {
   }
   state.user = result.user;
   state.cashBalanceIdr = Number(result.cashBalanceIdr) || 0;
+  state.cashFlow = result.cashFlow || { incomingIdr: '0', outgoingIdr: '0' };
+  if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.refresh();
+  if (typeof FinancialControls !== 'undefined') FinancialControls.refresh();
+  if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
   state.submissions = Array.isArray(result.submissions) ? result.submissions : [];
   state.users = Array.isArray(result.users) ? result.users : [];
   state.cashLedger = Array.isArray(result.cashLedger) ? result.cashLedger : [];
   state.auditEvents = Array.isArray(result.auditEvents) ? result.auditEvents : [];
   state.summary = result.summary || {};
   state.history = result.history || emptyHistory();
+  configureBoundedHistory();
+  if (state.user?.role === 'manager') void loadCashInsights();
 }
+
 
 function navButton(item) {
   const current = currentPage === item.id ? 'page' : 'false';
@@ -464,6 +665,13 @@ function renderNav() {
   const role = state.user?.role || 'user';
   const items = navByRole[role];
   $('#desktopNav').innerHTML = items.map(navButton).join('');
+  const headerUsers = document.querySelector('.account-users-button');
+  if (headerUsers) {
+    headerUsers.hidden = role !== 'manager';
+    headerUsers.setAttribute('aria-current', currentPage === 'users' ? 'page' : 'false');
+  }
+  const headerPassword = document.querySelector('.account-password-button');
+  if (headerPassword) headerPassword.classList.toggle('is-manager', role === 'manager');
   const mobile = $('#mobileNav');
   if (role === 'manager') {
     mobile.className = 'mobile-nav is-manager';
@@ -483,7 +691,10 @@ function welcomePanel() {
   const name = user.nickname || (user.name || 'Pengguna').trim().split(/\s+/)[0];
   const clock = welcomeClock();
   const position = user.dashboardPosition ?? user.position;
-  return `<section class="welcome-card">${profileAvatar(user)}<div class="welcome-copy"><p class="welcome-date">${escapeHTML(clock.date)}</p><h1>${clock.greeting}, ${escapeHTML(name)}</h1><p class="welcome-role">${escapeHTML(position || (user.role === 'manager' ? 'Manager Pangsuma' : 'User Pangsuma'))}</p>${user.quote ? `<p class="welcome-quote">${escapeHTML(user.quote)}</p>` : ''}</div>${user.role === 'manager' ? '<button class="text-button profile-settings-link" type="button" data-page="users">Pengaturan profil tim</button>' : ''}</section>`;
+  const avatar = user.role === 'manager'
+    ? `<button class="welcome-avatar-button" type="button" data-action="edit-user-profile" data-id="${escapeHTML(user.id)}" aria-label="Ubah foto dan profil dashboard">${profileAvatar(user)}</button>`
+    : profileAvatar(user);
+  return `<section class="welcome-card">${avatar}<div class="welcome-copy"><p class="welcome-date">${escapeHTML(clock.date)}</p><h1>${clock.greeting}, ${escapeHTML(name)}</h1><p class="welcome-role">${escapeHTML(position || (user.role === 'manager' ? 'Manager Pangsuma' : 'User Pangsuma'))}</p>${user.quote ? `<p class="welcome-quote">${escapeHTML(user.quote)}</p>` : ''}</div></section>`;
 }
 function metricCard(icon, label, value, page = '', detail = '') {
   const content = `<span class="metric-icon" aria-hidden="true">${icons[icon]}</span><span class="metric-copy"><span class="metric-label">${escapeHTML(label)}</span><strong class="metric-value">${escapeHTML(value)}</strong>${detail ? `<span class="metric-detail">${escapeHTML(detail)}</span>` : ''}</span>`;
@@ -523,7 +734,8 @@ function submissionCard(item, options = {}) {
       : !enoughCash ? 'Saldo petty cash belum mencukupi.' : '';
     actions = `<div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}" ${cannotApprove ? 'disabled' : ''} ${disableHint ? `aria-describedby="hint-${escapeHTML(item.id)}" title="${escapeHTML(disableHint)}"` : ''}>${approveLabel}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}" ${own ? 'disabled' : ''}>Tolak</button></div>${disableHint ? `<p class="action-hint" id="hint-${escapeHTML(item.id)}">${escapeHTML(disableHint)}</p>` : ''}`;
   }
-  return `<article class="item-row"><div class="item-copy">${owner}<div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div>${item.note ? `<p class="item-note">${escapeHTML(item.note)}</p>` : ''}</div><div class="item-side">${amount}${options.showStatus !== false ? status : ''}</div>${item.decisionReason ? `<p class="decision-reason"><strong>Alasan:</strong> ${escapeHTML(item.decisionReason)}</p>` : ''}${actions}</article>`;
+  const detail = `<button class="text-button" type="button" data-action="report-detail" data-id="${escapeHTML(item.id)}">Detail</button>`;
+  return `<article class="item-row"><div class="item-copy">${owner}<div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div>${item.note ? `<p class="item-note">${escapeHTML(item.note)}</p>` : ''}</div><div class="item-side">${amount}${options.showStatus !== false ? status : ''}${detail}</div>${item.decisionReason ? `<p class="decision-reason"><strong>Alasan:</strong> ${escapeHTML(item.decisionReason)}</p>` : ''}${actions}</article>`;
 }
 
 function emptyState(title, message = '') {
@@ -532,40 +744,46 @@ function emptyState(title, message = '') {
 
 function historyControls(collection, label) {
   const page = state.history?.[collection];
-  if (!page || Number(page.total || 0) === 0) return '';
-  const loaded = Number(page.loaded || 0);
-  const total = Number(page.total || 0);
-  const status = page.hasMore
-    ? `Menampilkan ${loaded} dari ${total} ${label}.`
-    : `Semua ${total} ${label} telah dimuat.`;
-  const remaining = Math.min(100, Math.max(0, total - loaded));
-  return `<div class="history-controls" aria-live="polite"><p>${escapeHTML(status)}</p>${page.hasMore ? `<button class="secondary-button" type="button" data-action="load-more-history" data-collection="${escapeHTML(collection)}">Muat ${remaining} ${escapeHTML(label)} berikutnya</button>` : ''}</div>`;
+  if (!page || !Number(page.total || 0)) return '';
+  const meta = typeof BoundedHistory !== 'undefined' ? BoundedHistory.controlsMeta(collection) : {};
+  const number = meta.pageNumber || 1, count = state[collection]?.length || 0;
+  const button = (direction, text) => `<button class="secondary-button" type="button" data-action="${direction}" data-collection="${escapeHTML(collection)}">${text}</button>`;
+  return `<div class="history-controls" aria-live="polite"><p>Halaman ${number} · ${count} ${escapeHTML(label)} ditampilkan · total ${Number(page.total)}.</p><div class="form-actions">${meta.hasPrevious ? button('history-previous', 'Halaman sebelumnya') : ''}${meta.canFirst ? button('history-first', 'Kembali ke terbaru') : ''}${page.hasMore ? button('load-more-history', 'Halaman berikutnya') : ''}</div>${meta.cursorHistoryTruncated ? '<p class="field-help">Navigasi kembali dibatasi demi memori perangkat; semua halaman tetap dapat diakses dari data terbaru.</p>' : ''}</div>`;
 }
 
+function submissionTimeline(item) {
+  const steps = [['pending', 'Dikirim', item.createdAt]];
+  if (item.status === 'approved' || item.status === 'sent') steps.push(['approved', 'Disetujui', item.status === 'approved' ? item.updatedAt : null]);
+  if (item.status === 'sent') steps.push(['sent', 'Terkirim ke Finance', item.updatedAt]);
+  if (item.status === 'rejected') steps.push(['rejected', 'Ditolak', item.updatedAt]);
+  return `<ol class="submission-timeline" aria-label="Timeline ${escapeHTML(item.description)}">${steps.map(([status, label, timestamp]) => `<li class="timeline-step ${status}"><span class="timeline-dot" aria-hidden="true"></span><span><strong>${label}</strong>${timestamp ? `<small>${escapeHTML(dateTimeLong(timestamp))}</small>` : ''}${status === 'rejected' && item.decisionReason ? `<small class="timeline-reason">${escapeHTML(item.decisionReason)}</small>` : ''}</span></li>`).join('')}</ol>`;
+}
 function managerOverview() {
   const pending = state.submissions.filter(item => item.status === 'pending');
   const today = todayISO();
   const todayItems = state.submissions.filter(item => item.date === today);
   const recent = state.submissions.slice(0, 3);
-  const financeWaiting = state.summary.financeWaiting ?? state.submissions.filter(item => item.type === 'finance_request' && item.status === 'approved').length;
-  const pendingCount = state.summary.pending ?? pending.length;
-  const todayCount = state.summary.today ?? todayItems.length;
+  const financeWaiting = state.summary.financeWaiting ?? 0;
+  const pendingCount = state.summary.pending ?? 0;
+  const todayCount = state.summary.today ?? 0;
   return `${welcomePanel()}
-    <div class="section-row"><div><h2>Pengajuan Anda</h2><p>Pengajuan Manager otomatis disetujui dan digabung dengan pengajuan lain yang sudah disetujui.</p></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
-    <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div><button class="secondary-button" type="button" data-page="finance">Lihat Finance</button></section>
+    <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div><div class="balance-actions"><button class="primary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button><button class="secondary-button" type="button" data-page="finance">Lihat Finance</button></div></section>
+    ${cashInsightsRegion()}
+    <div id="financialControlsOverview">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderOverview() : ''}</div>
+    <div class="section-row manager-action-row"><div><h2>Pengajuan Anda</h2><p>Pengajuan Manager otomatis disetujui.</p></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount), 'approvals')}${metricCard('finance', 'Menunggu Finance', String(financeWaiting), 'finance')}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
-    <div class="manager-layout"><section class="manager-ledger"><div class="section-row"><div><h2>Aktivitas hari ini</h2><p>${todayCount} pengajuan pada ${dateLong(today)}</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>${todayItems.length ? `<div class="list-stack">${todayItems.slice(0, 3).map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan hari ini', 'Aktivitas akan tampil di sini setelah User mengirim laporan.')}</section><section class="manager-queue"><div class="section-row"><div><h2>Menunggu persetujuan</h2></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pending.length ? `<div class="list-stack">${pending.slice(0, 2).map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Antrian kosong', 'Pengajuan baru akan tampil setelah dikirim User.')}</section></div>
+    <div class="manager-layout"><section class="manager-queue manager-queue-primary"><div class="section-row"><div><h2>Antrean tindakan</h2><p>${pendingCount} pengajuan menunggu keputusan</p></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pending.length ? `<div class="list-stack">${pending.slice(0, 3).map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Antrian kosong', 'Pengajuan baru akan tampil setelah dikirim User.')}</section><section class="manager-ledger"><div class="section-row"><div><h2>Aktivitas hari ini</h2><p>${todayCount} pengajuan pada ${dateLong(today)}</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>${todayItems.length ? `<div class="list-stack">${todayItems.slice(0, 3).map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan hari ini', 'Aktivitas akan tampil di sini setelah User mengirim laporan.')}</section></div>
     ${recent.length ? `<section class="recent-section"><div class="section-row"><div><h2>Pengajuan terbaru</h2></div></div><div class="list-stack">${recent.map(item => submissionCard(item, { includeOwner: true })).join('')}</div></section>` : ''}`;
 }
-
 function userOverview() {
   const own = state.submissions;
+  const total = state.summary.total ?? 0;
+  const pending = state.summary.pending ?? 0;
   return `${welcomePanel()}
-    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(state.summary.total ?? own.length), 'my-reports')}${metricCard('review', 'Menunggu', String(state.summary.pending ?? own.filter(item => item.status === 'pending').length), 'my-reports')}</div>
-    <section class="guide-card" aria-labelledby="guideTitle"><div class="guide-heading"><div><h2 id="guideTitle">Pengajuan operasional</h2><p>Ajukan kebutuhan dan pantau keputusan Manager.</p></div><button class="primary-button home-report-cta" type="button" data-action="open-report-choice">Buat pengajuan</button></div><ol class="guide-steps"><li><span>1</span><strong>Pilih Petty cash atau Finance</strong></li><li><span>2</span><strong>Isi keperluan dan nominal</strong></li><li><span>3</span><strong>Kirim untuk ditinjau Manager</strong></li></ol></section>
-    <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada laporan', 'Gunakan tombol “Buat pengajuan” saat Anda siap mengirim kebutuhan.')}`;
+    <section class="user-primary-action" aria-labelledby="userActionTitle"><div><p class="archive-kicker">Pusat pengajuan</p><h2 id="userActionTitle">Butuh dana operasional?</h2><p>Kirim kebutuhan, pantau status.</p></div><button class="primary-button home-report-cta" type="button" data-action="open-report-choice">Buat pengajuan</button></section>
+    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(total), 'my-reports')}${metricCard('review', 'Menunggu', String(pending), 'my-reports')}</div>
+    <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><div><h2 id="userStatusTitle">Status laporan Anda</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => `${submissionCard(item)}${submissionTimeline(item)}`).join('')}</div>` : emptyState('Belum ada laporan', 'Gunakan tombol “Buat pengajuan” saat Anda siap mengirim kebutuhan.')}</section>`;
 }
-
 function managerApprovals() {
   const pending = state.submissions.filter(item => item.status === 'pending');
   const history = state.submissions.filter(item => item.status !== 'pending');
@@ -583,9 +801,11 @@ function financePage() {
   const waiting = finance.filter(item => item.status === 'approved');
   const sent = finance.filter(item => item.status === 'sent');
   const ledgers = state.cashLedger;
-  const openingConfigured = ledgers.some(event => event.event_type === 'opening_balance' && Number(event.amount_idr) > 0);
-  const headingActions = `<div class="heading-actions">${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<button class="secondary-button" type="button" data-action="download-csv">Unduh rekap lengkap CSV</button><details class="csv-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a href="/api/export.csv" download>unduh langsung CSV</a>.</p></details></div>`;
-  return `${pageHeading('Finance', 'Pantau Request Finance dari antrean Manager sampai terkirim.', headingActions)}
+  const openingConfigured = Boolean(state.cashFlow?.openingConfigured);
+  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-report-choice">Buat pengajuan</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details></div>`;
+  return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.', headingActions)}
+    <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : ''}</div>
+    <div id="financialControlsFinance">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderFinance() : ''}</div>
     <div class="metric-row" aria-label="Ringkasan Finance">${metricCard('finance', 'Total request', String(state.summary.financeTotal ?? finance.length))}${metricCard('review', 'Belum dikirim', String(state.summary.financeWaiting ?? waiting.length))}${metricCard('wallet', 'Terkirim', String(state.summary.financeSent ?? sent.length))}</div>
     <div class="section-row"><div><h2>Request Finance</h2></div></div>${finance.length ? `<div class="list-stack">${finance.map(item => { const label = item.status === 'sent' ? 'Terkirim' : item.status === 'approved' ? 'Menunggu Finance' : item.status === 'rejected' ? 'Ditolak' : 'Menunggu Manager'; const statusClass = item.status === 'sent' ? 'status-ok' : item.status === 'rejected' ? 'status-neutral' : 'status-wait'; return `<article class="item-row"><div class="item-copy"><span class="item-owner">${escapeHTML(item.createdByName || 'User')}</span><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div></div><div class="item-side"><div class="item-amount">${money(item.amountIdr)}</div><span class="status ${statusClass}">${label}</span></div>${item.status === 'approved' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim ke Finance</button></div>` : ''}</article>`; }).join('')}</div>` : emptyState('Belum ada Request Finance', 'Permintaan baru akan muncul setelah User mengirim pengajuan.')}
     ${historyControls('submissions', 'pengajuan')}
@@ -613,7 +833,8 @@ function auditRow(event) {
 
 function ledgerRow(event) {
   const debit = event.direction === 'debit';
-  return `<li><div class="audit-main"><strong>${debit ? 'Pengeluaran petty cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
+  const topup = event.event_type === 'cash_topup';
+  return `<li><div class="audit-main"><strong>${topup ? 'Petty cash ditambah' : debit ? 'Pengeluaran petty cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
 }
 
 function usersPage() {
@@ -654,13 +875,15 @@ function myReportsPage() {
 
 function reportForm() {
   const type = reportTypePreset;
+  const draft = reportDraft(type);
+  if (draft.idempotencyKey) submissionIdempotencyKey = draft.idempotencyKey;
   return `${pageHeading('Buat pengajuan', 'Isi kebutuhan Anda. Nominal dan status akan tersimpan di server.')}
     <form id="reportForm" class="form-card surface"><div class="form-grid">
       <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${state.user?.role === 'manager' ? (type === 'petty_cash' ? 'Otomatis disetujui; saldo petty cash langsung berkurang saat dikirim dan harus mencukupi.' : 'Otomatis disetujui dan langsung masuk daftar menunggu Finance.') : (type === 'petty_cash' ? 'Saldo petty cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.')}</div></div>
-      <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO()}" required></div>
-      <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Contoh: 150000"></div>
-      <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required minlength="3" maxlength="150" placeholder="Jelaskan kebutuhan operasional"></div>
-      <div class="field field-full"><label for="reportNote">Catatan (opsional)</label><textarea id="reportNote" name="note" maxlength="500" placeholder="Informasi tambahan untuk Manager"></textarea></div>
+      <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${escapeHTML(draft.date || todayISO())}" required></div>
+      <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" value="${escapeHTML(draft.amountIdr || '')}" required placeholder="Contoh: 150000"></div>
+      <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" value="${escapeHTML(draft.description || '')}" required minlength="3" maxlength="150" placeholder="Jelaskan kebutuhan operasional"></div>
+      <div class="field field-full"><label for="reportNote">Catatan (opsional)</label><textarea id="reportNote" name="note" maxlength="500" placeholder="Informasi tambahan untuk Manager">${escapeHTML(draft.note || '')}</textarea></div>
     </div><div class="form-actions"><button class="primary-button" type="submit">Kirim pengajuan</button><button class="secondary-button" type="button" data-page="overview">Batal</button></div></form>`;
 }
 
@@ -708,6 +931,7 @@ function renderApp() {
     body = currentPage === 'my-reports' ? myReportsPage() : currentPage === 'cash-info' ? cashInfo() : currentPage === 'new-report' ? reportForm() : userOverview();
   }
   $('#appContent').innerHTML = body;
+  if (currentPage === 'new-report' && typeof ReportEvidence !== 'undefined') ReportEvidence.mountDuplicateCheck($('#reportForm'));
   $$('#appContent details[data-panel]').forEach(panel => { panel.open = openPanels.has(panel.dataset.panel); });
   if (pageChanged) $('#mainContent').scrollTo(0, 0);
   lastRenderedPage = currentPage;
@@ -720,6 +944,8 @@ function openDialog(id) {
 }
 
 function closeDialogs() {
+  const reportDialog = $('#reportActivityDialog');
+  if (reportDialog?.open && !canCloseReportActivity(reportDialog)) return false;
   $$('dialog[open]').forEach(dialog => dialog.close());
 }
 
@@ -938,10 +1164,12 @@ function setButtonBusy(button, busy, label = '') {
     button.textContent = label || 'Memproses…';
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
+    button.classList.add('is-busy');
   } else {
     button.textContent = button.dataset.originalLabel || button.textContent;
     button.disabled = false;
     button.removeAttribute('aria-busy');
+    button.classList.remove('is-busy');
   }
 }
 
@@ -1103,18 +1331,13 @@ async function performNewSubmission(event) {
   const data = new FormData(form);
   setButtonBusy(button, true, 'Mengirim pengajuan…');
   try {
-    if (!submissionIdempotencyKey) submissionIdempotencyKey = newSubmissionKey();
-    await api('/submissions', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': submissionIdempotencyKey },
-      body: {
-        type: String(data.get('type')),
-        amountIdr: Number(data.get('amountIdr')),
-        date: String(data.get('date')),
-        description: String(data.get('description')).trim(),
-        note: String(data.get('note') || '').trim()
-      }
-    });
+    const payload = { type: String(data.get('type')), amountIdr: Number(data.get('amountIdr')), date: String(data.get('date')), description: String(data.get('description')).trim(), note: String(data.get('note') || '').trim() };
+    const savedDraft = typeof readDraft === 'function' ? readDraft('report', payload.type) : null;
+    const submittedFingerprint = JSON.stringify(payload);
+    if (!submissionIdempotencyKey || (savedDraft?.submittedFingerprint && savedDraft.submittedFingerprint !== submittedFingerprint)) submissionIdempotencyKey = newSubmissionKey();
+    if (typeof writeDraft === 'function') writeDraft('report', payload.type, { ...payload, amountIdr: String(payload.amountIdr), idempotencyKey: submissionIdempotencyKey, submittedFingerprint });
+    await api('/submissions', { method: 'POST', headers: { 'Idempotency-Key': submissionIdempotencyKey }, body: payload });
+    if (typeof clearDraft === 'function') clearDraft('report', payload.type);
     submissionIdempotencyKey = '';
     let refreshed = true;
     try { await refreshOverview(); } catch (error) {
@@ -1131,16 +1354,17 @@ async function performNewSubmission(event) {
   }
 }
 
-async function downloadCsv(button) {
+async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
   // Keep the native attachment click in the original user gesture on mobile
   // browsers whose download manager owns the response. Android WebView can
   // create blob URLs but does not reliably hand a programmatic blob click to
   // its download manager, so the native attachment link avoids that limitation.
-  // A plain location navigation can render CSV inline in WebKit even when
+  // A plain location navigation can render PDFs inline in WebKit even when
   // Content-Disposition is attachment, so retain an explicit download attribute.
   // Desktop and full Android browsers keep the Blob path and its in-app error
   // handling.
+  const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
   const userAgent = navigator.userAgent || '';
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
@@ -1149,8 +1373,8 @@ async function downloadCsv(button) {
       || !/Chrome\/\d+/i.test(userAgent));
   if (isMobileAppleBrowser || isAndroidWebView) {
     const anchor = document.createElement('a');
-    anchor.href = '/api/export.csv';
-    anchor.download = `pangsuma-rekap-lengkap-${todayISO()}.csv`;
+    anchor.href = reportUrl;
+    anchor.download = `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
@@ -1159,7 +1383,7 @@ async function downloadCsv(button) {
   const requestEpoch = authEpoch;
   setButtonBusy(button, true, 'Menyiapkan rekap…');
   try {
-    const response = await fetch('/api/export.csv', { credentials: 'same-origin', cache: 'no-store' });
+    const response = await fetch(reportUrl, { credentials: 'same-origin', cache: 'no-store' });
     if (!response.ok) {
       let payload = {};
       try { payload = await response.json(); } catch { payload = {}; }
@@ -1174,7 +1398,7 @@ async function downloadCsv(button) {
     const blob = await response.blob();
     if (requestEpoch !== authEpoch || !state.user) return;
     const disposition = response.headers.get('Content-Disposition') || '';
-    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `pangsuma-rekap-lengkap-${todayISO()}.csv`;
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -1183,7 +1407,7 @@ async function downloadCsv(button) {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-    showToast('Rekap siap; periksa unduhan browser untuk file CSV.');
+    showToast('Rekap siap; periksa unduhan browser untuk file PDF.');
   } catch (error) {
     if (error.code !== 'session_changed') showToast(friendlyError(error));
   } finally {
@@ -1191,42 +1415,94 @@ async function downloadCsv(button) {
   }
 }
 
-async function loadMoreHistory(collection, button) {
-  const config = {
-    submissions: { endpoint: 'submissions', stateKey: 'submissions', responseKey: 'submissions' },
-    cashLedger: { endpoint: 'cash-ledger', stateKey: 'cashLedger', responseKey: 'cashLedger' },
-    auditEvents: { endpoint: 'audit-events', stateKey: 'auditEvents', responseKey: 'auditEvents' }
-  }[collection];
-  const page = state.history?.[collection];
-  if (!config || !page?.hasMore || !page.nextCursor || !state.user) return;
-  const requestedUserId = state.user.id;
-  const requestEpoch = authEpoch;
-  setButtonBusy(button, true, 'Memuat riwayat…');
-  try {
-    const cursor = encodeURIComponent(page.nextCursor);
-    const result = await api(`/history/${config.endpoint}?cursor=${cursor}`);
-    if (requestEpoch !== authEpoch || !state.user || state.user.id !== requestedUserId) return;
-    const additions = Array.isArray(result[config.responseKey]) ? result[config.responseKey] : [];
-    state[config.stateKey] = [...state[config.stateKey], ...additions];
-    state.history[collection] = {
-      nextCursor: result.nextCursor || null,
-      hasMore: Boolean(result.hasMore),
-      total: Number(result.total || 0),
-      loaded: Number(page.loaded || 0) + additions.length
-    };
-    renderApp();
-    document.querySelector(`[data-action="load-more-history"][data-collection="${collection}"]`)?.focus({ preventScroll: true });
-  } catch (error) {
-    if (error.code !== 'session_changed') showToast(friendlyError(error));
-  } finally {
-    if (button.isConnected) setButtonBusy(button, false);
+function configureBoundedHistory() {
+  if (typeof BoundedHistory === 'undefined') return;
+  BoundedHistory.configure({
+    api, getUser: () => state.user, getEpoch: () => authEpoch,
+    getRows: key => state[key] || [], setRows: (key, rows) => { state[key] = rows; },
+    getPage: key => state.history?.[key], setPage: (key, page) => { state.history[key] = page; },
+    onError: error => { if (error.code !== 'session_changed') showToast(friendlyError(error)); },
+    onChange: collection => queueMicrotask(() => {
+      if (!state.user || currentPage === 'new-report') return;
+      renderApp();
+      if (collection === 'submissions') $('#mainContent').scrollTo(0, 0);
+      const panel = collection === 'cashLedger' ? $('#appContent details[data-panel="cash-ledger"]') : null;
+      if (panel) panel.scrollIntoView({ block: 'start', behavior: 'auto' });
+      document.querySelector(`.history-controls button[data-collection="${collection}"]`)?.focus({ preventScroll: true });
+    })
+  });
+}
+async function loadMoreHistory(collection, button, direction = 'next') {
+  if (typeof BoundedHistory === 'undefined' || !state.user) return;
+  setButtonBusy(button, true, 'Memuat halaman…');
+  try { await BoundedHistory.load(collection, direction); }
+  finally { if (button?.isConnected) setButtonBusy(button, false); }
+}
+
+function canCloseReportActivity(dialog) {
+  if (typeof ReportEvidence === 'undefined' || !dialog) return true;
+  if (ReportEvidence.isBusy?.(dialog)) { showToast('Tunggu pemrosesan atau unggahan nota selesai.'); return false; }
+  return !ReportEvidence.hasPending?.(dialog) || window.confirm('Nota yang dipilih belum diunggah. Tutup dan buang pilihan nota?');
+}
+async function openReportActivity(id, trigger) {
+  if (!state.user || state.user.mustChangePassword) return;
+  const previous = $('#reportActivityDialog');
+  if (previous) { if (!canCloseReportActivity(previous)) return; previous.close(); previous.remove(); }
+  const dialog = document.createElement('dialog');
+  dialog.className = 'app-dialog'; dialog.id = 'reportActivityDialog';
+  dialog.setAttribute('aria-labelledby', 'reportActivityTitle');
+  dialog.innerHTML = '<div class="dialog-panel"><div class="dialog-heading"><div><p class="choice-kicker">Riwayat aktivitas</p><h2 id="reportActivityTitle">Detail pengajuan</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div><div data-report-activity-body aria-live="polite" aria-busy="true">Memuat detail…</div></div>';
+  const body = dialog.querySelector('[data-report-activity-body]');
+  const requestedUserId = state.user.id, requestedEpoch = authEpoch;
+  const active = () => dialog.isConnected && dialog.open && state.user?.id === requestedUserId && authEpoch === requestedEpoch;
+  const statuses = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak', sent: 'Terkirim ke Finance' };
+  const events = [];
+  let busy = false;
+  document.body.append(dialog);
+  dialog.addEventListener('cancel', event => { if (!canCloseReportActivity(dialog)) event.preventDefault(); });
+  dialog.addEventListener('close', () => { dialog.remove(); if (trigger?.isConnected) trigger.focus({ preventScroll: true }); }, { once: true });
+  openDialog(dialog.id);
+  async function load(cursor = '') {
+    if (busy || !active()) return;
+    busy = true; body.setAttribute('aria-busy', 'true');
+    const moreButton = body.querySelector('[data-report-activity-more]');
+    if (moreButton) setButtonBusy(moreButton, true, 'Memuat aktivitas…');
+    try {
+      const result = await api(`/submissions/${encodeURIComponent(id)}/activity${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+      if (!active()) return;
+      const sub = result.submission || {};
+      for (const event of result.activity || []) if (!events.some(existing => existing.id === event.id)) events.push(event);
+      const rows = events.map(event => {
+        const details = event.details || {};
+        const label = event.action === 'submission.created' ? 'Pengajuan dibuat' : 'Status pengajuan berubah';
+        const transition = details.to ? `${details.from ? `${statuses[details.from] || details.from} → ` : ''}${statuses[details.to] || details.to}` : '';
+        return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actorName || 'Sistem')}</span></div><small>${escapeHTML(dateTimeWibFull(event.createdAt))}</small>${transition ? `<p>${escapeHTML(transition)}</p>` : ''}${details.reason ? `<p>Alasan: ${escapeHTML(details.reason)}</p>` : ''}</li>`;
+      }).join('');
+      body.innerHTML = `<p><strong>${escapeHTML(sub.description || '')}</strong><br>${escapeHTML(reportTypeLabel(sub.type))} · ${escapeHTML(money(sub.amountIdr))} · ${escapeHTML(statuses[sub.status] || sub.status)}</p><p class="field-help">Pengaju: ${escapeHTML(sub.createdByName || '—')}${sub.createdByPosition ? ` · ${escapeHTML(sub.createdByPosition)}` : ''}</p>${sub.resolvedByName ? `<p class="field-help">Pemroses: ${escapeHTML(sub.resolvedByName)}</p>` : ''}${sub.sentByName ? `<p class="field-help">Ditandai terkirim oleh: ${escapeHTML(sub.sentByName)}</p>` : ''}${sub.note ? `<p>${escapeHTML(sub.note)}</p>` : ''}${sub.decisionReason ? `<p><strong>Alasan keputusan:</strong> ${escapeHTML(sub.decisionReason)}</p>` : ''}${rows ? `<ol class="audit-list">${rows}</ol>` : '<p class="field-help">Audit aktivitas belum tersedia. Status saat ini berasal dari pengajuan tersimpan.</p>'}${result.hasMore ? '<button class="secondary-button" type="button" data-report-activity-more>Muat aktivitas berikutnya</button>' : ''}`;
+      body.querySelector('[data-report-activity-more]')?.addEventListener('click', () => load(result.nextCursor));
+      if (typeof ReportEvidence !== 'undefined') ReportEvidence.mountReceipts(body, { ...sub, id: sub.id || id });
+    } catch (error) {
+      if (!active()) return;
+      if (!events.length) body.textContent = friendlyError(error);
+      else showToast(friendlyError(error));
+    } finally {
+      busy = false;
+      if (active()) { body.setAttribute('aria-busy', 'false'); if (moreButton?.isConnected) setButtonBusy(moreButton, false); }
+    }
   }
+  await load();
 }
 
 async function handleAction(button) {
   const action = button.dataset.action;
+  if (action === 'history-previous' || action === 'history-first') { await loadMoreHistory(button.dataset.collection, button, action === 'history-first' ? 'first' : 'previous'); return; }
+  if (action === 'refresh-cash-insights') { await loadCashInsights(); return; }
+  if (action === 'configure-cash-minimum') { configureCashMinimum(button); return; }
+  if (action === 'clear-cash-minimum') { clearCashMinimum(); return; }
+  if (action === 'load-more-cash-days') { state.cashInsightsDailyLimit = (state.cashInsightsDailyLimit || 14) + 14; renderCashInsightsRegion(); return; }
   const id = button.dataset.id;
-  if (action === 'load-more-history') {
+  if (action === 'report-detail') { await openReportActivity(id, button);
+  } else if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
     if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
@@ -1241,6 +1517,7 @@ async function handleAction(button) {
     renderApp();
   } else if (action === 'close-dialog') {
     if (button.closest('#userProfileDialog') && profileDraft?.saving) return;
+    if (button.closest('#cashTopupDialog') && cashTopupBusy) return;
     button.closest('dialog')?.close();
   } else if (action === 'edit-user-profile') {
     openUserProfile(id);
@@ -1291,8 +1568,8 @@ async function handleAction(button) {
     $('#temporaryPassword').focus();
   } else if (action === 'deactivate-user') {
     setConfirm('deactivate', 'Nonaktifkan akses pengguna?', `${button.dataset.name || 'Pengguna'} tidak dapat masuk lagi. Riwayat laporan tetap tersimpan dan aksi ini dicatat.`, 'Nonaktifkan akses', true, { id, successMessage: 'Akses akun dinonaktifkan; riwayat tetap tersimpan.' });
-  } else if (action === 'download-csv') {
-    await downloadCsv(button);
+  } else if (action === 'download-pdf') {
+    await downloadPdf(button);
   } else if (action === 'open-opening-balance') {
     if (state.user?.role !== 'manager') return;
     const openingExists = state.cashLedger.some(event => event.event_type === 'opening_balance' && Number(event.amount_idr) > 0);
@@ -1300,10 +1577,18 @@ async function handleAction(button) {
     $('#openingBalanceForm').reset();
     openDialog('openingBalanceDialog');
     $('#openingAmount').focus();
+  } else if (action === 'open-cash-topup') {
+    if (state.user?.role !== 'manager' || state.user.mustChangePassword || cashTopupBusy) return;
+    const draft = readDraft('cash-topup', '');
+    if (draft) { $('#cashTopupAmount').value = draft.amountIdr || ''; $('#cashTopupNote').value = draft.note || ''; cashTopupIdempotencyKey = draft.idempotencyKey || ''; cashTopupFingerprint = draft.fingerprint || ''; } else $('#cashTopupForm').reset();
+    openDialog('cashTopupDialog');
+    $('#cashTopupAmount').focus();
   }
 }
 
 async function logout() {
+  if (transactionInFlight()) { showToast('Tunggu proses yang berjalan selesai sebelum keluar.'); return; }
+  if (hasUnsavedDraft() && !window.confirm('Masih ada draf atau nota yang belum dikirim. Tetap keluar?')) return;
   const button = $('#logoutButton');
   const requestEpoch = authEpoch;
   closeDialogs();
@@ -1327,6 +1612,37 @@ async function logout() {
 }
 
 function bindEvents() {
+  if (typeof FinancialControls !== 'undefined') FinancialControls.configure({
+    getUser: () => state.user, api, notify: showToast, newKey: newSubmissionKey,
+    onRefresh: async () => { await refreshOverview(); renderApp(); },
+    navigate: page => { currentPage = page; renderApp(); },
+    onChange: region => {
+      if (state.user?.role !== 'manager') return;
+      const finance = $('#financialControlsFinance'), overview = $('#financialControlsOverview');
+      if (finance && currentPage === 'finance' && region !== 'alerts') {
+        const active = document.activeElement;
+        const focus = finance.contains(active) ? { form: active.closest('form')?.id, name: active.name, start: active.selectionStart, end: active.selectionEnd } : null;
+        finance.innerHTML = FinancialControls.renderFinance();
+        const field = focus?.form && focus.name ? document.getElementById(focus.form)?.elements.namedItem(focus.name) : null;
+        if (field && !field.disabled) { field.focus({ preventScroll: true }); if (typeof focus.start === 'number' && ['text', 'search', 'textarea'].includes(field.type)) field.setSelectionRange(focus.start, focus.end); }
+      }
+      if (overview && currentPage === 'overview') overview.innerHTML = FinancialControls.renderOverview();
+    }
+  });
+  if (typeof ReportEvidence !== 'undefined') ReportEvidence.configure({ getUser: () => state.user, api, notify: showToast, newKey: newSubmissionKey });
+
+  if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.configure({
+    getUser: () => state.user, api,
+    renderCard: item => submissionCard(item, { includeOwner: true }),
+    onError: showToast,
+    onChange: () => {
+      if (state.user?.role !== 'manager' || currentPage !== 'finance') return;
+      const region = $('#managerReportsRegion');
+      if (region) region.innerHTML = ManagerReportFilters.render();
+      const fallback = $('#managerPdfFallbackLink');
+      if (fallback) fallback.href = ManagerReportFilters.pdfUrl();
+    }
+  });
   document.addEventListener('click', async event => {
     const pageButton = event.target.closest('[data-page]');
     if (pageButton && state.user) {
@@ -1359,10 +1675,14 @@ function bindEvents() {
     else if (event.target.id === 'userPasswordForm') await performUserPasswordReset(event);
     else if (event.target.id === 'userProfileForm') await performUserProfileSave(event);
     else if (event.target.id === 'openingBalanceForm') await performOpeningBalance(event);
+    else if (event.target.id === 'cashTopupForm') await performCashTopup(event);
+    else if (event.target.id === 'cashMinimumForm') { event.preventDefault(); saveCashMinimum($('#cashMinimumInput')?.value); }
     else if (event.target.id === 'confirmForm') { event.preventDefault(); await performConfirmedAction(); }
   });
 
   document.addEventListener('input', event => {
+    if (event.target.closest?.('#reportForm')) persistReportDraft();
+    if (event.target.closest?.('#cashTopupForm')) persistCashTopupDraft();
     if (event.target.id === 'loginIdentifier' || event.target.id === 'loginPassword') {
       $('#loginError').hidden = true;
     }
@@ -1378,6 +1698,10 @@ function bindEvents() {
         search.focus();
         search.setSelectionRange(selectionStart, selectionEnd);
       }
+    }
+    if (event.target.closest?.('#cashTopupForm') && ['cashTopupAmount', 'cashTopupNote'].includes(event.target.id)) {
+      cashTopupIdempotencyKey = '';
+      cashTopupFingerprint = '';
     }
   });
 
@@ -1410,12 +1734,14 @@ function bindEvents() {
   window.addEventListener('focus', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
   window.addEventListener('pageshow', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
   window.addEventListener('online', () => { refreshProfile(); requestManagerOverviewRefresh(); });
+  window.addEventListener('online', checkForAppUpdate);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); }
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); checkForAppUpdate(); }
   });
   window.setInterval(() => {
-    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); }
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); checkForAppUpdate(); }
   }, managerSyncIntervalMs);
+  window.setInterval(checkForAppUpdate, updateCheckIntervalMs);
 
   $('#logoutButton').addEventListener('click', logout);
   $('#passkeyLoginButton').addEventListener('click', () => performPasskeyLogin());
@@ -1430,6 +1756,12 @@ function bindEvents() {
       showToast(result.outcome === 'accepted' ? 'Pangsuma App dipasang.' : 'Pemasangan belum dilakukan.');
     } else showToast('Gunakan menu browser lalu pilih Tambahkan ke layar utama.');
   });
+  $('#appUpdateReload').addEventListener('click', reloadToLatestBuild);
+  const offlineNotice = $('#offlineNotice');
+  const updateConnectivity = () => { if (offlineNotice) offlineNotice.hidden = navigator.onLine !== false; };
+  window.addEventListener('online', updateConnectivity);
+  window.addEventListener('offline', updateConnectivity);
+  updateConnectivity();
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
     installPrompt = event;
@@ -1445,6 +1777,10 @@ function bindEvents() {
   });
   $('#openingBalanceDialog').addEventListener('click', event => {
     if (event.target === event.currentTarget) event.currentTarget.close();
+  });
+  $('#cashTopupDialog').addEventListener('cancel', event => { if (cashTopupBusy) event.preventDefault(); });
+  $('#cashTopupDialog').addEventListener('click', event => {
+    if (event.target === event.currentTarget && !cashTopupBusy) event.currentTarget.close();
   });
 }
 
@@ -1466,6 +1802,49 @@ async function performOpeningBalance(event) {
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
+    if (button.isConnected) setButtonBusy(button, false);
+  }
+}
+
+async function performCashTopup(event) {
+  event.preventDefault();
+  if (state.user?.role !== 'manager' || cashTopupBusy) return;
+  const form = $('#cashTopupForm');
+  if (!form.reportValidity()) return;
+  const amountIdr = Number($('#cashTopupAmount').value);
+  const note = String($('#cashTopupNote').value || '').trim();
+  const fingerprint = JSON.stringify({ amountIdr, note });
+  if (cashTopupFingerprint !== fingerprint) {
+    cashTopupFingerprint = fingerprint;
+    cashTopupIdempotencyKey = newSubmissionKey();
+    persistCashTopupDraft();
+  }
+  const button = $('#cashTopupSubmit');
+  cashTopupBusy = true;
+  setButtonBusy(button, true, 'Mencatat penambahan…');
+  try {
+    const result = await api('/cash/topups', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': cashTopupIdempotencyKey },
+      body: { amountIdr, note, confirmed: true }
+    });
+    clearDraft('cash-topup', '');
+    cashTopupIdempotencyKey = '';
+    cashTopupFingerprint = '';
+    closeDialogs();
+    let refreshed = true;
+    try { await refreshOverview(); } catch (error) {
+      if (error?.code === 'session_changed' || !state.user) return;
+      refreshed = false;
+    }
+    renderApp();
+    showToast(!refreshed
+      ? 'Penambahan saldo sudah tercatat. Ringkasan belum diperbarui; jangan kirim ulang.'
+      : result.alreadyApplied ? 'Penambahan saldo ini sudah pernah dicatat.' : 'Saldo petty cash bertambah dan riwayat tersimpan.');
+  } catch (error) {
+    showToast(friendlyError(error));
+  } finally {
+    cashTopupBusy = false;
     if (button.isConnected) setButtonBusy(button, false);
   }
 }
@@ -1500,12 +1879,13 @@ async function initialize() {
       .then(registration => registration.update())
       .catch(() => {}));
   }
-  await refreshPasskeyControls();
   try {
+    await refreshPasskeyControls();
     const result = await api('/session');
     state.user = result.user;
     if (state.user.mustChangePassword) {
       state.cashBalanceIdr = 0;
+      state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
       state.submissions = [];
       state.users = [];
       state.cashLedger = [];
@@ -1516,9 +1896,10 @@ async function initialize() {
       currentPage = 'overview';
     }
     renderApp();
-    hidePreloader();
+    checkForAppUpdate();
   } catch (error) {
     showLogin(error.status === 401 ? '' : 'Layanan belum siap. Jangan gunakan data operasional sampai koneksi server tersedia.');
+  } finally {
     hidePreloader();
   }
 }

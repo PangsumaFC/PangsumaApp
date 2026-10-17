@@ -1,9 +1,17 @@
-const CACHE_NAME = 'pangsuma-app-shell-v17-gallery-download';
+const CACHE_NAME = 'pangsuma-app-shell-v20-financial-controls';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.18.2',
-  '/password-crypto.js?v=2026.10.18.2',
-  '/app.js?v=2026.10.18.2',
+  '/pangsuma-theme.css?v=2026.10.18.4',
+  '/password-crypto.js?v=2026.10.18.4',
+  '/app.js?v=2026.10.18.4',
+  '/report-filters.js?v=2026.10.18.4',
+  '/financial-controls.js?v=2026.10.18.4',
+  '/financial-controls.css?v=2026.10.18.4',
+  '/report-evidence.js?v=2026.10.18.4',
+  '/report-evidence.css?v=2026.10.18.4',
+  '/bounded-history.js?v=2026.10.18.4',
+  '/mobile-polish.css?v=2026.10.18.4',
+  '/mobile-viewport.js?v=2026.10.18.4',
   '/pangsuma-login-crest-384.png',
   '/manifest.webmanifest',
   '/favicon-32.png',
@@ -45,6 +53,7 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+  if (url.pathname === '/version.json') return;
   if (request.mode === 'navigate' || SHELL_ASSETS.has(url.pathname)) {
     event.respondWith(fetch(networkRequest(request)).then(response => cacheResponse(
       request.mode === 'navigate' ? '/' : request,
