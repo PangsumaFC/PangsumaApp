@@ -23,6 +23,8 @@ import {
 } from '../_lib/auth.js';
 import { INITIAL_ROSTER, MANAGER_EMAIL } from '../_lib/roster.js';
 import { handlePasskeyApi } from '../_lib/webauthn.js';
+import { validProfileImage } from '../_lib/profile-photo.js';
+import { ensureUserProfilesSchema } from '../_lib/migration-guard.js';
 
 const PASSWORD_PATH = '/account/password';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -57,6 +59,75 @@ function requirePassword(value, name = 'Password') {
 
 function resultChanges(result) {
   return Number(result?.meta?.changes || 0);
+}
+
+function profileFields(row) {
+  return {
+    nickname: row.nickname || '',
+    dashboardPosition: row.dashboardPosition ?? row.dashboard_position ?? row.position ?? '',
+    quote: row.quote || '',
+    hasPhoto: Boolean(row.hasPhoto ?? row.has_photo),
+    profileVersion: Number(row.profileVersion ?? row.profile_version ?? 0)
+  };
+}
+
+function mapListedUser(row) {
+  const profile = profileFields(row);
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    position: row.position,
+    role: row.role,
+    nickname: profile.nickname,
+    dashboardPosition: profile.dashboardPosition,
+    quote: profile.quote,
+    photoUrl: profile.hasPhoto
+      ? `/api/users/${encodeURIComponent(row.id)}/photo?v=${profile.profileVersion}`
+      : '',
+    profileVersion: profile.profileVersion,
+    active: Boolean(row.is_active),
+    passwordReady: Boolean(row.password_ready),
+    mustChangePassword: Boolean(row.must_change_password),
+    passkeyCount: Number(row.passkey_count || 0),
+    createdAt: row.created_at
+  };
+}
+
+async function parseProfileBody(body) {
+  const allowed = new Set(['nickname', 'dashboardPosition', 'quote', 'photoDataUrl', 'profileVersion']);
+  for (const key of Object.keys(body)) if (!allowed.has(key)) throw new ApiError(400, 'unknown_profile_field', 'Isi profil tidak dikenali.');
+  if (!Number.isSafeInteger(body.profileVersion) || body.profileVersion < 0) {
+    throw new ApiError(400, 'profile_version_required', 'Muat profil terbaru sebelum menyimpan.');
+  }
+  if (!Object.prototype.hasOwnProperty.call(body, 'nickname') || !Object.prototype.hasOwnProperty.call(body, 'dashboardPosition') || !Object.prototype.hasOwnProperty.call(body, 'quote')) {
+    throw new ApiError(400, 'profile_fields_required', 'Nickname, posisi dashboard, dan quote wajib dikirim.');
+  }
+  const nickname = typeof body.nickname === 'string' && !body.nickname.trim() ? '' : cleanText(body.nickname, 40);
+  const quote = typeof body.quote === 'string' && !body.quote.trim() ? '' : cleanText(body.quote, 300);
+  const emptyPosition = body.dashboardPosition === null || (typeof body.dashboardPosition === 'string' && !body.dashboardPosition.trim());
+  const dashboardPosition = emptyPosition ? null : cleanText(body.dashboardPosition, 80);
+  if (nickname === null) throw new ApiError(400, 'invalid_nickname', 'Nickname harus berupa teks maksimal 40 karakter.');
+  if (quote === null) throw new ApiError(400, 'invalid_quote', 'Quote harus berupa teks maksimal 300 karakter.');
+  if (!emptyPosition && dashboardPosition === null) throw new ApiError(400, 'invalid_dashboard_position', 'Posisi dashboard harus berupa teks maksimal 80 karakter.');
+  let photo = undefined, photoMime = undefined;
+  if (Object.prototype.hasOwnProperty.call(body, 'photoDataUrl')) {
+    if (body.photoDataUrl === null) { photo = null; photoMime = null; }
+    else {
+      if (typeof body.photoDataUrl !== 'string' || body.photoDataUrl.length > 200000) throw new ApiError(400, 'invalid_photo', 'Foto harus berupa data URL JPEG, PNG, atau WebP maksimal 128 KiB.');
+      const match = body.photoDataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!match) throw new ApiError(400, 'invalid_photo', 'Foto harus berupa data URL JPEG, PNG, atau WebP.');
+      let bytes;
+      try { bytes = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)); } catch { throw new ApiError(400, 'invalid_photo', 'Data foto tidak valid.'); }
+      let canonical = '';
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) canonical += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      if (btoa(canonical) !== match[2]) throw new ApiError(400, 'invalid_photo', 'Encoding foto tidak valid.');
+      if (bytes.length > 131072) throw new ApiError(413, 'photo_too_large', 'Foto maksimal 128 KiB.');
+      if (!await validProfileImage(bytes, match[1])) throw new ApiError(400, 'invalid_photo', 'Isi foto tidak valid atau dimensinya melebihi 2048 piksel.');
+      photo = bytes; photoMime = match[1];
+    }
+  }
+  return { nickname, dashboardPosition, quote, photo, photoMime };
 }
 
 function mapSubmission(row) {
@@ -214,9 +285,13 @@ async function login(context, db) {
     throw new ApiError(429, 'login_rate_limited', 'Terlalu banyak percobaan. Coba lagi beberapa menit.');
   }
   const user = email ? await db.prepare(`
-    SELECT id, name, email, position, role, password_hash, must_change_password
-    FROM users
-    WHERE email = ? COLLATE NOCASE AND is_active = 1
+    SELECT u.id, u.name, u.email, u.position, u.role, u.password_hash, u.must_change_password,
+           p.nickname, p.dashboard_position AS dashboardPosition, p.quote,
+           CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS hasPhoto,
+           COALESCE(p.version, 0) AS profileVersion
+    FROM users u
+    LEFT JOIN user_profiles p ON p.user_id = u.id
+    WHERE u.email = ? COLLATE NOCASE AND u.is_active = 1
     LIMIT 1
   `).bind(email).first() : null;
   const passwordValid = await verifyClientCredential(credential, user?.password_hash || null, user?.email || email, context.env);
@@ -419,17 +494,12 @@ function historyMetadata(page, total) {
 async function overview(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
-  const passkeyCountSql = context.env?.PASSKEY_AUTH_ENABLED === 'true'
-    ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
-    : '0';
-  const [cash, submissionPage] = await Promise.all([
-    db.prepare("SELECT balance_idr FROM cash_accounts WHERE id = 'operational' LIMIT 1").first(),
-    submissionsPage(db, user)
-  ]);
-  const cashBalanceIdr = Number(cash?.balance_idr || 0);
-  const submissions = submissionPage.items;
 
   if (user.role !== 'manager') {
+    // User hanya boleh melihat pengajuan miliknya sendiri. Jangan query atau
+    // kirim saldo, ledger, audit, atau metadata pengelolaan kas di jalur ini.
+    const submissionPage = await submissionsPage(db, user);
+    const submissions = submissionPage.items;
     const counts = await db.prepare(`
       SELECT COUNT(*) AS total_count,
              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
@@ -438,7 +508,6 @@ async function overview(context, db) {
     `).bind(user.id).first();
     return jsonResponse({
       user: safeUser(user),
-      cashBalanceIdr,
       submissions,
       history: { submissions: historyMetadata(submissionPage, counts?.total_count) },
       summary: {
@@ -449,6 +518,15 @@ async function overview(context, db) {
     });
   }
 
+  const passkeyCountSql = context.env?.PASSKEY_AUTH_ENABLED === 'true'
+    ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
+    : '0';
+  const [cash, submissionPage] = await Promise.all([
+    db.prepare("SELECT balance_idr FROM cash_accounts WHERE id = 'operational' LIMIT 1").first(),
+    submissionsPage(db, user)
+  ]);
+  const cashBalanceIdr = Number(cash?.balance_idr || 0);
+  const submissions = submissionPage.items;
   const [summaryRow, usersResult, ledgerPage, auditPage, ledgerCount, auditCount] = await Promise.all([
     db.prepare(`
       SELECT
@@ -462,10 +540,12 @@ async function overview(context, db) {
       FROM submissions
     `).bind(jakartaToday()).first(),
     db.prepare(`
-      SELECT id, name, email, position, role, is_active,
-             CASE WHEN password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
-             must_change_password, created_at, ${passkeyCountSql} AS passkey_count
-      FROM users
+      SELECT users.id, users.name, users.email, users.position, users.role, users.is_active,
+             CASE WHEN users.password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
+             users.must_change_password, users.created_at, ${passkeyCountSql} AS passkey_count,
+             p.nickname, p.dashboard_position, p.quote, p.photo_mime, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
+             COALESCE(p.version, 0) AS profile_version
+      FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
       LIMIT 100
     `).all(),
@@ -483,18 +563,7 @@ async function overview(context, db) {
       cashLedger: historyMetadata(ledgerPage, ledgerCount?.count),
       auditEvents: historyMetadata(auditPage, auditCount?.count)
     },
-    users: (usersResult.results || []).map(row => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      position: row.position,
-      role: row.role,
-      active: Boolean(row.is_active),
-      passwordReady: Boolean(row.password_ready),
-      mustChangePassword: Boolean(row.must_change_password),
-      passkeyCount: Number(row.passkey_count || 0),
-      createdAt: row.created_at
-    })),
+    users: (usersResult.results || []).map(mapListedUser),
     cashLedger: ledgerPage.items,
     auditEvents: auditPage.items,
     summary: {
@@ -741,6 +810,78 @@ async function setOpeningBalance(context, db) {
   return jsonResponse({ ok: true, cashBalanceIdr: amount }, 201);
 }
 
+async function profileUser(db, id) {
+  return db.prepare(`
+    SELECT u.id, u.name, u.email, u.position, u.role, u.must_change_password,
+           u.is_active, p.nickname, p.dashboard_position AS dashboardPosition,
+           p.quote, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS hasPhoto,
+           COALESCE(p.version, 0) AS profileVersion
+    FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id
+    WHERE u.id = ? LIMIT 1
+  `).bind(id).first();
+}
+
+async function profile(context, db, id) {
+  const { request } = context;
+  const actor = await requireUser(request, db);
+  if (id && !UUID_PATTERN.test(id)) throw new ApiError(404, 'user_not_found', 'Pengguna tidak ditemukan.');
+  const targetId = id || actor.id;
+  if (actor.role !== 'manager' && targetId !== actor.id) throw new ApiError(403, 'forbidden', 'Profil ini tidak dapat diubah.');
+  const target = await profileUser(db, targetId);
+  if (!target) throw new ApiError(404, 'user_not_found', 'Pengguna tidak ditemukan.');
+  if (request.method === 'GET') return jsonResponse({ user: safeUser({ ...target, mustChangePassword: Boolean(target.must_change_password) }) });
+  ensureMethod(request, 'PUT');
+  requireManager(actor);
+  ensureSameOrigin(request);
+  const body = await readJson(request, 200_000);
+  const fields = await parseProfileBody(body);
+  const timestamp = nowIso();
+  const photoChanged = fields.photo !== undefined;
+  const values = [fields.nickname, fields.dashboardPosition, fields.quote];
+  let profileStatement;
+  if (body.profileVersion === 0) {
+    profileStatement = db.prepare(`INSERT INTO user_profiles
+      (user_id, nickname, dashboard_position, quote, photo, photo_mime, version)
+      VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(user_id) DO NOTHING`)
+      .bind(targetId, ...values, fields.photo ?? null, fields.photoMime ?? null);
+  } else {
+    if (photoChanged) values.push(fields.photo, fields.photoMime);
+    profileStatement = db.prepare(`UPDATE user_profiles
+      SET nickname = ?, dashboard_position = ?, quote = ?,
+      ${photoChanged ? 'photo = ?, photo_mime = ?,' : ''} version = version + 1
+      WHERE user_id = ? AND version = ?`)
+      .bind(...values, targetId, body.profileVersion);
+  }
+  // D1 batch is transactional. Only a successful compare-and-swap gets an audit event.
+  const results = await db.batch([
+    profileStatement,
+    db.prepare(`INSERT INTO audit_events (actor_id, action, entity_type, entity_id, details_json, created_at)
+      SELECT ?, 'user.profile_updated', 'user', ?, ?, ? WHERE changes() = 1`)
+      .bind(actor.id, targetId, JSON.stringify({ nickname: true, dashboardPosition: true, quote: true, photo: photoChanged }), timestamp)
+  ]);
+  if (!resultChanges(results[0])) {
+    throw new ApiError(409, 'profile_conflict', 'Profil telah diubah oleh Manager lain. Salin perubahan Anda bila perlu, lalu tutup dan buka kembali profil untuk memuat data terbaru.');
+  }
+  const updated = await profileUser(db, targetId);
+  return jsonResponse({ user: safeUser({ ...updated, mustChangePassword: Boolean(updated.must_change_password) }) });
+}
+
+async function profilePhoto(context, db, id) {
+  ensureMethod(context.request, 'GET');
+  const actor = await requireUser(context.request, db);
+  if (!UUID_PATTERN.test(id)) throw new ApiError(404, 'user_not_found', 'Pengguna tidak ditemukan.');
+  if (actor.role !== 'manager' && actor.id !== id) throw new ApiError(403, 'forbidden', 'Foto profil ini tidak dapat diakses.');
+  const row = await db.prepare('SELECT photo, photo_mime FROM user_profiles WHERE user_id = ? LIMIT 1').bind(id).first();
+  if (!row?.photo || !row.photo_mime) throw new ApiError(404, 'photo_not_found', 'Foto profil belum tersedia.');
+  const bytes = Array.isArray(row.photo) ? new Uint8Array(row.photo) : row.photo;
+  return new Response(bytes, { status: 200, headers: {
+    'Content-Type': row.photo_mime,
+    'Cache-Control': 'private, no-store, max-age=0',
+    'Pragma': 'no-cache',
+    'X-Content-Type-Options': 'nosniff'
+  }});
+}
+
 async function users(context, db) {
   const { request } = context;
   const actor = await requireUser(request, db);
@@ -750,25 +891,16 @@ async function users(context, db) {
       ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
       : '0';
     const result = await db.prepare(`
-      SELECT id, name, email, position, role, is_active,
-             CASE WHEN password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
-             must_change_password, created_at, ${passkeyCountSql} AS passkey_count
-      FROM users
+      SELECT users.id, users.name, users.email, users.position, users.role, users.is_active,
+             CASE WHEN users.password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
+             users.must_change_password, users.created_at, ${passkeyCountSql} AS passkey_count,
+             p.nickname, p.dashboard_position, p.quote, p.photo_mime, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
+             COALESCE(p.version, 0) AS profile_version
+      FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
       LIMIT 100
     `).all();
-    return jsonResponse({ users: (result.results || []).map(row => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      position: row.position,
-      role: row.role,
-      active: Boolean(row.is_active),
-      passwordReady: Boolean(row.password_ready),
-      mustChangePassword: Boolean(row.must_change_password),
-      passkeyCount: Number(row.passkey_count || 0),
-      createdAt: row.created_at
-    })) });
+    return jsonResponse({ users: (result.results || []).map(mapListedUser) });
   }
   ensureMethod(request, 'POST');
   ensureSameOrigin(request);
@@ -805,6 +937,11 @@ async function users(context, db) {
     name,
     email,
     position: position || '',
+    nickname: '',
+    dashboardPosition: position || '',
+    quote: '',
+    photoUrl: '',
+    profileVersion: 0,
     role: 'user',
     active: true,
     passwordReady: false,
@@ -1026,6 +1163,9 @@ async function exportCsv(context, db) {
 
 async function dispatch(context, db, path) {
   const { request } = context;
+  // Fail closed before profile-dependent auth/account queries, including login.
+  // Logout remains available even when a release is blocked on migration 0003.
+  if (path !== '/logout') await ensureUserProfilesSchema(db);
   if (path.startsWith('/passkeys/')) return handlePasskeyApi(context, db, path);
   if (path === '/health') {
     ensureMethod(request, 'GET');
@@ -1048,7 +1188,12 @@ async function dispatch(context, db, path) {
     if (request.method === 'POST') return createSubmission(context, db);
     throw new ApiError(405, 'method_not_allowed', 'Metode request tidak didukung.');
   }
+  if (path === '/profile') return profile(context, db, null);
   if (path === '/users') return users(context, db);
+  const profilePhotoMatch = path.match(/^\/users\/([^/]+)\/photo$/);
+  if (profilePhotoMatch) return profilePhoto(context, db, decodeURIComponent(profilePhotoMatch[1]));
+  const profileMatch = path.match(/^\/users\/([^/]+)\/profile$/);
+  if (profileMatch) return profile(context, db, decodeURIComponent(profileMatch[1]));
   if (path === PASSWORD_PATH) return changeOwnPassword(context, db);
   const submissionMatch = path.match(/^\/submissions\/([^/]+)\/(approve|reject|send)$/);
   if (submissionMatch) {

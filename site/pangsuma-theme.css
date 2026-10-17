@@ -613,6 +613,30 @@ tr:last-child td { border-bottom: 0; }
 .passkey-status { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .passkey-invite-code { width: 100%; min-height: 88px; padding: 11px 12px; border: 1px solid #cbd4dc; border-radius: 12px; color: var(--ink); background: #f8fafb; font: 13px/1.5 var(--body-font); overflow-wrap: anywhere; word-break: break-all; }
 .user-page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+/* Profil mengikuti navy klub dan tipografi aplikasi, tanpa ilustrasi atau warna baru.
+   ENERGY 1 / RHYTHM 2 / MOTION 1: identitas personal mendahului pekerjaan operasional.
+   Foto bundar konsisten dengan avatar; quotes dipisah lewat jarak, bukan kartu tambahan.
+   Dialog memakai elevasi yang ada agar pengaturan tetap terpisah dari data keuangan. */
+.welcome-avatar, .user-initial { position: relative; flex: none; overflow: hidden; }
+.welcome-avatar img, .user-initial img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.welcome-copy { min-width: 0; overflow-wrap: anywhere; }
+.welcome-quote { max-width: 60ch; margin: 10px 0 0; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.profile-settings-link { grid-column: 1 / -1; justify-self: start; margin: -4px 0 -4px; }
+.profile-user-cell { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.profile-user-cell .user-initial { margin-right: 0; }
+.profile-nickname { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.profile-dialog .dialog-panel { min-width: 0; }
+.profile-dialog .field { min-width: 0; }
+.profile-dialog .field input, .profile-dialog .field textarea { width: 100%; min-width: 0; font-size: 16px; }
+.profile-dialog .dialog-description, .profile-dialog .field-help { overflow-wrap: anywhere; }
+.profile-dialog .field-help { line-height: 1.5; }
+.profile-dialog .field-error { margin-top: 16px; }
+.profile-preview { display: flex; justify-content: center; margin: 16px 0 12px; }
+.profile-preview .welcome-avatar { width: 88px; height: 88px; }
+.profile-photo-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.profile-photo-actions button, .profile-settings-link { min-width: 44px; min-height: 44px; }
+.profile-photo-actions .text-button:disabled { color: var(--muted); }
+#profilePhotoStatus { min-height: 21px; }
 @media (max-width: 560px) {
   .history-controls { align-items: stretch; flex-direction: column; }
   .history-controls .secondary-button { width: 100%; }

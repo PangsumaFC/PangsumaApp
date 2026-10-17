@@ -172,6 +172,26 @@
     </form>
   </dialog>
 
+  <dialog class="app-dialog profile-dialog" id="userProfileDialog" aria-labelledby="userProfileTitle" aria-describedby="userProfileDescription">
+    <form class="dialog-panel" id="userProfileForm">
+      <div class="dialog-heading"><h2 id="userProfileTitle">Atur profil dashboard</h2><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup pengaturan profil">×</button></div>
+      <p class="dialog-description" id="userProfileDescription"></p>
+      <div class="profile-preview" id="profilePreview" aria-label="Pratinjau foto"></div>
+      <div class="profile-photo-actions"><button class="secondary-button" type="button" data-action="choose-profile-photo">Upload dari galeri</button><button class="text-button" type="button" data-action="remove-profile-photo">Hapus foto</button></div>
+      <input class="sr-only" id="profilePhoto" name="photo" type="file" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-label="Pilih foto profil dari galeri" aria-describedby="profilePhotoHelp">
+      <p class="field-help" id="profilePhotoHelp">JPG, PNG, atau WebP, maksimal 10 MB. Foto dipotong persegi dan diperkecil sebelum disimpan.</p>
+      <p class="field-help" id="profilePhotoStatus" role="status" aria-live="polite"></p>
+      <div class="form-grid">
+        <div class="field field-full"><label for="profileNickname">Nama panggilan</label><input id="profileNickname" name="nickname" maxlength="40" autocomplete="off" aria-describedby="profileNicknameHelp"><span class="field-help" id="profileNicknameHelp">Kosongkan untuk memakai nama depan dari nama akun.</span></div>
+        <div class="field field-full"><label for="profilePosition">Posisi / jabatan dashboard</label><input id="profilePosition" name="dashboardPosition" maxlength="80" autocomplete="off"><span class="field-help">Hanya mengubah tampilan dashboard, bukan peran akses atau data laporan.</span></div>
+        <div class="field field-full"><label for="profileQuote">Quotes untuk pengguna ini</label><textarea id="profileQuote" name="quote" maxlength="300" rows="3" aria-describedby="profileQuoteHelp"></textarea><span class="field-help" id="profileQuoteHelp">Maksimal 300 karakter. Kosongkan jika tidak ingin menampilkan quotes.</span></div>
+      </div>
+      <p class="field-error" id="profileError" role="alert" hidden></p>
+      <p class="field-help">Perubahan muncul setelah disimpan. Perangkat pengguna memperbarui profil saat aplikasi dibuka kembali atau dalam sekitar 30 detik saat aktif dan online.</p>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="profileSubmit" type="submit">Simpan profil</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+    </form>
+  </dialog>
+
   <dialog class="app-dialog" id="userPasswordDialog" aria-labelledby="userPasswordTitle">
     <form class="dialog-panel" id="userPasswordForm">
       <div class="dialog-heading"><div><p class="choice-kicker">Akses pengguna</p><h2 id="userPasswordTitle">Atur password sementara</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>

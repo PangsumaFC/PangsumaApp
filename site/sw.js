@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pangsuma-app-shell-v12-live-ui';
+const CACHE_NAME = 'pangsuma-app-shell-v13-user-profiles';
 const APP_SHELL = [
   '/',
   '/pangsuma-theme.css',

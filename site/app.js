@@ -57,7 +57,6 @@ const navByRole = {
   user: [
     { id: 'overview', label: 'Beranda', icon: 'overview' },
     { id: 'my-reports', label: 'Laporan saya', icon: 'report' },
-    { id: 'cash-info', label: 'Petty cash', icon: 'wallet' },
     { id: 'change-password', label: 'Ganti password', icon: 'users' }
   ]
 };
@@ -89,6 +88,104 @@ let toastTimer = 0;
 let installPrompt = null;
 let confirmAction = null;
 let resetTargetId = '';
+let profileDraft = null;
+let profileSelection = 0;
+let profileSyncBusy = false;
+let managerSyncBusy = false;
+let managerSyncLastAt = 0;
+let managerSyncRerenderPending = false;
+const managerSyncIntervalMs = 20_000;
+const managerSyncMinIntervalMs = 15_000;
+
+function profileAvatar(user, className = 'welcome-avatar') {
+  const name = user.nickname || user.name || 'Pengguna';
+  const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase();
+  return `<span class="${className}" aria-hidden="true"><span>${escapeHTML(initials)}</span>${user.photoUrl ? `<img src="${escapeHTML(user.photoUrl)}" alt="" width="80" height="80">` : ''}</span>`;
+}
+
+function welcomeClock(now = new Date()) {
+  const hour = now.getHours();
+  return {
+    greeting: hour < 5 ? 'Selamat malam' : hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam',
+    date: new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now)
+  };
+}
+
+function updateWelcomePanel() {
+  const panel = $('.welcome-card');
+  if (panel && state.user) panel.outerHTML = welcomePanel();
+}
+
+async function refreshProfile() {
+  if (!state.user || state.user.mustChangePassword || document.hidden || profileSyncBusy) return;
+  const requestedId = state.user.id;
+  profileSyncBusy = true;
+  try {
+    const result = await api('/profile');
+    if (!state.user || state.user.id !== requestedId) return;
+    if (Number(result.user.profileVersion || 0) < Number(state.user.profileVersion || 0)) return;
+    state.user = result.user;
+    $('#accountName').textContent = state.user.nickname || state.user.name;
+    updateWelcomePanel();
+  } catch {
+    // Keep the last confirmed profile while offline; API still handles expired sessions.
+  } finally {
+    profileSyncBusy = false;
+  }
+}
+
+function managerOverviewSnapshot() {
+  return JSON.stringify({
+    cashBalanceIdr: state.cashBalanceIdr,
+    submissions: state.submissions,
+    summary: state.summary,
+    cashLedger: state.cashLedger,
+    auditEvents: state.auditEvents,
+    history: state.history
+  });
+}
+
+function managerSyncRenderSafe() {
+  const active = document.activeElement;
+  return !$$('dialog[open]').length
+    && !(active && active.matches?.('input, textarea, select, [contenteditable="true"]'));
+}
+
+async function refreshManagerOverview({ force = false } = {}) {
+  if (managerSyncBusy || document.hidden || navigator.onLine === false) return false;
+  if (!state.user || state.user.role !== 'manager' || state.user.mustChangePassword) return false;
+  const now = Date.now();
+  if (!force && now - managerSyncLastAt < managerSyncMinIntervalMs) return false;
+  managerSyncLastAt = now;
+  managerSyncBusy = true;
+  const before = managerOverviewSnapshot();
+  try {
+    await refreshOverview();
+    const changed = before !== managerOverviewSnapshot();
+    if (!changed && !managerSyncRerenderPending) return false;
+    if (!['overview', 'approvals', 'finance'].includes(currentPage)) {
+      managerSyncRerenderPending = changed || managerSyncRerenderPending;
+      return changed;
+    }
+    if (!managerSyncRenderSafe()) {
+      managerSyncRerenderPending = true;
+      return changed;
+    }
+    const shouldRender = changed || managerSyncRerenderPending;
+    managerSyncRerenderPending = false;
+    if (shouldRender) renderApp();
+    return changed;
+  } catch (error) {
+    if (error?.code !== 'session_changed') return false;
+    return false;
+  } finally {
+    managerSyncBusy = false;
+  }
+}
+
+function requestManagerOverviewRefresh() {
+  return refreshManagerOverview();
+}
 
 class ApiFailure extends Error {
   constructor(status, code, message) {
@@ -382,14 +479,12 @@ function pageHeading(title, description = '', action = '') {
 }
 
 function welcomePanel() {
-  const name = state.user?.name || 'Pengguna';
-  const firstName = name.trim().split(/\s+/)[0];
-  const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase();
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-  const greeting = hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam';
-  return `<section class="welcome-card"><span class="welcome-avatar" aria-hidden="true">${escapeHTML(initials)}</span><div class="welcome-copy"><p class="welcome-date">${dateLong(todayISO())}</p><h1>${greeting}, ${escapeHTML(firstName)}</h1><p class="welcome-role">${state.user.role === 'manager' ? 'Manager Pangsuma' : escapeHTML(state.user.position || 'User Pangsuma')}</p></div></section>`;
+  const user = state.user;
+  const name = user.nickname || (user.name || 'Pengguna').trim().split(/\s+/)[0];
+  const clock = welcomeClock();
+  const position = user.dashboardPosition ?? user.position;
+  return `<section class="welcome-card">${profileAvatar(user)}<div class="welcome-copy"><p class="welcome-date">${escapeHTML(clock.date)}</p><h1>${clock.greeting}, ${escapeHTML(name)}</h1><p class="welcome-role">${escapeHTML(position || (user.role === 'manager' ? 'Manager Pangsuma' : 'User Pangsuma'))}</p>${user.quote ? `<p class="welcome-quote">${escapeHTML(user.quote)}</p>` : ''}</div>${user.role === 'manager' ? '<button class="text-button profile-settings-link" type="button" data-page="users">Pengaturan profil tim</button>' : ''}</section>`;
 }
-
 function metricCard(icon, label, value, page = '', detail = '') {
   const content = `<span class="metric-icon" aria-hidden="true">${icons[icon]}</span><span class="metric-copy"><span class="metric-label">${escapeHTML(label)}</span><strong class="metric-value">${escapeHTML(value)}</strong>${detail ? `<span class="metric-detail">${escapeHTML(detail)}</span>` : ''}</span>`;
   const accessibleLabel = `${label}: ${value}`;
@@ -465,9 +560,8 @@ function managerOverview() {
 function userOverview() {
   const own = state.submissions;
   return `${welcomePanel()}
-    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(state.summary.total ?? own.length), 'my-reports')}${metricCard('review', 'Menunggu', String(state.summary.pending ?? own.filter(item => item.status === 'pending').length), 'my-reports')}${metricCard('wallet', 'Petty cash', compactMoney(state.cashBalanceIdr), 'cash-info', money(state.cashBalanceIdr))}</div>
+    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(state.summary.total ?? own.length), 'my-reports')}${metricCard('review', 'Menunggu', String(state.summary.pending ?? own.filter(item => item.status === 'pending').length), 'my-reports')}</div>
     <section class="guide-card" aria-labelledby="guideTitle"><div class="guide-heading"><div><h2 id="guideTitle">Pengajuan operasional</h2><p>Ajukan kebutuhan dan pantau keputusan Manager.</p></div><button class="primary-button home-report-cta" type="button" data-action="open-report-choice">Buat pengajuan</button></div><ol class="guide-steps"><li><span>1</span><strong>Pilih Petty cash atau Finance</strong></li><li><span>2</span><strong>Isi keperluan dan nominal</strong></li><li><span>3</span><strong>Kirim untuk ditinjau Manager</strong></li></ol></section>
-    ${state.cashBalanceIdr === 0 ? `<div class="form-note cash-note"><strong>Saldo petty cash saat ini Rp0.</strong> Pengajuan Petty cash tidak dapat disetujui sampai saldo awal dikonfirmasi pemilik.</div>` : ''}
     <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada laporan', 'Gunakan tombol “Buat pengajuan” saat Anda siap mengirim kebutuhan.')}`;
 }
 
@@ -507,6 +601,7 @@ function auditRow(event) {
     'submission.status_changed': `Status pengajuan: ${details.from || '?'} → ${details.to || '?'}`,
     'user.created': 'Akun User ditambahkan',
     'user.password_changed': 'Password pengguna diperbarui',
+    'user.profile_updated': 'Profil dashboard diperbarui',
     'user.deactivated': 'Akses pengguna dinonaktifkan'
   };
   const label = actionLabels[event.action] || event.action;
@@ -526,16 +621,17 @@ function usersPage() {
     const credential = !user.active ? 'Akses nonaktif' : passkeyCount ? 'Passkey siap' : !user.passwordReady ? 'Password belum diatur' : user.mustChangePassword ? 'Wajib ganti password' : 'Siap masuk';
     const statusClass = !user.active ? 'status-neutral' : passkeyCount || (user.passwordReady && !user.mustChangePassword) ? 'status-ok' : 'status-wait';
     const passkeyLabel = passkeyCount ? `Passkey terdaftar (${passkeyCount})` : 'Belum ada passkey';
-    const actions = user.role === 'manager' || !user.active
+    const accessActions = user.role === 'manager' || !user.active
       ? '<span class="field-help">Tidak ada tindakan</span>'
       : `<div class="user-actions"><button class="secondary-button" type="button" data-action="reset-user-password" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Atur password</button><button class="danger-button" type="button" data-action="deactivate-user" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Nonaktifkan akses</button></div>`;
-    return `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML((user.name || 'U').slice(0, 1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Jabatan">${escapeHTML(user.position || 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></td><td data-label="Aksi">${actions}</td></tr>`;
+    const actions = `<div class="user-actions"><button class="secondary-button" type="button" data-action="edit-user-profile" data-id="${escapeHTML(user.id)}">Atur profil</button>${accessActions}</div>`;
+    return `<tr><td data-label="Pengguna"><div class="profile-user-cell">${profileAvatar(user, 'user-initial')}<div>${escapeHTML(user.name)}${user.nickname ? `<small class="profile-nickname">${escapeHTML(user.nickname)}</small>` : ''}</div></div></td><td data-label="Posisi dashboard">${escapeHTML(user.dashboardPosition ?? user.position ?? 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></td><td data-label="Aksi">${actions}</td></tr>`;
   }).join('');
   const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
-  return `${pageHeading('Pengguna', 'Akun hanya dapat dibuat atau dinonaktifkan oleh Manager.', actions)}
+  return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.users.length} akun</span></div>
-    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Jabatan</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
 
 function myReportsPage() {
@@ -568,6 +664,7 @@ function reportForm() {
 }
 
 function cashInfo() {
+  if (state.user?.role !== 'manager') return userOverview();
   const approved = state.submissions.filter(item => item.type === 'petty_cash' && item.status === 'approved');
   return `${pageHeading('Petty cash', 'Saldo berasal dari ledger server. Persetujuan pengeluaran mengurangi saldo satu kali.')}
     <div class="hero-panel balance-panel"><div><span>Saldo tersedia</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Setiap pengeluaran disetujui tersimpan pada ledger.'}</p></div></div>
@@ -593,12 +690,12 @@ function renderApp() {
   const role = state.user.role;
   const allowed = role === 'manager'
     ? ['overview', 'approvals', 'finance', 'users', 'change-password']
-    : ['overview', 'my-reports', 'cash-info', 'change-password', 'new-report'];
+    : ['overview', 'my-reports', 'change-password', 'new-report'];
   if (!allowed.includes(currentPage)) currentPage = 'overview';
   const pageChanged = currentPage !== lastRenderedPage;
   document.body.classList.remove('logged-out');
   $('#loginGate').hidden = true;
-  $('#accountName').textContent = state.user.name;
+  $('#accountName').textContent = state.user.nickname || state.user.name;
   $('#accountRole').textContent = role === 'manager' ? 'Manager' : `User${state.user.position ? ` · ${state.user.position}` : ''}`;
   renderNav();
   let body;
@@ -622,6 +719,149 @@ function openDialog(id) {
 
 function closeDialogs() {
   $$('dialog[open]').forEach(dialog => dialog.close());
+}
+
+function renderProfilePreview() {
+  if (!profileDraft) return;
+  const target = profileDraft.target;
+  if (!target) return;
+  const photoUrl = profileDraft.photoDataUrl === undefined ? target.photoUrl : profileDraft.photoDataUrl;
+  $('#profilePreview').innerHTML = profileAvatar({ ...target, photoUrl });
+  $('[data-action="remove-profile-photo"]').disabled = !photoUrl || profileDraft.processing;
+}
+
+async function openUserProfile(id) {
+  if (state.user?.role !== 'manager' || state.user.mustChangePassword) return;
+  const target = state.users.find(user => user.id === id);
+  if (!target) return;
+  profileSelection += 1;
+  const draft = { id, processing: false, saving: false, loading: true };
+  profileDraft = draft;
+  const epoch = authEpoch;
+  $('#userProfileForm').reset();
+  $('#userProfileDescription').textContent = `Profil untuk ${target.name}. Nama akun dan ID masuk tetap sama.`;
+  $('#profileError').hidden = true;
+  $('#profilePreview').replaceChildren();
+  $('#profilePhotoStatus').textContent = 'Memuat profil terbaru…';
+  const controls = [...$('#userProfileForm').querySelectorAll('input, textarea, button:not([data-action="close-dialog"])')];
+  controls.forEach(control => { control.disabled = true; });
+  openDialog('userProfileDialog');
+  try {
+    const result = await api(`/users/${encodeURIComponent(id)}/profile`);
+    if (profileDraft !== draft || epoch !== authEpoch) return;
+    draft.target = result.user;
+    draft.profileVersion = result.user.profileVersion;
+    $('#profileNickname').value = result.user.nickname || '';
+    $('#profilePosition').value = result.user.dashboardPosition ?? result.user.position ?? '';
+    $('#profileQuote').value = result.user.quote || '';
+    controls.forEach(control => { control.disabled = false; });
+    draft.loading = false;
+    $('#profilePhotoStatus').textContent = '';
+    renderProfilePreview();
+    $('#profileNickname').focus();
+  } catch (error) {
+    if (profileDraft !== draft || epoch !== authEpoch) return;
+    $('#profilePhotoStatus').textContent = '';
+    $('#profileError').textContent = `${friendlyError(error)} Tutup dan buka kembali untuk mencoba memuat profil.`;
+    $('#profileError').hidden = false;
+  }
+}
+
+async function prepareProfilePhoto(file) {
+  if (!file || !profileDraft || profileDraft.loading || profileDraft.saving || profileDraft.conflicted) return;
+  const draft = profileDraft;
+  const selection = ++profileSelection;
+  const errorBox = $('#profileError');
+  errorBox.hidden = true;
+  draft.processing = true;
+  $('#profileSubmit').disabled = true;
+  $('[data-action="remove-profile-photo"]').disabled = true;
+  $('#profilePhotoStatus').textContent = 'Menyiapkan foto…';
+  let image;
+  try {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Pilih foto JPG, PNG, atau WebP. Format lain belum didukung.');
+    if (file.size > 10 * 1024 * 1024) throw new Error('Foto melebihi 10 MB. Pilih foto yang lebih kecil.');
+    if (typeof createImageBitmap !== 'function') throw new Error('Browser tidak dapat memvalidasi foto. Perbarui browser atau coba browser lain.');
+    try {
+      // Image.onload can accept truncated WebP headers without decoding pixels.
+      image = await createImageBitmap(file);
+    } catch {
+      throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+    }
+    if (profileDraft !== draft || selection !== profileSelection) return;
+    if (!image.width || !image.height || image.width * image.height > 40_000_000) throw new Error('Resolusi foto terlalu besar. Pilih foto dengan resolusi lebih kecil.');
+    const side = Math.min(image.width, image.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = Math.min(side, 512);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Browser tidak dapat menyiapkan foto. Coba browser lain.');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, 0, 0, canvas.width, canvas.height);
+    let photo;
+    for (const quality of [0.88, 0.75, 0.6, 0.45]) {
+      photo = canvas.toDataURL('image/jpeg', quality);
+      if (Math.ceil((photo.length - photo.indexOf(',') - 1) * 3 / 4) <= 128 * 1024) break;
+    }
+    if (!photo?.startsWith('data:image/jpeg;base64,') || Math.ceil((photo.length - photo.indexOf(',') - 1) * 3 / 4) > 128 * 1024) throw new Error('Foto belum dapat diperkecil. Pilih foto lain.');
+    if (profileDraft !== draft || selection !== profileSelection) return;
+    draft.photoDataUrl = photo;
+    $('#profilePhotoStatus').textContent = 'Foto siap. Tekan Simpan profil untuk menerapkan.';
+  } catch (error) {
+    if (profileDraft !== draft || selection !== profileSelection) return;
+    errorBox.textContent = error.message;
+    errorBox.hidden = false;
+    $('#profilePhotoStatus').textContent = '';
+  } finally {
+    image?.close();
+    if (profileDraft === draft && selection === profileSelection) {
+      draft.processing = false;
+      $('#profileSubmit').disabled = false;
+      $('#profilePhoto').value = '';
+      renderProfilePreview();
+    }
+  }
+}
+
+async function performUserProfileSave(event) {
+  event.preventDefault();
+  const draft = profileDraft;
+  const form = $('#userProfileForm');
+  if (!draft || draft.loading || draft.conflicted || draft.processing || draft.saving || !form.reportValidity()) return;
+  const payload = {
+    profileVersion: draft.profileVersion,
+    nickname: $('#profileNickname').value.trim(),
+    dashboardPosition: $('#profilePosition').value.trim(),
+    quote: $('#profileQuote').value.trim()
+  };
+  if (draft.photoDataUrl !== undefined) payload.photoDataUrl = draft.photoDataUrl;
+  const errorBox = $('#profileError');
+  errorBox.hidden = true;
+  draft.saving = true;
+  const controls = [...form.querySelectorAll('button, input, textarea')];
+  const disabled = controls.map(control => control.disabled);
+  controls.forEach(control => { control.disabled = true; });
+  setButtonBusy($('#profileSubmit'), true, 'Menyimpan profil…');
+  const epoch = authEpoch;
+  try {
+    await api(`/users/${encodeURIComponent(draft.id)}/profile`, { method: 'PUT', body: payload });
+    // Reload the confirmed profile and roster, never modify financial state locally.
+    await refreshOverview();
+    $('#userProfileDialog').close();
+    renderApp();
+    showToast('Profil tersimpan. Perangkat pengguna akan memperbarui profil saat online.');
+    $(`[data-action="edit-user-profile"][data-id="${draft.id}"]`)?.focus({ preventScroll: true });
+  } catch (error) {
+    if (epoch !== authEpoch) return;
+    if (error.code === 'profile_conflict') draft.conflicted = true;
+    errorBox.textContent = friendlyError(error);
+    errorBox.hidden = false;
+  } finally {
+    controls.forEach((control, index) => { control.disabled = disabled[index]; });
+    setButtonBusy($('#profileSubmit'), false);
+    if (draft.conflicted) $('#profileSubmit').disabled = true;
+    draft.saving = false;
+  }
 }
 
 function setConfirm(kind, title, description, label, danger = false, payload = {}) {
@@ -908,7 +1148,17 @@ async function handleAction(button) {
     currentPage = 'new-report';
     renderApp();
   } else if (action === 'close-dialog') {
+    if (button.closest('#userProfileDialog') && profileDraft?.saving) return;
     button.closest('dialog')?.close();
+  } else if (action === 'edit-user-profile') {
+    openUserProfile(id);
+  } else if (action === 'choose-profile-photo') {
+    $('#profilePhoto').click();
+  } else if (action === 'remove-profile-photo') {
+    if (!profileDraft || profileDraft.saving || profileDraft.processing) return;
+    profileDraft.photoDataUrl = null;
+    $('#profilePhotoStatus').textContent = 'Foto akan dihapus setelah Simpan profil ditekan.';
+    renderProfilePreview();
   } else if (action === 'approve') {
     const item = state.submissions.find(entry => entry.id === id);
     if (!item || item.createdBy === state.user.id) return;
@@ -1013,6 +1263,7 @@ function bindEvents() {
     else if (event.target.id === 'passwordForm') await performPasswordChange(event);
     else if (event.target.id === 'rejectForm') await performReject(event);
     else if (event.target.id === 'userPasswordForm') await performUserPasswordReset(event);
+    else if (event.target.id === 'userProfileForm') await performUserProfileSave(event);
     else if (event.target.id === 'openingBalanceForm') await performOpeningBalance(event);
     else if (event.target.id === 'confirmForm') { event.preventDefault(); await performConfirmedAction(); }
   });
@@ -1043,8 +1294,34 @@ function bindEvents() {
       renderApp();
     }
     const dialog = event.target;
+    if (dialog.id === 'userProfileDialog' && profileDraft?.saving) return;
     if (dialog instanceof HTMLDialogElement && event.target === dialog) dialog.close();
   });
+
+  document.addEventListener('error', event => {
+    if (event.target.matches?.('.welcome-avatar img, .user-initial img')) event.target.remove();
+  }, true);
+  $('#profilePhoto').addEventListener('change', event => prepareProfilePhoto(event.target.files?.[0]));
+  $('#userProfileDialog').addEventListener('cancel', event => {
+    if (profileDraft?.saving) event.preventDefault();
+  });
+  $('#userProfileDialog').addEventListener('close', () => {
+    profileSelection += 1;
+    profileDraft = null;
+    $('#userProfileForm').reset();
+    $('#profilePreview').replaceChildren();
+    $('#profileError').hidden = true;
+    $('#profileSubmit').disabled = false;
+  });
+  window.addEventListener('focus', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
+  window.addEventListener('pageshow', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
+  window.addEventListener('online', () => { refreshProfile(); requestManagerOverviewRefresh(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); }
+  });
+  window.setInterval(() => {
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); }
+  }, managerSyncIntervalMs);
 
   $('#logoutButton').addEventListener('click', logout);
   $('#passkeyLoginButton').addEventListener('click', () => performPasskeyLogin());

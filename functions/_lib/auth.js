@@ -1,4 +1,5 @@
 import { ApiError } from './http.js';
+import { ensureUserProfilesSchema } from './migration-guard.js';
 
 const SESSION_COOKIE = '__Host-pangsuma_session';
 const SESSION_SECONDS = 8 * 60 * 60;
@@ -179,12 +180,17 @@ export async function createSession(db, userId, options = {}) {
 export async function getSessionUser(request, db, now = new Date()) {
   const token = readSessionToken(request);
   if (!token || token.length > 128) return null;
+  await ensureUserProfilesSchema(db);
   const sessionHash = await sha256Hex(token);
   const row = await db.prepare(`
     SELECT u.id, u.name, u.email, u.position, u.role, u.must_change_password,
+           p.nickname, p.dashboard_position, p.quote,
+           CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
+           COALESCE(p.version, 0) AS profile_version,
            s.expires_at, s.auth_method
     FROM sessions s
     JOIN users u ON u.id = s.user_id
+    LEFT JOIN user_profiles p ON p.user_id = u.id
     WHERE s.session_hash = ? AND s.expires_at > ? AND u.is_active = 1
     LIMIT 1
   `).bind(sessionHash, now.toISOString()).first();
@@ -196,6 +202,11 @@ export async function getSessionUser(request, db, now = new Date()) {
     position: row.position,
     role: row.role,
     mustChangePassword: Boolean(row.must_change_password),
+    nickname: row.nickname || '',
+    dashboardPosition: row.dashboard_position ?? row.position,
+    quote: row.quote || '',
+    hasPhoto: Boolean(row.has_photo),
+    profileVersion: Number(row.profile_version || 0),
     authMethod: row.auth_method === 'passkey' ? 'passkey' : 'password',
     expiresAt: row.expires_at
   };
@@ -216,6 +227,13 @@ export function safeUser(user) {
     position: user.position,
     role: user.role,
     mustChangePassword: Boolean(user.mustChangePassword),
+    nickname: user.nickname || '',
+    dashboardPosition: user.dashboardPosition ?? user.position,
+    quote: user.quote || '',
+    photoUrl: user.hasPhoto
+      ? `/api/users/${encodeURIComponent(user.id)}/photo?v=${Number(user.profileVersion || 0)}`
+      : '',
+    profileVersion: Number(user.profileVersion || 0),
     authMethod: user.authMethod === 'passkey' ? 'passkey' : 'password'
   };
 }
