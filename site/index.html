@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1557a6">
+  <meta name="description" content="Prototipe Pangsuma App untuk laporan harian, petty cash, dan request Finance.">
+  <title>Pangsuma App | Laporan operasional</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --blue: #1557a6;
+      --blue-deep: #0d315b;
+      --blue-soft: #eaf2fc;
+      --gold: #d5a62e;
+      --gold-pale: #f8f1dc;
+      --ink: #172536;
+      --muted: #57687b;
+      --canvas: #f2f5f9;
+      --paper: #ffffff;
+      --line: #dbe3ed;
+      --green: #23704c;
+      --green-pale: #e8f4ed;
+      --red: #a33b36;
+      --red-pale: #faedeb;
+      --radius-sm: 8px;
+      --radius-md: 13px;
+      --radius-lg: 18px;
+      --shadow: 0 8px 24px rgba(17, 44, 77, .07);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); font-size: 15px; line-height: 1.5; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+      outline: 3px solid #e2b848; outline-offset: 2px;
+    }
+    .topbar {
+      min-height: 72px; background: var(--paper); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 10px clamp(16px, 3vw, 34px); position: relative; z-index: 2;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .brand img { display: block; width: 44px; height: 44px; object-fit: contain; flex: none; }
+    .brand-name { font-weight: 760; letter-spacing: -.035em; font-size: 17px; line-height: 1.15; }
+    .brand-sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .top-actions { display: flex; gap: 10px; align-items: center; }
+    .demo-label { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 9px; border-radius: 6px; background: var(--gold-pale); color: #5c4712; font-size: 12px; font-weight: 680; }
+    .role-wrap { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .role-wrap select { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); padding: 8px 30px 8px 10px; min-height: 42px; }
+    .install-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: white; color: var(--blue-deep); border-radius: var(--radius-sm); padding: 8px 12px; min-height: 42px; font-weight: 650; }
+    .install-button:hover, .quiet-button:hover { background: #f4f7fb; }
+    .app-shell { min-height: calc(100vh - 72px); display: grid; grid-template-columns: 224px minmax(0, 1fr); }
+    .sidebar { border-right: 1px solid var(--line); background: #f8fafc; padding: 22px 14px; display: flex; flex-direction: column; gap: 22px; }
+    .nav-caption { color: #6c7887; padding: 0 10px; font-size: 11px; letter-spacing: .045em; margin: 0 0 5px; }
+    .nav-list { display: grid; gap: 4px; }
+    .nav-button { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 11px; border: 0; background: transparent; color: #46586c; text-align: left; padding: 9px 11px; border-radius: 9px; font-weight: 560; }
+    .nav-button svg { width: 19px; height: 19px; flex: none; }
+    .nav-button:hover { background: #edf2f8; color: var(--blue-deep); }
+    .nav-button[aria-current="page"] { background: var(--blue-soft); color: var(--blue-deep); font-weight: 710; }
+    .side-note { margin-top: auto; padding: 13px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .side-note strong { display: block; color: var(--ink); margin-bottom: 3px; font-size: 13px; }
+    main { padding: clamp(19px, 3vw, 34px); min-width: 0; width: 100%; max-width: 1300px; margin: 0 auto; }
+    .main-inner { max-width: 1120px; margin: 0 auto; }
+    .notice { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid #ead9a5; border-radius: var(--radius-sm); background: #fbf7e9; color: #51451f; font-size: 13px; margin-bottom: 23px; }
+    .notice svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+    .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 21px; }
+    h1 { font-size: clamp(25px, 3.2vw, 34px); line-height: 1.14; letter-spacing: -.04em; margin: 0; }
+    .page-description { margin: 7px 0 0; color: var(--muted); max-width: 65ch; }
+    .date-label { color: var(--muted); white-space: nowrap; font-size: 13px; }
+    .hero-panel { background: var(--blue-deep); color: #fff; border-radius: var(--radius-lg); padding: clamp(19px, 3vw, 28px); position: relative; overflow: hidden; margin-bottom: 18px; }
+    .hero-panel::after { content: ""; position: absolute; width: 145px; height: 145px; right: -42px; top: -62px; border: 1px solid rgba(213,166,46,.48); border-radius: 50%; box-shadow: 0 0 0 14px rgba(213,166,46,.07), 0 0 0 30px rgba(213,166,46,.045); pointer-events: none; }
+    .hero-content { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; }
+    .hero-kicker { color: #e9c660; font-size: 13px; font-weight: 650; margin-bottom: 4px; }
+    .hero-panel h2 { font-size: clamp(21px, 2.7vw, 28px); letter-spacing: -.03em; margin: 0; line-height: 1.2; }
+    .hero-panel p { color: #d6e2ef; margin: 8px 0 0; max-width: 55ch; font-size: 14px; }
+    .hero-stat { min-width: 115px; text-align: right; padding-right: 6px; }
+    .hero-stat strong { display: block; font-size: clamp(38px, 5vw, 54px); line-height: 1; letter-spacing: -.06em; color: #f0ca59; }
+    .hero-stat span { display: block; margin-top: 6px; font-size: 12px; color: #d7e2ee; }
+    .hero-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 21px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.18); }
+    .progress-track { height: 7px; background: rgba(255,255,255,.2); border-radius: 10px; overflow: hidden; flex: 1; }
+    .progress-fill { height: 100%; background: var(--gold); border-radius: inherit; transition: width .2s ease; }
+    .progress-caption { color: #e0e8f1; font-size: 12px; white-space: nowrap; }
+    .primary-button, .secondary-button, .quiet-button, .danger-button {
+      min-height: 44px; border-radius: var(--radius-sm); padding: 9px 14px; border: 1px solid transparent; font-weight: 660; transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+    }
+    .primary-button { background: var(--blue); color: #fff; }
+    .primary-button:hover { background: #104884; }
+    .hero-panel .primary-button { background: #e5bb4c; color: #152a40; }
+    .hero-panel .primary-button:hover { background: #f0ca63; }
+    .secondary-button { background: #fff; color: var(--blue-deep); border-color: var(--line); }
+    .secondary-button:hover { background: #f4f7fb; border-color: #b8c8dc; }
+    .quiet-button { background: transparent; color: var(--blue); border-color: #c8d7e8; }
+    .danger-button { background: #fff; color: var(--red); border-color: #e4c4c1; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .hero-panel button { flex: none; }
+    .metric-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 18px 0 24px; }
+    .metric { padding: 15px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); min-width: 0; }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.035em; font-weight: 730; margin-top: 3px; }
+    .metric-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .section-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 24px 0 11px; }
+    .section-row h2 { font-size: 18px; margin: 0; letter-spacing: -.02em; }
+    .section-row p { color: var(--muted); font-size: 13px; margin: 3px 0 0; }
+    .text-button { border: 0; background: none; color: var(--blue); text-decoration: underline; text-underline-offset: 3px; padding: 8px; min-height: 44px; font-weight: 650; }
+    .division-list { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+    .division-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 13px 16px; min-height: 62px; border-bottom: 1px solid #e7ecf2; }
+    .division-row:last-child { border-bottom: 0; }
+    .division-name { font-weight: 640; }
+    .division-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .status { display: inline-flex; justify-content: center; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .status-ok { background: var(--green-pale); color: #225e42; }
+    .status-wait { background: var(--gold-pale); color: #695213; }
+    .status-neutral { background: #edf1f5; color: #495a6b; }
+    .surface { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); }
+    .surface-pad { padding: 18px; }
+    .two-col { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 16px; align-items: start; }
+    .list-stack { display: grid; gap: 10px; }
+    .item-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .item-title { font-weight: 680; }
+    .item-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .item-amount { font-weight: 730; white-space: nowrap; text-align: right; }
+    .item-actions { grid-column: 1/-1; display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #edf0f4; }
+    .item-actions button { min-height: 42px; }
+    .type-label { display: inline-block; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+    .form-card { max-width: 760px; padding: clamp(17px, 3vw, 25px); }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 15px; }
+    .field { display: grid; gap: 6px; min-width: 0; }
+    .field-full { grid-column: 1/-1; }
+    .field label { font-size: 13px; font-weight: 650; }
+    .field input, .field select, .field textarea { min-height: 44px; width: 100%; border: 1px solid #cbd6e3; border-radius: var(--radius-sm); padding: 10px 11px; color: var(--ink); background: #fff; }
+    .field textarea { min-height: 98px; resize: vertical; }
+    .field-help { color: var(--muted); font-size: 12px; }
+    .form-note { padding: 12px; margin: 17px 0; border-radius: 8px; background: #f3f6fa; color: #4e5f73; font-size: 13px; }
+    .form-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+    .empty-state { padding: 28px 18px; text-align: center; color: var(--muted); }
+    .empty-state strong { display: block; color: var(--ink); margin-bottom: 4px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fff; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #e7ecf2; vertical-align: middle; }
+    th { font-size: 12px; font-weight: 650; color: #526275; background: #f7f9fc; white-space: nowrap; }
+    td { font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    .user-initial { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--blue-soft); color: var(--blue-deep); font-weight: 700; margin-right: 8px; vertical-align: middle; }
+    .page-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 20px 0 32px; margin-top: 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .page-footer details { max-width: 700px; }
+    .page-footer summary { cursor: pointer; color: var(--blue-deep); font-weight: 650; min-height: 36px; }
+    .page-footer details p { margin: 5px 0; }
+    .mobile-nav { display: none; }
+    .toast { position: fixed; z-index: 5; left: 50%; bottom: 25px; transform: translate(-50%, 16px); opacity: 0; pointer-events: none; max-width: min(92vw, 530px); width: max-content; padding: 12px 15px; border-radius: 9px; background: #18324e; color: #fff; box-shadow: var(--shadow); transition: opacity .18s ease, transform .18s ease; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    [hidden] { display: none !important; }
+    body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobile-nav, body.logged-out > #toast { display: none !important; }
+    .login-screen { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow-y: auto; padding: clamp(18px, 5vw, 56px); background: var(--canvas); }
+    .login-panel { width: min(100%, 980px); min-height: min(620px, calc(100dvh - 36px)); display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 12px 32px rgba(17, 44, 77, .10); }
+    .login-intro { display: flex; flex-direction: column; background: var(--blue-deep); color: #fff; padding: clamp(26px, 4vw, 46px); }
+    .login-brand { display: flex; align-items: center; gap: 12px; }
+    .login-brand img { width: 48px; height: 48px; object-fit: contain; }
+    .login-brand strong { font-size: 16px; letter-spacing: -.025em; }
+    .login-brand span { display: block; color: #d6e2ef; font-size: 12px; margin-top: 2px; }
+    .login-kicker { margin: auto 0 11px; color: #e9c660; font-size: 13px; font-weight: 680; }
+    .login-intro h1 { max-width: 11ch; font-size: clamp(29px, 4vw, 43px); line-height: 1.08; letter-spacing: -.045em; }
+    .login-intro > p { max-width: 39ch; color: #d6e2ef; margin: 13px 0 0; }
+    .login-safety { margin-top: auto; padding-top: 19px; border-top: 1px solid rgba(255,255,255,.2); color: #e2eaf2; font-size: 12px; line-height: 1.55; }
+    .login-safety strong { display: block; color: #f0ca59; margin-bottom: 4px; }
+    .login-form-panel { display: grid; align-items: center; padding: clamp(25px, 5vw, 58px); }
+    .login-form-content { width: min(100%, 390px); margin-inline: auto; }
+    .login-form-content h2 { margin: 0; font-size: clamp(23px, 3vw, 30px); letter-spacing: -.035em; }
+    .login-form-content > p { margin: 7px 0 0; color: var(--muted); }
+    .login-form { display: grid; gap: 15px; margin-top: 25px; }
+    .login-field { display: grid; gap: 6px; }
+    .login-field label { font-size: 13px; font-weight: 650; }
+    .login-field input { width: 100%; min-height: 48px; padding: 11px 12px; border: 1px solid #cbd6e3; border-radius: var(--radius-sm); background: #fff; color: var(--ink); }
+    .login-field input::placeholder { color: #718096; }
+    .login-submit { width: 100%; min-height: 48px; margin-top: 3px; }
+    .login-error { margin: 0; padding: 10px 12px; border: 1px solid #e4c4c1; border-radius: var(--radius-sm); background: var(--red-pale); color: #7d2925; font-size: 13px; }
+    .login-footnote { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .account-meta { display: grid; gap: 2px; min-width: 0; }
+    .account-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .account-detail { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--muted); font-size: 11px; line-height: 1.3; }
+    .account-access strong { color: var(--blue-deep); }
+    .logout-button { white-space: nowrap; }
+    @media (max-width: 850px) {
+      .app-shell { grid-template-columns: 190px minmax(0,1fr); }
+      .sidebar { padding-inline: 10px; }
+      main { padding: 22px 18px; }
+      .two-col { grid-template-columns: minmax(0,1fr); }
+    }
+    @media (max-width: 760px) {
+      .login-panel { grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr); min-height: 0; }
+      .login-intro { padding: 25px; }
+      .login-form-panel { padding: 28px 24px; }
+    }
+    @media (max-width: 640px) {
+      body { font-size: 14px; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+      .topbar { min-height: 64px; flex: none; padding: 8px 14px; }
+      .brand img { width: 38px; height: 38px; }
+      .brand-sub, .role-wrap span { display: none; }
+      .brand-name { font-size: 15px; }
+      .topbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 8px; padding: 7px 11px; }
+      .brand { min-width: 0; }
+      .top-actions { display: grid; grid-template-columns: minmax(92px,1fr) auto auto; grid-template-rows: auto auto; align-items: center; gap: 1px 5px; }
+      .demo-label { font-size: 11px; padding: 3px 7px; }
+      .account-meta { max-width: 142px; }
+      .account-name { font-size: 11px; }
+      .account-detail { font-size: 10px; gap: 1px 5px; }
+      .logout-button { grid-column: 2; grid-row: 1/3; min-height: 42px; padding: 6px 8px; font-size: 12px; }
+      .install-button { width: 42px; padding: 0; font-size: 0; }
+      .top-actions .demo-label { grid-column: 1; grid-row: 1; justify-self: start; }
+      .top-actions .account-meta { grid-column: 1; grid-row: 2; }
+      .top-actions .install-button { grid-column: 3; grid-row: 1/3; }
+      .install-button svg { width: 18px; height: 18px; }
+      .app-shell { display: block; flex: 1; min-height: 0; overflow: hidden; }
+      .sidebar { display: none; }
+      main { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 17px 14px 24px; max-width: none; }
+      .notice { margin-bottom: 18px; font-size: 12px; }
+      .page-heading { align-items: flex-start; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+      .date-label { white-space: normal; }
+      .hero-panel { border-radius: 14px; padding: 18px 16px; margin-bottom: 14px; }
+      .hero-content { grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+      .hero-stat { min-width: 62px; padding-right: 0; }
+      .hero-stat strong { font-size: 38px; }
+      .hero-stat span { max-width: 72px; margin-left: auto; }
+      .hero-footer { align-items: flex-start; flex-wrap: wrap; margin-top: 17px; }
+      .hero-footer .progress-track { order: 1; flex-basis: 100%; }
+      .hero-footer .progress-caption { order: 2; }
+      .hero-panel .primary-button { order: 3; }
+      .metric-row { grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 21px; }
+      .metric:last-child:nth-child(odd) { grid-column: 1/-1; }
+      .metric { padding: 12px; }
+      .metric-value { font-size: 20px; }
+      .section-row { margin-top: 21px; align-items: flex-start; }
+      .division-row { grid-template-columns: minmax(0,1fr) auto; padding: 12px; gap: 7px 9px; }
+      .division-row .status { grid-column: 2; grid-row: 1/3; }
+      .division-row .division-meta { grid-column: 1; }
+      .item-row { padding: 12px; }
+      .form-grid { grid-template-columns: minmax(0,1fr); }
+      .field-full { grid-column: auto; }
+      .surface-pad { padding: 14px; }
+      .mobile-nav { position: static; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); flex: none; width: 100%; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.98); border-top: 1px solid var(--line); }
+      .mobile-nav .nav-button { min-height: 52px; border-radius: 8px; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 2px; font-size: 10px; line-height: 1.15; }
+      .mobile-nav .nav-button svg { width: 18px; height: 18px; }
+      .page-footer { padding-bottom: 10px; }
+      .table-wrap { border: 0; background: transparent; overflow: visible; }
+      table, tbody, tr, td { display: block; width: 100%; }
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+      tbody { display: grid; gap: 9px; }
+      tr { background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; }
+      td { display: grid; grid-template-columns: minmax(94px, .6fr) minmax(0,1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid #edf0f4; }
+      td:last-child { border-bottom: 0; }
+      td::before { content: attr(data-label); color: var(--muted); font-size: 11px; }
+      .login-screen { align-items: start; padding: 12px; }
+      .login-panel { width: 100%; grid-template-columns: minmax(0,1fr); border-radius: 14px; }
+      .login-intro { padding: 18px; }
+      .login-brand img { width: 38px; height: 38px; }
+      .login-kicker { margin: 17px 0 6px; font-size: 12px; }
+      .login-intro h1 { max-width: none; font-size: 25px; }
+      .login-intro > p { margin-top: 6px; font-size: 13px; }
+      .login-safety { margin-top: 14px; padding-top: 11px; font-size: 11px; }
+      .login-form-panel { padding: 22px 18px; }
+      .login-form { gap: 12px; margin-top: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body class="logged-out">
+  <section class="login-screen" id="loginGate" aria-labelledby="loginTitle">
+    <div class="login-panel">
+      <div class="login-intro">
+        <div class="login-brand"><img src="/pangsuma-icon-192.png" alt=""><div><strong>Pangsuma App</strong><span>Laporan operasional klub</span></div></div>
+        <p class="login-kicker">Ruang kerja Pangsuma</p>
+        <h1 id="loginTitle">Masuk ke ruang kerja.</h1>
+        <p>Jalankan alur laporan, persetujuan, dan petty cash menggunakan akun contoh.</p>
+        <div class="login-safety"><strong>Demo saja, bukan keamanan.</strong>Login ini berjalan sepenuhnya di browser. Daftar akun dan kode dapat dilihat atau dilewati siapa pun yang membuka URL. Jangan gunakan password atau data sungguhan.</div>
+      </div>
+      <div class="login-form-panel">
+        <div class="login-form-content">
+          <h2>Masuk ke Pangsuma</h2>
+          <p>Gunakan email dummy yang diberikan untuk prototipe.</p>
+          <form class="login-form" id="loginForm">
+            <div class="login-field"><label for="loginEmail">Email demo</label><input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="nama@pangsumafc.com" required></div>
+            <div class="login-field"><label for="loginPassword">Password demo</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required></div>
+            <p class="login-error" id="loginError" role="alert" hidden>Email atau password demo tidak sesuai. Periksa kembali lalu coba lagi.</p>
+            <button class="primary-button login-submit" type="submit">Masuk ke demo</button>
+          </form>
+          <p class="login-footnote">Semua akun dan transaksi di prototipe ini adalah contoh. Tidak ada layanan autentikasi atau backend yang terhubung.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/pangsuma-icon-192.png" alt="">
+      <div><div class="brand-name">Pangsuma App</div><div class="brand-sub">Laporan operasional klub</div></div>
+    </div>
+    <div class="top-actions">
+      <span class="demo-label">Mode demo</span>
+      <div class="account-meta" id="accountMeta" aria-label="Identitas pengguna">
+        <span class="account-name" id="accountName"></span>
+        <span class="account-detail"><span id="accountPosition"></span><span class="account-access">Hak akses: <strong id="accountAccess"></strong></span></span>
+      </div>
+      <button class="quiet-button logout-button" id="logoutButton" type="button">Keluar</button>
+      <button class="install-button" id="installButton" type="button" aria-label="Pasang Pangsuma App">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Pasang
+      </button>
+    </div>
+  </header>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navigasi utama">
+      <div><p class="nav-caption">RUANG KERJA</p><nav class="nav-list" id="desktopNav"></nav></div>
+      <div class="side-note"><strong>Prototipe interaktif</strong>Login hanya gerbang tampilan di browser, bukan autentikasi. Jangan masukkan data atau password sungguhan.</div>
+    </aside>
+    <main id="mainContent" tabindex="-1"><div class="main-inner"></div></main>
+  </div>
+  <nav class="mobile-nav" id="mobileNav" aria-label="Navigasi mobile"></nav>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    // DEMO ONLY: every identity and the shared passphrase below are fabricated for this prototype.
+    // This client-side check is not security: visitors can inspect or bypass it. Never add real passwords or data here.
+    const DEMO_PASSWORD = 'Pangsuma2026';
+    const DEMO_SESSION_KEY = 'pangsuma-demo-session-v1';
+    const MANAGER_EMAIL = 'rahmat@pangsumafc.com';
+    const demoAccounts = [
+      { name: 'Muhammad Maruf', email: 'muhammad.maruf@pangsumafc.com', position: 'KITMAN', accessRole: 'User' },
+      { name: 'Asep Zainal Arifin', email: 'asep@pangsumafc.com', position: 'PHYSIOTHERAPY', accessRole: 'User' },
+      { name: 'Bagas Wijaya', email: 'bagas@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
+      { name: 'Muhammad Farhan', email: 'muhammad.farhan@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
+      { name: 'Dias Riansyah', email: 'dias@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
+      { name: 'Faeyza Ramadhan', email: 'faeyza@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
+      { name: 'Moch. Bagus Widya Pura', email: 'moch@pangsumafc.com', position: 'GK COACH', accessRole: 'User' },
+      { name: 'Abdul Manan', email: 'abdul@pangsumafc.com', position: 'FITNESS COACH', accessRole: 'User' },
+      { name: 'Rahmat Saputro', email: MANAGER_EMAIL, position: 'MANAGER', accessRole: 'Manager' },
+      { name: 'Muhammad Ilham', email: 'muhammad.ilham@pangsumafc.com', position: 'COO', accessRole: 'User' }
+    ];
+    function restoreDemoUser() {
+      try { return demoAccounts.find(account => account.email === sessionStorage.getItem(DEMO_SESSION_KEY)) || null; }
+      catch { return null; }
+    }
+    const STORAGE_KEY = 'pangsuma-app-demo-v1';
+    const datePartsJakarta = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const todayISO = `${datePartsJakarta.find(part => part.type === 'year').value}-${datePartsJakarta.find(part => part.type === 'month').value}-${datePartsJakarta.find(part => part.type === 'day').value}`;
+    const sampleState = () => ({
+      cashBalance: 1250000,
+      divisions: [
+        { name: 'Operasional', submitted: true },
+        { name: 'Tim Pelatih', submitted: true },
+        { name: 'Perlengkapan', submitted: true },
+        { name: 'Administrasi', submitted: false }
+      ],
+      submissions: [
+        { id: 'demo-001', type: 'pettycash', status: 'pending', division: 'Operasional', amount: 185000, description: 'Transport kegiatan lapangan', date: todayISO },
+        { id: 'demo-002', type: 'request', status: 'pending', division: 'Tim Pelatih', amount: 420000, description: 'Perlengkapan latihan', date: todayISO }
+      ],
+      users: [
+        { name: 'Staff Demo 01', division: 'Operasional', email: 'staff.demo@example.test' },
+        { name: 'Staff Demo 02', division: 'Tim Pelatih', email: 'pelatih.demo@example.test' }
+      ]
+    });
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) return sampleState();
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed.divisions) || !Array.isArray(parsed.submissions) || !Array.isArray(parsed.users)) return sampleState();
+        return parsed;
+      } catch { return sampleState(); }
+    }
+    let state = loadState();
+    let currentUser = restoreDemoUser();
+    let role = currentUser?.email === MANAGER_EMAIL ? 'manager' : 'staff';
+    let currentPage = 'overview';
+    let installPrompt = null;
+    let toastTimer;
+    const icons = {
+      overview: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 17h7m-3.5-3.5v7" stroke-linecap="round"/></svg>',
+      report: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg>',
+      review: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h14v16H5zM8 8h8M8 12h4" stroke-linecap="round" stroke-linejoin="round"/><path d="m13.5 16 1.8 1.8 3.4-3.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      finance: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7.5h16v12H4zM4 7.5l2-3h12l2 3M4 11h16" stroke-linejoin="round"/><path d="M8 15h3" stroke-linecap="round"/></svg>',
+      users: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3 2.3-4.5 5.5-4.5s5 1.5 5.5 4.5M17 8h4m-2-2v4m-2 6c2.1.2 3.4 1.2 4 3" stroke-linecap="round"/></svg>',
+      wallet: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6.5h15a1.5 1.5 0 0 1 1.5 1.5v11H5a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h13" stroke-linejoin="round"/><path d="M15 12h5.5v4H15a2 2 0 0 1 0-4Z"/><path d="M16.5 14h.1" stroke-linecap="round"/></svg>'
+    };
+    const navByRole = {
+      manager: [
+        { id: 'overview', label: 'Ringkasan', icon: 'overview' },
+        { id: 'approvals', label: 'Persetujuan', icon: 'review' },
+        { id: 'finance', label: 'Laporan Finance', icon: 'finance' },
+        { id: 'users', label: 'Pengguna', icon: 'users' }
+      ],
+      staff: [
+        { id: 'overview', label: 'Beranda', icon: 'overview' },
+        { id: 'new-report', label: 'Buat laporan', icon: 'report' },
+        { id: 'my-reports', label: 'Laporan saya', icon: 'review' },
+        { id: 'cash-info', label: 'Petty cash', icon: 'wallet' }
+      ]
+    };
+    const money = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(n) || 0);
+    const dateLong = value => new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
+    const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
+    function showToast(message) {
+      const box = document.getElementById('toast'); box.textContent = message; box.classList.add('show');
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => box.classList.remove('show'), 2800);
+    }
+    function statusText(item) {
+      if (item.status === 'approved') return ['Disetujui', 'status-ok'];
+      if (item.status === 'sent') return ['Dikirim ke Finance', 'status-ok'];
+      if (item.status === 'rejected') return ['Ditolak', 'status-neutral'];
+      return ['Menunggu manager', 'status-wait'];
+    }
+    function navMarkup(items, location) {
+      return items.map(item => `<button class="nav-button" type="button" data-page="${item.id}" aria-current="${currentPage === item.id ? 'page' : 'false'}">${icons[item.icon]}<span>${item.label}</span></button>`).join('');
+    }
+    function renderNav() {
+      const items = navByRole[role];
+      document.getElementById('desktopNav').innerHTML = navMarkup(items, 'desktop');
+      const mobileItems = items.slice(0, 4);
+      document.getElementById('mobileNav').innerHTML = navMarkup(mobileItems, 'mobile');
+      document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => {
+        currentPage = button.dataset.page; renderApp(); document.getElementById('mainContent').focus({ preventScroll: true });
+      }));
+    }
+    function pageHeading(title, description, right = '') {
+      return `<div class="page-heading"><div><h1>${title}</h1><p class="page-description">${description}</p></div>${right}</div>`;
+    }
+    function dataNotice() {
+      return `<div class="notice"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v5m0-8h.01" stroke-linecap="round"/></svg><div><strong>Data demo.</strong> Nama, nominal, divisi, dan transaksi hanya contoh. Login ini bukan autentikasi: akun, password, serta data dapat dilihat atau dilewati melalui source. Jangan gunakan informasi sungguhan.</div></div>`;
+    }
+    function divisionRows() {
+      return state.divisions.map((division, index) => `<div class="division-row"><div><div class="division-name">${escapeHTML(division.name)}</div><div class="division-meta">${division.submitted ? 'Laporan contoh sudah masuk' : 'Menunggu laporan contoh'}</div></div><span class="status ${division.submitted ? 'status-ok' : 'status-wait'}">${division.submitted ? 'Lengkap' : 'Belum masuk'}</span>${!division.submitted && role === 'manager' ? `<button class="text-button" type="button" data-action="complete-division" data-index="${index}">Tandai lengkap</button>` : '<span></span>'}</div>`).join('');
+    }
+    function managerOverview() {
+      const done = state.divisions.filter(d => d.submitted).length;
+      const allDone = done === state.divisions.length;
+      const pending = state.submissions.filter(i => i.status === 'pending').length;
+      const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected').length;
+      const percent = state.divisions.length ? Math.round(done / state.divisions.length * 100) : 0;
+      return `${pageHeading('Ringkasan harian', 'Pantau laporan divisi, persetujuan, dan petty cash dari satu tempat.', `<div class="date-label">${dateLong(todayISO)}</div>`)}
+        <section class="hero-panel" aria-labelledby="dayStatusTitle"><div class="hero-content"><div><div class="hero-kicker">Laporan harian</div><h2 id="dayStatusTitle">${allDone ? 'Semua divisi siap direkap' : 'Menunggu laporan dari divisi'}</h2><p>${allDone ? 'Rekap harian demo sudah bisa diunduh.' : 'Lengkapi status divisi yang tersisa agar PDF rekap dapat dibuat.'}</p></div><div class="hero-stat"><strong>${done}/${state.divisions.length}</strong><span>divisi selesai</span></div></div><div class="hero-footer"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><span class="progress-caption">${percent}% lengkap</span><button class="primary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh PDF demo</button></div></section>
+        <div class="metric-row"><div class="metric"><div class="metric-label">Saldo petty cash demo</div><div class="metric-value">${money(state.cashBalance)}</div><div class="metric-detail">Berkurang setelah persetujuan</div></div><div class="metric"><div class="metric-label">Menunggu persetujuan</div><div class="metric-value">${pending}</div><div class="metric-detail">Petty cash dan request</div></div><div class="metric"><div class="metric-label">Request untuk Finance</div><div class="metric-value">${requests}</div><div class="metric-detail">Permintaan non-petty cash</div></div></div>
+        <div class="section-row"><div><h2>Status laporan per divisi</h2><p>Progres pengumpulan untuk tanggal ${dateLong(todayISO)}.</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>
+        <div class="division-list">${divisionRows()}</div>
+        <div class="section-row"><div><h2>Perlu ditinjau</h2><p>Setujui petty cash atau teruskan request ke Finance.</p></div></div>
+        ${pendingItems(2)}`;
+    }
+    function pendingItems(limit = Infinity) {
+      const rows = state.submissions.filter(item => item.status === 'pending').slice(0, limit);
+      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada pengajuan menunggu</strong>Pengajuan baru dari staff akan muncul di sini.</div>`;
+      return `<div class="list-stack">${rows.map(item => {
+        const isCash = item.type === 'pettycash';
+        return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)} · ${isCash ? 'Petty cash' : 'Request Finance'}</div></div><div class="item-amount">${money(item.amount)}</div><div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}">Setujui ${isCash ? 'dan kurangi saldo' : 'request'}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}">Tolak</button></div><span class="type-label">${isCash ? 'Saldo petty cash hanya berubah setelah manager menyetujui.' : 'Request akan masuk ke rekap Finance dan tidak memotong petty cash.'}</span></article>`;
+      }).join('')}</div>`;
+    }
+    function managerApprovals() {
+      const pending = state.submissions.filter(item => item.status === 'pending');
+      const done = state.submissions.filter(item => item.status !== 'pending');
+      return `${pageHeading('Persetujuan pengajuan', 'Periksa jenis pengajuan sebelum menyetujui. Petty cash mengurangi saldo setelah disetujui.')}
+        <div class="metric-row"><div class="metric"><div class="metric-label">Menunggu tindakan</div><div class="metric-value">${pending.length}</div><div class="metric-detail">Pengajuan contoh</div></div><div class="metric"><div class="metric-label">Petty cash tersedia</div><div class="metric-value">${money(state.cashBalance)}</div><div class="metric-detail">Saldo demo saat ini</div></div><div class="metric"><div class="metric-label">Diajukan hari ini</div><div class="metric-value">${state.submissions.filter(i => i.date === todayISO).length}</div><div class="metric-detail">Semua jenis pengajuan</div></div></div>
+        <div class="section-row"><div><h2>Antrian pengajuan</h2><p>Bedakan pemakaian petty cash dari permintaan dana ke Finance.</p></div></div>${pendingItems()}
+        <div class="section-row"><div><h2>Riwayat tindakan</h2><p>Status demo yang sudah diproses manager.</p></div></div>${done.length ? `<div class="list-stack">${done.map(item => { const [label, cls] = statusText(item); return `<div class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'}</div></div><div><span class="status ${cls}">${label}</span><div class="item-amount" style="margin-top:6px">${money(item.amount)}</div></div></div>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada riwayat</strong>Tindakan manager akan muncul di sini.</div>`}`;
+    }
+    function financePage() {
+      const requests = state.submissions.filter(item => item.type === 'request' && item.status !== 'rejected');
+      const pending = requests.filter(item => item.status === 'pending').length;
+      return `${pageHeading('Laporan Finance', 'Kumpulkan request staff tanpa memasukkannya ke perhitungan petty cash.', `<button class="secondary-button" type="button" data-action="download-pdf" ${state.divisions.every(d => d.submitted) ? '' : 'disabled'}>Unduh rekap PDF demo</button>`)}
+        <div class="metric-row"><div class="metric"><div class="metric-label">Total request</div><div class="metric-value">${requests.length}</div><div class="metric-detail">Data contoh</div></div><div class="metric"><div class="metric-label">Belum dikirim</div><div class="metric-value">${pending}</div><div class="metric-detail">Siap ditandai untuk Finance</div></div><div class="metric"><div class="metric-label">Dikirim ke Finance</div><div class="metric-value">${requests.filter(i => i.status === 'sent').length}</div><div class="metric-detail">Status simulasi</div></div></div>
+        <div class="section-row"><div><h2>Daftar request</h2><p>Request tidak mengurangi saldo petty cash.</p></div></div>
+        ${requests.length ? `<div class="list-stack">${requests.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div>${item.status === 'pending' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai dikirim ke Finance</button></div>` : ''}</article>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada request</strong>Request dari staff akan tercatat otomatis di daftar demo ini.</div>`}`;
+    }
+    function usersPage() {
+      return `${pageHeading('Pengguna aplikasi', 'Manager dapat menambahkan staff yang perlu mengisi laporan. Perubahan di sini hanya simulasi lokal.', `<button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button>`)}
+        <div class="form-card surface" id="addUserCard" hidden><h2 style="margin:0 0 15px;font-size:18px">Tambah staff demo</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama tampilan</label><input id="userName" name="name" required maxlength="60" autocomplete="off" placeholder="Contoh: Staff Demo 03"></div><div class="field"><label for="userEmail">Email demo</label><input id="userEmail" name="email" type="email" required maxlength="100" placeholder="nama@example.test"></div><div class="field field-full"><label for="userDivision">Divisi</label><select id="userDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div></div><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna demo</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></div>
+        <div class="section-row"><div><h2>Daftar akses demo</h2><p>Semua nama dan email pada daftar ini dibuat untuk contoh.</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Divisi</th><th>Peran</th><th>Email contoh</th><th>Aksi</th></tr></thead><tbody>${state.users.map((user,index) => `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML(user.name.slice(0,1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Divisi">${escapeHTML(user.division)}</td><td data-label="Peran">Staff</td><td data-label="Email contoh">${escapeHTML(user.email)}</td><td data-label="Aksi"><button class="text-button" type="button" data-action="remove-user" data-index="${index}">Hapus</button></td></tr>`).join('')}</tbody></table></div>
+        <div class="form-note">Belum ada undangan, pengiriman email, login, atau pengaturan hak akses sungguhan.</div>`;
+    }
+    function staffOverview() {
+      const own = state.submissions.filter(i => i.division === 'Operasional');
+      const pending = own.filter(i => i.status === 'pending').length;
+      return `${pageHeading('Beranda staff', 'Catat pengeluaran atau ajukan kebutuhan. Pilih jenis yang tepat agar alur manager dan Finance sesuai.', `<div class="date-label">${dateLong(todayISO)}</div>`)}
+        <section class="hero-panel"><div class="hero-content"><div><div class="hero-kicker">Laporan staff</div><h2>Buat laporan tanpa input ulang</h2><p>Pilih petty cash jika menggunakan dana yang tersedia. Pilih request jika perlu persetujuan dana dari Finance.</p></div><div class="hero-stat"><strong>${pending}</strong><span>menunggu manager</span></div></div><div class="hero-footer"><span class="progress-caption">Laporan demo divisi Operasional</span><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div></section>
+        <div class="section-row"><div><h2>Laporan terbaru</h2><p>Contoh yang tercatat pada browser ini.</p></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,3))}`;
+    }
+    function myReportsList(rows = state.submissions.filter(i => i.division === 'Operasional')) {
+      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada laporan</strong>Buat laporan pertama untuk memulai.</div>`;
+      return `<div class="list-stack">${rows.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div></article>`; }).join('')}</div>`;
+    }
+    function reportForm() {
+      return `${pageHeading('Buat laporan', 'Masukkan detail sekali saja. Pengajuan akan muncul pada tampilan manager demo.', '')}
+        <form id="reportForm" class="form-card surface"><div class="form-grid">
+          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash">Petty cash · memakai dana tersedia</option><option value="request">Request · ajukan kebutuhan ke Finance</option></select><div class="field-help" id="typeHelp">Petty cash mengurangi saldo hanya setelah disetujui manager.</div></div>
+          <div class="field"><label for="reportDivision">Divisi</label><select id="reportDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div>
+          <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO}" required></div>
+          <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required maxlength="120" placeholder="Contoh: Transport kegiatan lapangan"></div>
+          <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amount" type="number" inputmode="numeric" min="1" step="1" required placeholder="Contoh: 150000"></div>
+          <div class="field"><label for="reportNote">Catatan (opsional)</label><input id="reportNote" name="note" maxlength="120" placeholder="Informasi tambahan"></div>
+        </div><div class="form-note" id="formTypeNote">Jika petty cash, saldo hanya berubah setelah manager menyetujui. Request diteruskan sebagai laporan terpisah ke Finance.</div>
+        <div class="form-actions"><button class="primary-button" type="submit">Simpan laporan demo</button><button class="secondary-button" type="button" data-page="overview">Batal</button></div></form>`;
+    }
+    function cashInfo() {
+      const approved = state.submissions.filter(i => i.type === 'pettycash' && i.status === 'approved');
+      return `${pageHeading('Petty cash', 'Lihat saldo dan riwayat contoh. Persetujuan manager menjadi satu-satunya pemicu pengurangan saldo demo.', '')}
+        <div class="hero-panel"><div class="hero-content"><div><div class="hero-kicker">Saldo contoh</div><h2>Petty cash tersedia</h2><p>Saldo ini hanya tersimpan di browser lokal dan tidak mewakili saldo kas klub.</p></div><div class="hero-stat"><strong style="font-size:clamp(25px,4vw,38px)">${money(state.cashBalance)}</strong><span>nilai demo</span></div></div></div>
+        <div class="section-row"><div><h2>Penggunaan yang disetujui</h2><p>Pengajuan menunggu persetujuan tidak memotong saldo.</p></div><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div>
+        ${approved.length ? myReportsList(approved) : `<div class="surface empty-state"><strong>Belum ada petty cash disetujui</strong>Saldo demo belum berkurang sampai manager menyetujui pengajuan.</div>`}`;
+    }
+    function renderApp() {
+      if (!currentUser) return;
+      role = currentUser.email === MANAGER_EMAIL ? 'manager' : 'staff';
+      if (role === 'manager' && !['overview','approvals','finance','users'].includes(currentPage)) currentPage = 'overview';
+      if (role === 'staff' && !['overview','new-report','my-reports','cash-info'].includes(currentPage)) currentPage = 'overview';
+      renderNav();
+      let body;
+      if (role === 'manager') {
+        body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
+      } else {
+        body = currentPage === 'new-report' ? reportForm() : currentPage === 'my-reports' ? `${pageHeading('Laporan saya', 'Daftar pengajuan demo pada divisi Operasional.', '')}${myReportsList()}` : currentPage === 'cash-info' ? cashInfo() : staffOverview();
+      }
+      document.querySelector('#mainContent .main-inner').innerHTML = `${dataNotice()}${body}<footer class="page-footer"><span>Pangsuma App · Prototipe interaktif</span><details><summary>Batasan prototipe</summary><p>Login demo bukan autentikasi nyata dan dapat diperiksa atau dilewati oleh siapa pun yang membuka URL. Tidak ada backend atau sinkronisasi. Data tersimpan hanya di browser ini. PDF adalah contoh dengan area tanda tangan dan stempel placeholder.</p></details></footer>`;
+      document.getElementById('accountName').textContent = currentUser.name;
+      document.getElementById('accountPosition').textContent = currentUser.position;
+      document.getElementById('accountAccess').textContent = currentUser.accessRole;
+      bindActions();
+    }
+    function bindActions() {
+      document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => { currentPage = button.dataset.page; renderApp(); }));
+      document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
+      const form = document.getElementById('reportForm');
+      if (form) {
+        const type = form.elements.type;
+        type.addEventListener('change', () => {
+          const isCash = type.value === 'pettycash';
+          document.getElementById('typeHelp').textContent = isCash ? 'Petty cash mengurangi saldo hanya setelah disetujui manager.' : 'Request dicatat untuk Finance dan tidak mengurangi saldo petty cash.';
+          document.getElementById('formTypeNote').textContent = isCash ? 'Manager akan meninjau. Saldo petty cash demo hanya berkurang setelah pengajuan disetujui.' : 'Request diteruskan sebagai laporan terpisah untuk Finance; saldo petty cash tidak berubah.';
+        });
+        form.addEventListener('submit', event => {
+          event.preventDefault(); if (!form.reportValidity()) return;
+          const data = new FormData(form);
+          const division = String(data.get('division'));
+          const item = { id: `local-${Date.now()}`, type: String(data.get('type')), status: 'pending', division, description: String(data.get('description')).trim(), amount: Number(data.get('amount')), date: String(data.get('date')) };
+          state.submissions.unshift(item);
+          const target = state.divisions.find(d => d.name === division); if (target) target.submitted = true;
+          save(); currentPage = 'my-reports'; renderApp(); showToast('Laporan demo tersimpan di browser ini.');
+        });
+      }
+      const userForm = document.getElementById('userForm');
+      if (userForm) userForm.addEventListener('submit', event => {
+        event.preventDefault(); if (!userForm.reportValidity()) return;
+        const data = new FormData(userForm);
+        state.users.push({ name: String(data.get('name')).trim(), email: String(data.get('email')).trim(), division: String(data.get('division')) });
+        save(); renderApp(); showToast('Pengguna contoh ditambahkan. Tidak ada undangan yang dikirim.');
+      });
+    }
+    function handleAction(button) {
+      const action = button.dataset.action;
+      if (['complete-division','approve','reject','send-finance','download-pdf','open-add-user','cancel-add-user','remove-user'].includes(action) && currentUser?.email !== MANAGER_EMAIL) {
+        showToast('Fitur Manager demo hanya tersedia untuk Rahmat Saputro.'); return;
+      }
+      if (action === 'complete-division') {
+        const division = state.divisions[Number(button.dataset.index)]; if (division) division.submitted = true;
+        save(); renderApp(); showToast('Status divisi demo diperbarui.'); return;
+      }
+      if (action === 'approve' || action === 'reject' || action === 'send-finance') {
+        const item = state.submissions.find(i => i.id === button.dataset.id); if (!item) return;
+        if (action === 'approve') {
+          if (item.type === 'pettycash' && item.amount > state.cashBalance) { showToast('Saldo petty cash demo tidak mencukupi.'); return; }
+          item.status = 'approved'; if (item.type === 'pettycash') state.cashBalance -= item.amount;
+          save(); renderApp(); showToast(item.type === 'pettycash' ? 'Disetujui. Saldo petty cash demo sudah dikurangi.' : 'Request disetujui dan masuk rekap Finance demo.'); return;
+        }
+        if (action === 'reject') { item.status = 'rejected'; save(); renderApp(); showToast('Pengajuan contoh ditolak.'); return; }
+        item.status = 'sent'; save(); renderApp(); showToast('Status request diubah menjadi dikirim ke Finance (demo).'); return;
+      }
+      if (action === 'download-pdf') { downloadDemoPDF(); return; }
+      if (action === 'open-add-user') { const card = document.getElementById('addUserCard'); if (card) { card.hidden = false; document.getElementById('userName').focus(); } return; }
+      if (action === 'cancel-add-user') { renderApp(); return; }
+      if (action === 'remove-user') {
+        const index = Number(button.dataset.index); if (!Number.isNaN(index)) { state.users.splice(index,1); save(); renderApp(); showToast('Pengguna demo dihapus dari browser ini.'); }
+      }
+    }
+    function downloadDemoPDF() {
+      if (currentUser?.email !== MANAGER_EMAIL) { showToast('Rekap PDF demo hanya tersedia untuk Manager.'); return; }
+      if (!state.divisions.every(d => d.submitted)) { showToast('Lengkapi semua divisi demo sebelum membuat rekap.'); return; }
+      const cash = state.submissions.filter(i => i.type === 'pettycash' && i.status === 'approved');
+      const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected');
+      const lines = [
+        'PANGSUMA APP - LAPORAN HARIAN (DEMO)',
+        `Tanggal: ${dateLong(todayISO)}`,
+        'Status: DATA CONTOH - BUKAN LAPORAN RESMI',
+        '',
+        'STATUS DIVISI',
+        ...state.divisions.map(d => `${d.name}: ${d.submitted ? 'Lengkap' : 'Belum masuk'}`),
+        '',
+        `Saldo petty cash demo: ${money(state.cashBalance)}`,
+        `Pengeluaran petty cash disetujui: ${cash.length}`,
+        ...cash.map(i => `- ${i.description} | ${money(i.amount)}`),
+        '',
+        `Request untuk Finance: ${requests.length}`,
+        ...requests.map(i => `- ${i.description} | ${money(i.amount)} | ${i.status === 'sent' ? 'Dikirim' : 'Belum dikirim'}`),
+        '',
+        'Area tanda tangan manager: [PLACEHOLDER]',
+        'Area stempel Pangsuma: [PLACEHOLDER]',
+        '',
+        'Dokumen demo. Tidak memiliki tanda tangan atau stempel asli.'
+      ];
+      const clean = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,' ').replace(/[\\()]/g, ch => `\\${ch}`);
+      const content = lines.slice(0, 46).map((line, index) => `BT /F1 ${index === 0 ? 15 : 10} Tf 48 ${754 - index * 16} Td (${clean(line)}) Tj ET`).join('\n');
+      const streamLength = new TextEncoder().encode(content).length;
+      const objects = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        `<< /Length ${streamLength} >>\nstream\n${content}\nendstream`
+      ];
+      let pdf = '%PDF-1.4\n'; const offsets = [0];
+      for (let index = 0; index < objects.length; index++) { offsets.push(new TextEncoder().encode(pdf).length); pdf += `${index+1} 0 obj\n${objects[index]}\nendobj\n`; }
+      const xref = new TextEncoder().encode(pdf).length;
+      pdf += `xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+      const blob = new Blob([pdf], { type: 'application/pdf' }); const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `pangsuma-laporan-demo-${todayISO}.pdf`; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500); showToast('PDF demo berhasil diunduh.');
+    }
+    const loginForm = document.getElementById('loginForm');
+    const loginError = document.getElementById('loginError');
+    loginForm.addEventListener('input', () => { loginError.hidden = true; });
+    loginForm.addEventListener('submit', event => {
+      event.preventDefault(); if (!loginForm.reportValidity()) return;
+      const email = String(loginForm.elements.email.value).trim().toLowerCase();
+      const password = String(loginForm.elements.password.value);
+      const account = demoAccounts.find(item => item.email === email);
+      if (!account || password !== DEMO_PASSWORD) { loginError.hidden = false; return; }
+      currentUser = account; role = account.email === MANAGER_EMAIL ? 'manager' : 'staff'; currentPage = 'overview';
+      try { sessionStorage.setItem(DEMO_SESSION_KEY, account.email); } catch {}
+      document.body.classList.remove('logged-out'); document.getElementById('loginGate').hidden = true;
+      loginError.hidden = true; loginForm.reset(); renderApp(); showToast(`Login demo aktif untuk ${account.name}.`);
+    });
+    document.getElementById('logoutButton').addEventListener('click', () => {
+      try { sessionStorage.removeItem(DEMO_SESSION_KEY); } catch {}
+      currentUser = null; role = 'staff'; currentPage = 'overview'; loginForm.reset(); loginError.hidden = true;
+      document.body.classList.add('logged-out'); document.getElementById('loginGate').hidden = false;
+      document.getElementById('loginEmail').focus();
+    });
+    document.getElementById('installButton').addEventListener('click', async () => {
+      if (installPrompt) { installPrompt.prompt(); const result = await installPrompt.userChoice; installPrompt = null; showToast(result.outcome === 'accepted' ? 'Pangsuma App dipasang.' : 'Pemasangan belum dilakukan.'); }
+      else showToast('Gunakan menu browser lalu pilih Tambahkan ke layar utama.');
+    });
+    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installPrompt = event; });
+    if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    if (currentUser) {
+      document.getElementById('loginGate').hidden = true; document.body.classList.remove('logged-out'); renderApp();
+    } else document.body.classList.add('logged-out');
+  </script>
+</body>
+</html>
