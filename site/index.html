@@ -19,7 +19,7 @@
       --gold-pale: #f8f1dc;
       --ink: #172536;
       --muted: #57687b;
-      --canvas: #f2f5f9;
+      --canvas: #f5f7fa;
       --paper: #ffffff;
       --line: #dbe3ed;
       --green: #23704c;
@@ -57,13 +57,15 @@
     .install-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: white; color: var(--blue-deep); border-radius: var(--radius-sm); padding: 8px 12px; min-height: 42px; font-weight: 650; }
     .install-button:hover, .quiet-button:hover { background: #f4f7fb; }
     .app-shell { min-height: calc(100vh - 72px); display: grid; grid-template-columns: 224px minmax(0, 1fr); }
-    .sidebar { border-right: 1px solid var(--line); background: #f8fafc; padding: 22px 14px; display: flex; flex-direction: column; gap: 22px; }
+    .sidebar { border-right: 1px solid var(--line); background: #fff; padding: 22px 14px; display: flex; flex-direction: column; gap: 22px; }
     .nav-caption { color: #6c7887; padding: 0 10px; font-size: 11px; letter-spacing: .045em; margin: 0 0 5px; }
     .nav-list { display: grid; gap: 4px; }
     .nav-button { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 11px; border: 0; background: transparent; color: #46586c; text-align: left; padding: 9px 11px; border-radius: 9px; font-weight: 560; }
     .nav-button svg { width: 19px; height: 19px; flex: none; }
     .nav-button:hover { background: #edf2f8; color: var(--blue-deep); }
-    .nav-button[aria-current="page"] { background: var(--blue-soft); color: var(--blue-deep); font-weight: 710; }
+    .sidebar .nav-button[aria-current="page"] { position: relative; background: var(--blue-deep); color: #fff; font-weight: 680; }
+    /* Garis emas menandai lokasi aktif; aksen ini tidak dipakai sebagai dekorasi umum. */
+    .sidebar .nav-button[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; background: var(--gold); }
     .side-note { margin-top: auto; padding: 13px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     .side-note strong { display: block; color: var(--ink); margin-bottom: 3px; font-size: 13px; }
     main { padding: clamp(19px, 3vw, 34px); min-width: 0; width: 100%; max-width: 1300px; margin: 0 auto; }
@@ -74,8 +76,8 @@
     h1 { font-size: clamp(25px, 3.2vw, 34px); line-height: 1.14; letter-spacing: -.04em; margin: 0; }
     .page-description { margin: 7px 0 0; color: var(--muted); max-width: 65ch; }
     .date-label { color: var(--muted); white-space: nowrap; font-size: 13px; }
-    .hero-panel { background: var(--blue-deep); color: #fff; border-radius: var(--radius-lg); padding: clamp(19px, 3vw, 28px); position: relative; overflow: hidden; margin-bottom: 18px; }
-    .hero-panel::after { content: ""; position: absolute; width: 145px; height: 145px; right: -42px; top: -62px; border: 1px solid rgba(213,166,46,.48); border-radius: 50%; box-shadow: 0 0 0 14px rgba(213,166,46,.07), 0 0 0 30px rgba(213,166,46,.045); pointer-events: none; }
+    .hero-panel { background: var(--blue-deep); color: #fff; border-radius: var(--radius-md); padding: clamp(17px, 2.4vw, 23px); position: relative; overflow: hidden; margin-bottom: 18px; }
+    .hero-panel::after { display: none; }
     .hero-content { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; }
     .hero-kicker { color: #e9c660; font-size: 13px; font-weight: 650; margin-bottom: 4px; }
     .hero-panel h2 { font-size: clamp(21px, 2.7vw, 28px); letter-spacing: -.03em; margin: 0; line-height: 1.2; }
@@ -83,6 +85,9 @@
     .hero-stat { min-width: 115px; text-align: right; padding-right: 6px; }
     .hero-stat strong { display: block; font-size: clamp(38px, 5vw, 54px); line-height: 1; letter-spacing: -.06em; color: #f0ca59; }
     .hero-stat span { display: block; margin-top: 6px; font-size: 12px; color: #d7e2ee; }
+    .balance-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .balance-panel span { color: #d7e2ee; }
+    .balance-panel strong { color: #f0ca59; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.04em; white-space: nowrap; }
     .hero-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 21px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.18); }
     .progress-track { height: 7px; background: rgba(255,255,255,.2); border-radius: 10px; overflow: hidden; flex: 1; }
     .progress-fill { height: 100%; background: var(--gold); border-radius: inherit; transition: width .2s ease; }
@@ -100,14 +105,15 @@
     .danger-button { background: #fff; color: var(--red); border-color: #e4c4c1; }
     button:disabled { cursor: not-allowed; opacity: .55; }
     .hero-panel button { flex: none; }
-    .metric-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 18px 0 24px; }
-    .metric { padding: 15px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); min-width: 0; }
+    .metric-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin: 18px 0 24px; border-block: 1px solid var(--line); background: var(--paper); }
+    .metric { padding: 13px 16px; background: transparent; border: 0; border-right: 1px solid var(--line); border-radius: 0; min-width: 0; }
+    .metric:last-child { border-right: 0; }
     .metric-label { color: var(--muted); font-size: 12px; }
     .metric-value { font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.035em; font-weight: 730; margin-top: 3px; }
-    .metric-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .metric-detail { display: none; }
     .section-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 24px 0 11px; }
-    .section-row h2 { font-size: 18px; margin: 0; letter-spacing: -.02em; }
-    .section-row p { color: var(--muted); font-size: 13px; margin: 3px 0 0; }
+    .section-row h2 { font-size: 17px; margin: 0; letter-spacing: -.02em; }
+    .section-row p { display: none; }
     .text-button { border: 0; background: none; color: var(--blue); text-decoration: underline; text-underline-offset: 3px; padding: 8px; min-height: 44px; font-weight: 650; }
     .division-list { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
     .division-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 13px 16px; min-height: 62px; border-bottom: 1px solid #e7ecf2; }
@@ -128,7 +134,7 @@
     .item-amount { font-weight: 730; white-space: nowrap; text-align: right; }
     .item-actions { grid-column: 1/-1; display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #edf0f4; }
     .item-actions button { min-height: 42px; }
-    .type-label { display: inline-block; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+    .type-label { display: none; }
     .form-card { max-width: 760px; padding: clamp(17px, 3vw, 25px); }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 15px; }
     .field { display: grid; gap: 6px; min-width: 0; }
@@ -159,22 +165,21 @@
     [hidden] { display: none !important; }
     body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobile-nav, body.logged-out > #toast { display: none !important; }
     .login-screen { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow-y: auto; padding: clamp(18px, 5vw, 56px); background: var(--canvas); }
-    .login-panel { width: min(100%, 980px); min-height: min(620px, calc(100dvh - 36px)); display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 12px 32px rgba(17, 44, 77, .10); }
-    .login-intro { display: flex; flex-direction: column; background: var(--blue-deep); color: #fff; padding: clamp(26px, 4vw, 46px); }
+    .login-panel { width: min(100%, 460px); min-height: 0; display: block; background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--gold); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 10px 28px rgba(17, 44, 77, .08); }
+    .login-intro { display: none; }
     .login-brand { display: flex; align-items: center; gap: 12px; }
     .login-brand img { width: 48px; height: 48px; object-fit: contain; }
     .login-brand strong { font-size: 16px; letter-spacing: -.025em; }
-    .login-brand span { display: block; color: #d6e2ef; font-size: 12px; margin-top: 2px; }
+    .login-brand span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
     .login-kicker { margin: auto 0 11px; color: #e9c660; font-size: 13px; font-weight: 680; }
     .login-intro h1 { max-width: 11ch; font-size: clamp(29px, 4vw, 43px); line-height: 1.08; letter-spacing: -.045em; }
     .login-intro > p { max-width: 39ch; color: #d6e2ef; margin: 13px 0 0; }
     .login-safety { margin-top: auto; padding-top: 19px; border-top: 1px solid rgba(255,255,255,.2); color: #e2eaf2; font-size: 12px; line-height: 1.55; }
     .login-safety strong { display: block; color: #f0ca59; margin-bottom: 4px; }
-    .login-form-panel { display: grid; align-items: center; padding: clamp(25px, 5vw, 58px); }
-    .login-form-content { width: min(100%, 390px); margin-inline: auto; }
-    .login-form-content h2 { margin: 0; font-size: clamp(23px, 3vw, 30px); letter-spacing: -.035em; }
-    .login-form-content > p { margin: 7px 0 0; color: var(--muted); }
-    .login-form { display: grid; gap: 15px; margin-top: 25px; }
+    .login-form-panel { display: grid; align-items: center; padding: clamp(24px, 5vw, 38px); }
+    .login-form-content { width: 100%; margin-inline: auto; }
+    .login-form-content h1 { margin: 26px 0 0; font-size: clamp(23px, 3vw, 28px); letter-spacing: -.035em; }
+    .login-form { display: grid; gap: 15px; margin-top: 18px; }
     .login-field { display: grid; gap: 6px; }
     .login-field label { font-size: 13px; font-weight: 650; }
     .login-field input { width: 100%; min-height: 48px; padding: 11px 12px; border: 1px solid #cbd6e3; border-radius: var(--radius-sm); background: #fff; color: var(--ink); }
@@ -182,6 +187,7 @@
     .login-submit { width: 100%; min-height: 48px; margin-top: 3px; }
     .login-error { margin: 0; padding: 10px 12px; border: 1px solid #e4c4c1; border-radius: var(--radius-sm); background: var(--red-pale); color: #7d2925; font-size: 13px; }
     .login-footnote { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .login-footnote strong { color: var(--blue-deep); }
     .account-meta { display: grid; gap: 2px; min-width: 0; }
     .account-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
     .account-detail { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--muted); font-size: 11px; line-height: 1.3; }
@@ -232,9 +238,11 @@
       .hero-footer .progress-track { order: 1; flex-basis: 100%; }
       .hero-footer .progress-caption { order: 2; }
       .hero-panel .primary-button { order: 3; }
-      .metric-row { grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 21px; }
+      .metric-row { grid-template-columns: 1fr 1fr; gap: 0; margin: 14px 0 21px; }
       .metric:last-child:nth-child(odd) { grid-column: 1/-1; }
-      .metric { padding: 12px; }
+      .metric { padding: 11px 10px; border-bottom: 1px solid var(--line); }
+      .metric:nth-child(2) { border-right: 0; }
+      .metric:last-child { border-bottom: 0; }
       .metric-value { font-size: 20px; }
       .section-row { margin-top: 21px; align-items: flex-start; }
       .division-row { grid-template-columns: minmax(0,1fr) auto; padding: 12px; gap: 7px 9px; }
@@ -247,6 +255,7 @@
       .mobile-nav { position: static; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); flex: none; width: 100%; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.98); border-top: 1px solid var(--line); }
       .mobile-nav .nav-button { min-height: 52px; border-radius: 8px; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 2px; font-size: 10px; line-height: 1.15; }
       .mobile-nav .nav-button svg { width: 18px; height: 18px; }
+      .mobile-nav .nav-button[aria-current="page"] { background: var(--blue-soft); color: var(--blue-deep); font-weight: 700; }
       .page-footer { padding-bottom: 10px; }
       .table-wrap { border: 0; background: transparent; overflow: visible; }
       table, tbody, tr, td { display: block; width: 100%; }
@@ -257,13 +266,9 @@
       td:last-child { border-bottom: 0; }
       td::before { content: attr(data-label); color: var(--muted); font-size: 11px; }
       .login-screen { align-items: start; padding: 12px; }
-      .login-panel { width: 100%; grid-template-columns: minmax(0,1fr); border-radius: 14px; }
-      .login-intro { padding: 18px; }
+      .login-panel { width: 100%; border-radius: 14px; }
       .login-brand img { width: 38px; height: 38px; }
-      .login-kicker { margin: 17px 0 6px; font-size: 12px; }
-      .login-intro h1 { max-width: none; font-size: 25px; }
-      .login-intro > p { margin-top: 6px; font-size: 13px; }
-      .login-safety { margin-top: 14px; padding-top: 11px; font-size: 11px; }
+      .login-form-content h1 { margin-top: 20px; font-size: 25px; }
       .login-form-panel { padding: 22px 18px; }
       .login-form { gap: 12px; margin-top: 16px; }
     }
@@ -275,24 +280,17 @@
 <body class="logged-out">
   <section class="login-screen" id="loginGate" aria-labelledby="loginTitle">
     <div class="login-panel">
-      <div class="login-intro">
-        <div class="login-brand"><img src="/pangsuma-icon-192.png" alt=""><div><strong>Pangsuma App</strong><span>Laporan operasional klub</span></div></div>
-        <p class="login-kicker">Ruang kerja Pangsuma</p>
-        <h1 id="loginTitle">Masuk ke ruang kerja.</h1>
-        <p>Jalankan alur laporan, persetujuan, dan petty cash menggunakan akun contoh.</p>
-        <div class="login-safety"><strong>Demo saja, bukan keamanan.</strong>Login ini berjalan sepenuhnya di browser. Daftar akun dan kode dapat dilihat atau dilewati siapa pun yang membuka URL. Jangan gunakan password atau data sungguhan.</div>
-      </div>
       <div class="login-form-panel">
         <div class="login-form-content">
-          <h2>Masuk ke Pangsuma</h2>
-          <p>Gunakan email dummy yang diberikan untuk prototipe.</p>
+          <div class="login-brand"><img src="/pangsuma-icon-192.png" alt=""><div><strong>Pangsuma App</strong><span>Operasional klub</span></div></div>
+          <h1 id="loginTitle">Masuk</h1>
           <form class="login-form" id="loginForm">
             <div class="login-field"><label for="loginEmail">Email demo</label><input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="nama@pangsumafc.com" required></div>
             <div class="login-field"><label for="loginPassword">Password demo</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required></div>
             <p class="login-error" id="loginError" role="alert" hidden>Email atau password demo tidak sesuai. Periksa kembali lalu coba lagi.</p>
-            <button class="primary-button login-submit" type="submit">Masuk ke demo</button>
+            <button class="primary-button login-submit" type="submit">Masuk</button>
           </form>
-          <p class="login-footnote">Semua akun dan transaksi di prototipe ini adalah contoh. Tidak ada layanan autentikasi atau backend yang terhubung.</p>
+          <p class="login-footnote"><strong>Demo browser.</strong> Bukan autentikasi. Gunakan akun dan data contoh saja.</p>
         </div>
       </div>
     </div>
@@ -300,13 +298,13 @@
   <header class="topbar">
     <div class="brand">
       <img src="/pangsuma-icon-192.png" alt="">
-      <div><div class="brand-name">Pangsuma App</div><div class="brand-sub">Laporan operasional klub</div></div>
+      <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
-      <span class="demo-label">Mode demo</span>
+      <span class="demo-label">Demo · lokal</span>
       <div class="account-meta" id="accountMeta" aria-label="Identitas pengguna">
         <span class="account-name" id="accountName"></span>
-        <span class="account-detail"><span id="accountPosition"></span><span class="account-access">Hak akses: <strong id="accountAccess"></strong></span></span>
+        <span class="account-detail"><span class="account-access" id="accountAccess"></span></span>
       </div>
       <button class="quiet-button logout-button" id="logoutButton" type="button">Keluar</button>
       <button class="install-button" id="installButton" type="button" aria-label="Pasang Pangsuma App">
@@ -317,8 +315,7 @@
   </header>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigasi utama">
-      <div><p class="nav-caption">RUANG KERJA</p><nav class="nav-list" id="desktopNav"></nav></div>
-      <div class="side-note"><strong>Prototipe interaktif</strong>Login hanya gerbang tampilan di browser, bukan autentikasi. Jangan masukkan data atau password sungguhan.</div>
+      <div><p class="nav-caption">Menu</p><nav class="nav-list" id="desktopNav"></nav></div>
     </aside>
     <main id="mainContent" tabindex="-1"><div class="main-inner"></div></main>
   </div>
@@ -429,14 +426,11 @@
         currentPage = button.dataset.page; renderApp(); document.getElementById('mainContent').focus({ preventScroll: true });
       }));
     }
-    function pageHeading(title, description, right = '') {
-      return `<div class="page-heading"><div><h1>${title}</h1><p class="page-description">${description}</p></div>${right}</div>`;
-    }
-    function dataNotice() {
-      return `<div class="notice"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v5m0-8h.01" stroke-linecap="round"/></svg><div><strong>Data demo.</strong> Nama, nominal, divisi, dan transaksi hanya contoh. Login ini bukan autentikasi: akun, password, serta data dapat dilihat atau dilewati melalui source. Jangan gunakan informasi sungguhan.</div></div>`;
+    function pageHeading(title, right = '') {
+      return `<div class="page-heading"><h1>${title}</h1>${right}</div>`;
     }
     function divisionRows() {
-      return state.divisions.map((division, index) => `<div class="division-row"><div><div class="division-name">${escapeHTML(division.name)}</div><div class="division-meta">${division.submitted ? 'Laporan contoh sudah masuk' : 'Menunggu laporan contoh'}</div></div><span class="status ${division.submitted ? 'status-ok' : 'status-wait'}">${division.submitted ? 'Lengkap' : 'Belum masuk'}</span>${!division.submitted && role === 'manager' ? `<button class="text-button" type="button" data-action="complete-division" data-index="${index}">Tandai lengkap</button>` : '<span></span>'}</div>`).join('');
+      return state.divisions.map((division, index) => `<div class="division-row"><div><div class="division-name">${escapeHTML(division.name)}</div></div><span class="status ${division.submitted ? 'status-ok' : 'status-wait'}">${division.submitted ? 'Masuk' : 'Menunggu'}</span>${!division.submitted && role === 'manager' ? `<button class="text-button" type="button" data-action="complete-division" data-index="${index}">Tandai masuk</button>` : '<span></span>'}</div>`).join('');
     }
     function managerOverview() {
       const done = state.divisions.filter(d => d.submitted).length;
@@ -444,74 +438,72 @@
       const pending = state.submissions.filter(i => i.status === 'pending').length;
       const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected').length;
       const percent = state.divisions.length ? Math.round(done / state.divisions.length * 100) : 0;
-      return `${pageHeading('Ringkasan harian', 'Pantau laporan divisi, persetujuan, dan petty cash dari satu tempat.', `<div class="date-label">${dateLong(todayISO)}</div>`)}
-        <section class="hero-panel" aria-labelledby="dayStatusTitle"><div class="hero-content"><div><div class="hero-kicker">Laporan harian</div><h2 id="dayStatusTitle">${allDone ? 'Semua divisi siap direkap' : 'Menunggu laporan dari divisi'}</h2><p>${allDone ? 'Rekap harian demo sudah bisa diunduh.' : 'Lengkapi status divisi yang tersisa agar PDF rekap dapat dibuat.'}</p></div><div class="hero-stat"><strong>${done}/${state.divisions.length}</strong><span>divisi selesai</span></div></div><div class="hero-footer"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><span class="progress-caption">${percent}% lengkap</span><button class="primary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh PDF demo</button></div></section>
-        <div class="metric-row"><div class="metric"><div class="metric-label">Saldo petty cash demo</div><div class="metric-value">${money(state.cashBalance)}</div><div class="metric-detail">Berkurang setelah persetujuan</div></div><div class="metric"><div class="metric-label">Menunggu persetujuan</div><div class="metric-value">${pending}</div><div class="metric-detail">Petty cash dan request</div></div><div class="metric"><div class="metric-label">Request untuk Finance</div><div class="metric-value">${requests}</div><div class="metric-detail">Permintaan non-petty cash</div></div></div>
-        <div class="section-row"><div><h2>Status laporan per divisi</h2><p>Progres pengumpulan untuk tanggal ${dateLong(todayISO)}.</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>
+      return `${pageHeading('Ringkasan', `<div class="date-label">${dateLong(todayISO)}</div>`)}
+        <section class="hero-panel" aria-labelledby="dayStatusTitle"><div class="hero-content"><h2 id="dayStatusTitle">Laporan harian</h2><div class="hero-stat"><strong>${done}/${state.divisions.length}</strong><span>divisi masuk</span></div></div><div class="hero-footer"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><button class="primary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh rekap</button></div></section>
+        <div class="metric-row"><div class="metric"><div class="metric-label">Saldo petty cash</div><div class="metric-value">${money(state.cashBalance)}</div></div><div class="metric"><div class="metric-label">Menunggu</div><div class="metric-value">${pending}</div></div><div class="metric"><div class="metric-label">Request Finance</div><div class="metric-value">${requests}</div></div></div>
+        <div class="section-row"><div><h2>Laporan divisi</h2></div><button class="text-button" type="button" data-page="approvals">Persetujuan</button></div>
         <div class="division-list">${divisionRows()}</div>
-        <div class="section-row"><div><h2>Perlu ditinjau</h2><p>Setujui petty cash atau teruskan request ke Finance.</p></div></div>
+        <div class="section-row"><div><h2>Perlu ditinjau</h2></div></div>
         ${pendingItems(2)}`;
     }
     function pendingItems(limit = Infinity) {
       const rows = state.submissions.filter(item => item.status === 'pending').slice(0, limit);
-      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada pengajuan menunggu</strong>Pengajuan baru dari staff akan muncul di sini.</div>`;
+      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada pengajuan</strong></div>`;
       return `<div class="list-stack">${rows.map(item => {
         const isCash = item.type === 'pettycash';
-        return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)} · ${isCash ? 'Petty cash' : 'Request Finance'}</div></div><div class="item-amount">${money(item.amount)}</div><div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}">Setujui ${isCash ? 'dan kurangi saldo' : 'request'}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}">Tolak</button></div><span class="type-label">${isCash ? 'Saldo petty cash hanya berubah setelah manager menyetujui.' : 'Request akan masuk ke rekap Finance dan tidak memotong petty cash.'}</span></article>`;
+        return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)} · ${isCash ? 'Petty cash' : 'Request Finance'}</div></div><div class="item-amount">${money(item.amount)}</div><div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}">${isCash ? 'Setujui & kurangi saldo' : 'Setujui request'}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}">Tolak</button></div></article>`;
       }).join('')}</div>`;
     }
     function managerApprovals() {
       const pending = state.submissions.filter(item => item.status === 'pending');
       const done = state.submissions.filter(item => item.status !== 'pending');
-      return `${pageHeading('Persetujuan pengajuan', 'Periksa jenis pengajuan sebelum menyetujui. Petty cash mengurangi saldo setelah disetujui.')}
-        <div class="metric-row"><div class="metric"><div class="metric-label">Menunggu tindakan</div><div class="metric-value">${pending.length}</div><div class="metric-detail">Pengajuan contoh</div></div><div class="metric"><div class="metric-label">Petty cash tersedia</div><div class="metric-value">${money(state.cashBalance)}</div><div class="metric-detail">Saldo demo saat ini</div></div><div class="metric"><div class="metric-label">Diajukan hari ini</div><div class="metric-value">${state.submissions.filter(i => i.date === todayISO).length}</div><div class="metric-detail">Semua jenis pengajuan</div></div></div>
-        <div class="section-row"><div><h2>Antrian pengajuan</h2><p>Bedakan pemakaian petty cash dari permintaan dana ke Finance.</p></div></div>${pendingItems()}
-        <div class="section-row"><div><h2>Riwayat tindakan</h2><p>Status demo yang sudah diproses manager.</p></div></div>${done.length ? `<div class="list-stack">${done.map(item => { const [label, cls] = statusText(item); return `<div class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'}</div></div><div><span class="status ${cls}">${label}</span><div class="item-amount" style="margin-top:6px">${money(item.amount)}</div></div></div>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada riwayat</strong>Tindakan manager akan muncul di sini.</div>`}`;
+      return `${pageHeading('Persetujuan')}
+        <div class="metric-row"><div class="metric"><div class="metric-label">Menunggu</div><div class="metric-value">${pending.length}</div></div><div class="metric"><div class="metric-label">Saldo petty cash</div><div class="metric-value">${money(state.cashBalance)}</div></div><div class="metric"><div class="metric-label">Masuk hari ini</div><div class="metric-value">${state.submissions.filter(i => i.date === todayISO).length}</div></div></div>
+        <div class="section-row"><div><h2>Antrian</h2></div></div>${pendingItems()}
+        <div class="section-row"><div><h2>Riwayat</h2></div></div>${done.length ? `<div class="list-stack">${done.map(item => { const [label, cls] = statusText(item); return `<div class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'}</div></div><div><span class="status ${cls}">${label}</span><div class="item-amount" style="margin-top:6px">${money(item.amount)}</div></div></div>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada riwayat</strong></div>`}`;
     }
     function financePage() {
       const requests = state.submissions.filter(item => item.type === 'request' && item.status !== 'rejected');
       const pending = requests.filter(item => item.status === 'pending').length;
-      return `${pageHeading('Laporan Finance', 'Kumpulkan request staff tanpa memasukkannya ke perhitungan petty cash.', `<button class="secondary-button" type="button" data-action="download-pdf" ${state.divisions.every(d => d.submitted) ? '' : 'disabled'}>Unduh rekap PDF demo</button>`)}
-        <div class="metric-row"><div class="metric"><div class="metric-label">Total request</div><div class="metric-value">${requests.length}</div><div class="metric-detail">Data contoh</div></div><div class="metric"><div class="metric-label">Belum dikirim</div><div class="metric-value">${pending}</div><div class="metric-detail">Siap ditandai untuk Finance</div></div><div class="metric"><div class="metric-label">Dikirim ke Finance</div><div class="metric-value">${requests.filter(i => i.status === 'sent').length}</div><div class="metric-detail">Status simulasi</div></div></div>
-        <div class="section-row"><div><h2>Daftar request</h2><p>Request tidak mengurangi saldo petty cash.</p></div></div>
-        ${requests.length ? `<div class="list-stack">${requests.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div>${item.status === 'pending' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai dikirim ke Finance</button></div>` : ''}</article>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada request</strong>Request dari staff akan tercatat otomatis di daftar demo ini.</div>`}`;
+      return `${pageHeading('Finance', `<button class="secondary-button" type="button" data-action="download-pdf" ${state.divisions.every(d => d.submitted) ? '' : 'disabled'}>Unduh rekap</button>`)}
+        <div class="metric-row"><div class="metric"><div class="metric-label">Total request</div><div class="metric-value">${requests.length}</div></div><div class="metric"><div class="metric-label">Belum dikirim</div><div class="metric-value">${pending}</div></div><div class="metric"><div class="metric-label">Terkirim</div><div class="metric-value">${requests.filter(i => i.status === 'sent').length}</div></div></div>
+        <div class="section-row"><div><h2>Daftar request</h2></div></div>
+        ${requests.length ? `<div class="list-stack">${requests.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div>${item.status === 'pending' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim</button></div>` : ''}</article>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada request</strong></div>`}`;
     }
     function usersPage() {
-      return `${pageHeading('Pengguna aplikasi', 'Manager dapat menambahkan staff yang perlu mengisi laporan. Perubahan di sini hanya simulasi lokal.', `<button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button>`)}
-        <div class="form-card surface" id="addUserCard" hidden><h2 style="margin:0 0 15px;font-size:18px">Tambah staff demo</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama tampilan</label><input id="userName" name="name" required maxlength="60" autocomplete="off" placeholder="Contoh: Staff Demo 03"></div><div class="field"><label for="userEmail">Email demo</label><input id="userEmail" name="email" type="email" required maxlength="100" placeholder="nama@example.test"></div><div class="field field-full"><label for="userDivision">Divisi</label><select id="userDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div></div><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna demo</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></div>
-        <div class="section-row"><div><h2>Daftar akses demo</h2><p>Semua nama dan email pada daftar ini dibuat untuk contoh.</p></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Divisi</th><th>Peran</th><th>Email contoh</th><th>Aksi</th></tr></thead><tbody>${state.users.map((user,index) => `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML(user.name.slice(0,1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Divisi">${escapeHTML(user.division)}</td><td data-label="Peran">Staff</td><td data-label="Email contoh">${escapeHTML(user.email)}</td><td data-label="Aksi"><button class="text-button" type="button" data-action="remove-user" data-index="${index}">Hapus</button></td></tr>`).join('')}</tbody></table></div>
-        <div class="form-note">Belum ada undangan, pengiriman email, login, atau pengaturan hak akses sungguhan.</div>`;
+      return `${pageHeading('Pengguna', `<button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button>`)}
+        <div class="form-card surface" id="addUserCard" hidden><h2 style="margin:0 0 15px;font-size:18px">Tambah staff</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama tampilan</label><input id="userName" name="name" required maxlength="60" autocomplete="off" placeholder="Contoh: Staff Demo 03"></div><div class="field"><label for="userEmail">Email demo</label><input id="userEmail" name="email" type="email" required maxlength="100" placeholder="nama@example.test"></div><div class="field field-full"><label for="userDivision">Divisi</label><select id="userDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div></div><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></div>
+        <div class="section-row"><div><h2>Daftar staff</h2></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Divisi</th><th>Peran</th><th>Email</th><th>Aksi</th></tr></thead><tbody>${state.users.map((user,index) => `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML(user.name.slice(0,1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Divisi">${escapeHTML(user.division)}</td><td data-label="Peran">Staff</td><td data-label="Email">${escapeHTML(user.email)}</td><td data-label="Aksi"><button class="text-button" type="button" data-action="remove-user" data-index="${index}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`;
     }
     function staffOverview() {
       const own = state.submissions.filter(i => i.division === 'Operasional');
       const pending = own.filter(i => i.status === 'pending').length;
-      return `${pageHeading('Beranda staff', 'Catat pengeluaran atau ajukan kebutuhan. Pilih jenis yang tepat agar alur manager dan Finance sesuai.', `<div class="date-label">${dateLong(todayISO)}</div>`)}
-        <section class="hero-panel"><div class="hero-content"><div><div class="hero-kicker">Laporan staff</div><h2>Buat laporan tanpa input ulang</h2><p>Pilih petty cash jika menggunakan dana yang tersedia. Pilih request jika perlu persetujuan dana dari Finance.</p></div><div class="hero-stat"><strong>${pending}</strong><span>menunggu manager</span></div></div><div class="hero-footer"><span class="progress-caption">Laporan demo divisi Operasional</span><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div></section>
-        <div class="section-row"><div><h2>Laporan terbaru</h2><p>Contoh yang tercatat pada browser ini.</p></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,3))}`;
+      return `${pageHeading('Beranda', `<div class="date-label">${dateLong(todayISO)}</div>`)}
+        <section class="hero-panel"><div class="hero-content"><h2>Laporan saya</h2><div class="hero-stat"><strong>${pending}</strong><span>menunggu</span></div></div><div class="hero-footer"><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div></section>
+        <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,3))}`;
     }
     function myReportsList(rows = state.submissions.filter(i => i.division === 'Operasional')) {
-      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada laporan</strong>Buat laporan pertama untuk memulai.</div>`;
+      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada laporan</strong></div>`;
       return `<div class="list-stack">${rows.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div></article>`; }).join('')}</div>`;
     }
     function reportForm() {
-      return `${pageHeading('Buat laporan', 'Masukkan detail sekali saja. Pengajuan akan muncul pada tampilan manager demo.', '')}
+      return `${pageHeading('Buat laporan')}
         <form id="reportForm" class="form-card surface"><div class="form-grid">
-          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash">Petty cash · memakai dana tersedia</option><option value="request">Request · ajukan kebutuhan ke Finance</option></select><div class="field-help" id="typeHelp">Petty cash mengurangi saldo hanya setelah disetujui manager.</div></div>
+          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash">Petty cash</option><option value="request">Request Finance</option></select><div class="field-help" id="typeHelp">Saldo berkurang setelah disetujui manager.</div></div>
           <div class="field"><label for="reportDivision">Divisi</label><select id="reportDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div>
           <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO}" required></div>
           <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required maxlength="120" placeholder="Contoh: Transport kegiatan lapangan"></div>
           <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amount" type="number" inputmode="numeric" min="1" step="1" required placeholder="Contoh: 150000"></div>
           <div class="field"><label for="reportNote">Catatan (opsional)</label><input id="reportNote" name="note" maxlength="120" placeholder="Informasi tambahan"></div>
-        </div><div class="form-note" id="formTypeNote">Jika petty cash, saldo hanya berubah setelah manager menyetujui. Request diteruskan sebagai laporan terpisah ke Finance.</div>
-        <div class="form-actions"><button class="primary-button" type="submit">Simpan laporan demo</button><button class="secondary-button" type="button" data-page="overview">Batal</button></div></form>`;
+        </div><div class="form-actions"><button class="primary-button" type="submit">Simpan laporan</button><button class="secondary-button" type="button" data-page="overview">Batal</button></div></form>`;
     }
     function cashInfo() {
       const approved = state.submissions.filter(i => i.type === 'pettycash' && i.status === 'approved');
-      return `${pageHeading('Petty cash', 'Lihat saldo dan riwayat contoh. Persetujuan manager menjadi satu-satunya pemicu pengurangan saldo demo.', '')}
-        <div class="hero-panel"><div class="hero-content"><div><div class="hero-kicker">Saldo contoh</div><h2>Petty cash tersedia</h2><p>Saldo ini hanya tersimpan di browser lokal dan tidak mewakili saldo kas klub.</p></div><div class="hero-stat"><strong style="font-size:clamp(25px,4vw,38px)">${money(state.cashBalance)}</strong><span>nilai demo</span></div></div></div>
-        <div class="section-row"><div><h2>Penggunaan yang disetujui</h2><p>Pengajuan menunggu persetujuan tidak memotong saldo.</p></div><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div>
-        ${approved.length ? myReportsList(approved) : `<div class="surface empty-state"><strong>Belum ada petty cash disetujui</strong>Saldo demo belum berkurang sampai manager menyetujui pengajuan.</div>`}`;
+      return `${pageHeading('Petty cash')}
+        <div class="hero-panel balance-panel"><span>Saldo tersedia</span><strong>${money(state.cashBalance)}</strong></div>
+        <div class="section-row"><div><h2>Pengeluaran disetujui</h2></div><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div>
+        ${approved.length ? myReportsList(approved) : `<div class="surface empty-state"><strong>Belum ada pengeluaran disetujui</strong></div>`}`;
     }
     function renderApp() {
       if (!currentUser) return;
@@ -523,12 +515,11 @@
       if (role === 'manager') {
         body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
       } else {
-        body = currentPage === 'new-report' ? reportForm() : currentPage === 'my-reports' ? `${pageHeading('Laporan saya', 'Daftar pengajuan demo pada divisi Operasional.', '')}${myReportsList()}` : currentPage === 'cash-info' ? cashInfo() : staffOverview();
+        body = currentPage === 'new-report' ? reportForm() : currentPage === 'my-reports' ? `${pageHeading('Laporan saya')}${myReportsList()}` : currentPage === 'cash-info' ? cashInfo() : staffOverview();
       }
-      document.querySelector('#mainContent .main-inner').innerHTML = `${dataNotice()}${body}<footer class="page-footer"><span>Pangsuma App · Prototipe interaktif</span><details><summary>Batasan prototipe</summary><p>Login demo bukan autentikasi nyata dan dapat diperiksa atau dilewati oleh siapa pun yang membuka URL. Tidak ada backend atau sinkronisasi. Data tersimpan hanya di browser ini. PDF adalah contoh dengan area tanda tangan dan stempel placeholder.</p></details></footer>`;
+      document.querySelector('#mainContent .main-inner').innerHTML = body;
       document.getElementById('accountName').textContent = currentUser.name;
-      document.getElementById('accountPosition').textContent = currentUser.position;
-      document.getElementById('accountAccess').textContent = currentUser.accessRole;
+      document.getElementById('accountAccess').textContent = role === 'manager' ? 'Manager' : 'Staff';
       bindActions();
     }
     function bindActions() {
@@ -539,8 +530,7 @@
         const type = form.elements.type;
         type.addEventListener('change', () => {
           const isCash = type.value === 'pettycash';
-          document.getElementById('typeHelp').textContent = isCash ? 'Petty cash mengurangi saldo hanya setelah disetujui manager.' : 'Request dicatat untuk Finance dan tidak mengurangi saldo petty cash.';
-          document.getElementById('formTypeNote').textContent = isCash ? 'Manager akan meninjau. Saldo petty cash demo hanya berkurang setelah pengajuan disetujui.' : 'Request diteruskan sebagai laporan terpisah untuk Finance; saldo petty cash tidak berubah.';
+          document.getElementById('typeHelp').textContent = isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance; saldo petty cash tidak berubah.';
         });
         form.addEventListener('submit', event => {
           event.preventDefault(); if (!form.reportValidity()) return;
