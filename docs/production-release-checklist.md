@@ -75,7 +75,7 @@ Push/merge yang disetujui ke `main` akan memicu GitHub Actions. Workflow yang di
 Perintah deploy yang dicantumkan workflow (jangan dijalankan manual sebelum persetujuan):
 
 ```sh
-npx --yes wrangler@4.151.1 pages deploy site --project-name=pangsuma-app --branch=main --config=wrangler.toml
+npx --yes wrangler@4.151.1 pages deploy site --project-name=pangsuma-app --branch=main
 ```
 
 Pastikan job berhasil dan gunakan URL produksi `https://app.pangsumafc.com`. Jangan memulai bootstrap bila deployment atau pemeriksaan API gagal.
