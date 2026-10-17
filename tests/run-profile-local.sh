@@ -117,6 +117,9 @@ elif [[ "${1:-}" == "--image-upload" ]]; then
 elif [[ "${1:-}" == "--manager-actions" ]]; then
   shift
   timeout -k 5s 120s python3 -B tests/manager_actions_e2e.py "$@"
+elif [[ "${1:-}" == "--mobile-download" ]]; then
+  shift
+  timeout -k 5s 120s python3 -B tests/mobile_download_e2e.py "$@"
 else
   timeout -k 5s 180s python3 -B tests/profile_flow_e2e.py "$@"
 fi

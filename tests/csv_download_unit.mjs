@@ -42,6 +42,13 @@ for (const [name, ua] of [
     await pending;
   });
 }
+test('Android WebView uses native attachment navigation instead of a blob URL', async () => {
+  const h = harness('Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UP1A.231005.007; wv) AppleWebKit/537.36 Version/4.0 Chrome/130.0.6723.58 Mobile Safari/537.36');
+  const pending = h.download();
+  assert.deepEqual(h.calls.downloads, [{ href: '/api/export.csv', download: 'pangsuma-rekap-lengkap-2026-10-18.csv' }]);
+  assert.equal(h.calls.fetch, 0);
+  await pending;
+});
 test('Android retains its complete Blob download and server-provided filename', async () => {
   const h = harness('Mozilla/5.0 (Linux; Android 14) Chrome/130.0');
   await h.download();

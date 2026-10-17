@@ -584,7 +584,7 @@ function financePage() {
   const sent = finance.filter(item => item.status === 'sent');
   const ledgers = state.cashLedger;
   const openingConfigured = ledgers.some(event => event.event_type === 'opening_balance' && Number(event.amount_idr) > 0);
-  const headingActions = `<div class="heading-actions">${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<button class="secondary-button" type="button" data-action="download-csv">Unduh rekap lengkap CSV</button></div>`;
+  const headingActions = `<div class="heading-actions">${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<button class="secondary-button" type="button" data-action="download-csv">Unduh rekap lengkap CSV</button><details class="csv-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a href="/api/export.csv" download>unduh langsung CSV</a>.</p></details></div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dari antrean Manager sampai terkirim.', headingActions)}
     <div class="metric-row" aria-label="Ringkasan Finance">${metricCard('finance', 'Total request', String(state.summary.financeTotal ?? finance.length))}${metricCard('review', 'Belum dikirim', String(state.summary.financeWaiting ?? waiting.length))}${metricCard('wallet', 'Terkirim', String(state.summary.financeSent ?? sent.length))}</div>
     <div class="section-row"><div><h2>Request Finance</h2></div></div>${finance.length ? `<div class="list-stack">${finance.map(item => { const label = item.status === 'sent' ? 'Terkirim' : item.status === 'approved' ? 'Menunggu Finance' : item.status === 'rejected' ? 'Ditolak' : 'Menunggu Manager'; const statusClass = item.status === 'sent' ? 'status-ok' : item.status === 'rejected' ? 'status-neutral' : 'status-wait'; return `<article class="item-row"><div class="item-copy"><span class="item-owner">${escapeHTML(item.createdByName || 'User')}</span><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div></div><div class="item-side"><div class="item-amount">${money(item.amountIdr)}</div><span class="status ${statusClass}">${label}</span></div>${item.status === 'approved' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim ke Finance</button></div>` : ''}</article>`; }).join('')}</div>` : emptyState('Belum ada Request Finance', 'Permintaan baru akan muncul setelah User mengirim pengajuan.')}
@@ -769,19 +769,24 @@ async function openUserProfile(id) {
   }
 }
 
-async function decodeProfilePhoto(file) {
+function unsupportedNativePhotoError(mime) {
+  return (mime === 'image/heic' || mime === 'image/heif')
+    ? new Error('Browser ini belum mendukung HEIC/HEIF. Pilih foto JPG atau PNG.')
+    : null;
+}
+async function decodeProfilePhoto(file, mime = profilePhotoMime(file)) {
   if (typeof createImageBitmap === 'function') {
     try { return await createImageBitmap(file); }
     catch {
       // WebP must not fall through to Image.decode: some engines accept a
       // header-only WebP there. JPEG/PNG can still be valid when bitmap
       // decoding is unavailable for the selected gallery file.
-      if (file.type === 'image/webp') throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+      if (mime === 'image/webp') throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
     }
   }
   // Some mobile browsers expose Image.decode but not createImageBitmap.
   // Image.decode can accept header-only WebP, so never use it for that format.
-  if (file.type === 'image/webp') throw new Error('Browser ini belum dapat memvalidasi WebP. Pilih foto JPG atau PNG, atau perbarui browser.');
+  if (mime === 'image/webp') throw new Error('Browser ini belum dapat memvalidasi WebP. Pilih foto JPG atau PNG, atau perbarui browser.');
   // Use data: rather than blob: so the fallback respects our image CSP.
   const source = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -790,21 +795,31 @@ async function decodeProfilePhoto(file) {
     reader.readAsDataURL(file);
   });
   const image = new Image();
-  if (typeof image.decode !== 'function') throw new Error('Browser tidak dapat memvalidasi foto. Perbarui browser atau coba browser lain.');
+  if (typeof image.decode !== 'function') {
+    throw unsupportedNativePhotoError(mime) || new Error('Browser tidak dapat memvalidasi foto. Perbarui browser atau coba browser lain.');
+  }
   image.src = source;
-  try { await image.decode(); } catch { throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.'); }
+  try { await image.decode(); } catch {
+    throw unsupportedNativePhotoError(mime) || new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+  }
   return image;
 }
-
 function profilePhotoMime(file) {
   const type = String(file?.type || '').trim().toLowerCase();
-  if (type === 'image/jpg') return 'image/jpeg';
-  if (type) return type;
-  return { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[
-    file?.name?.split('.').pop()?.toLowerCase()
-  ] || '';
+  const extensionMime = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    heic: 'image/heic', heif: 'image/heif'
+  }[file?.name?.split('.').pop()?.toLowerCase()] || '';
+  const aliases = {
+    'image/jpg': 'image/jpeg',
+    'image/x-heic': 'image/heic',
+    'image/x-heif': 'image/heif',
+    'application/octet-stream': extensionMime,
+    'binary/octet-stream': extensionMime
+  };
+  if (type) return aliases[type] || type;
+  return extensionMime;
 }
-
 async function prepareProfilePhoto(file) {
   if (!file || !profileDraft || profileDraft.loading || profileDraft.saving || profileDraft.conflicted) return;
   const draft = profileDraft;
@@ -818,10 +833,11 @@ async function prepareProfilePhoto(file) {
   let image;
   try {
     const mime = profilePhotoMime(file);
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) throw new Error('Pilih foto JPG, PNG, atau WebP. Format lain belum didukung.');
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(mime)) throw new Error('Pilih foto JPG, PNG, WebP, HEIC, atau HEIF. Format lain belum didukung.');
     if (file.size > 10 * 1024 * 1024) throw new Error('Foto melebihi 10 MB. Pilih foto yang lebih kecil.');
     // Never trust Image.onload alone: malformed WebP headers can fire it.
-    image = await decodeProfilePhoto(file.type ? file : file.slice(0, file.size, mime));
+    const decodeFile = file.type === mime ? file : file.slice(0, file.size, mime);
+    image = await decodeProfilePhoto(decodeFile, mime);
     if (profileDraft !== draft || selection !== profileSelection) return;
     if (!image.width || !image.height || image.width * image.height > 40_000_000) throw new Error('Resolusi foto terlalu besar. Pilih foto dengan resolusi lebih kecil.');
     const side = Math.min(image.width, image.height);
@@ -1117,14 +1133,21 @@ async function performNewSubmission(event) {
 
 async function downloadCsv(button) {
   if (state.user?.role !== 'manager') return;
-  // Keep the native attachment click in the original user gesture on iOS.
+  // Keep the native attachment click in the original user gesture on mobile
+  // browsers whose download manager owns the response. Android WebView can
+  // create blob URLs but does not reliably hand a programmatic blob click to
+  // its download manager, so the native attachment link avoids that limitation.
   // A plain location navigation can render CSV inline in WebKit even when
   // Content-Disposition is attachment, so retain an explicit download attribute.
-  // Desktop and Android keep the Blob path and its in-app error handling.
+  // Desktop and full Android browsers keep the Blob path and its in-app error
+  // handling.
   const userAgent = navigator.userAgent || '';
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
-  if (isMobileAppleBrowser) {
+  const isAndroidWebView = /Android/i.test(userAgent)
+    && (/;\s*wv\)/i.test(userAgent) || /\bwv\b/i.test(userAgent)
+      || !/Chrome\/\d+/i.test(userAgent));
+  if (isMobileAppleBrowser || isAndroidWebView) {
     const anchor = document.createElement('a');
     anchor.href = '/api/export.csv';
     anchor.download = `pangsuma-rekap-lengkap-${todayISO()}.csv`;
@@ -1160,7 +1183,7 @@ async function downloadCsv(button) {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-    showToast('Rekap lengkap pengajuan, ledger, dan audit berhasil dibuat.');
+    showToast('Rekap siap; periksa unduhan browser untuk file CSV.');
   } catch (error) {
     if (error.code !== 'session_changed') showToast(friendlyError(error));
   } finally {
@@ -1222,7 +1245,9 @@ async function handleAction(button) {
   } else if (action === 'edit-user-profile') {
     openUserProfile(id);
   } else if (action === 'choose-profile-photo') {
-    $('#profilePhoto').click();
+    // The user taps the native file input covering its label. Do not synthesize
+    // click/showPicker: mobile WebKit/WebView can ignore those without an error.
+    return;
   } else if (action === 'remove-profile-photo') {
     if (!profileDraft || profileDraft.saving || profileDraft.processing) return;
     profileDraft.photoDataUrl = null;

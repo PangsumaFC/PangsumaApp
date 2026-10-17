@@ -1,9 +1,9 @@
-const CACHE_NAME = 'pangsuma-app-shell-v16-network-first-shell';
+const CACHE_NAME = 'pangsuma-app-shell-v17-gallery-download';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css',
-  '/password-crypto.js',
-  '/app.js',
+  '/pangsuma-theme.css?v=2026.10.18.2',
+  '/password-crypto.js?v=2026.10.18.2',
+  '/app.js?v=2026.10.18.2',
   '/pangsuma-login-crest-384.png',
   '/manifest.webmanifest',
   '/favicon-32.png',
@@ -12,7 +12,7 @@ const APP_SHELL = [
   '/pangsuma-icon-512.png',
   '/pangsuma-icon-maskable-512.png'
 ];
-const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/'));
+const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/').map(path => path.split('?')[0]));
 
 function cacheable(response) {
   return response.ok && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '');

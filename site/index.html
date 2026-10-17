@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
   <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
+  <meta name="app-build" content="2026.10.18.2">
   <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="stylesheet" href="/pangsuma-theme.css">
-  <script src="/password-crypto.js" defer></script>
-  <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.2">
+  <script src="/password-crypto.js?v=2026.10.18.2" defer></script>
+  <script src="/app.js?v=2026.10.18.2" defer></script>
 </head>
 <body class="logged-out" aria-busy="true">
   <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
@@ -80,6 +81,7 @@
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
+          <p class="field-help">Versi 2026.10.18.2</p>
           <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
             <p class="passkey-divider">Atau masuk tanpa password</p>
             <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
@@ -129,6 +131,7 @@
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
         <div id="appContent" aria-live="off"></div>
+        <p class="field-help">Versi 2026.10.18.2</p>
       </div>
     </main>
   </div>
@@ -177,9 +180,8 @@
       <div class="dialog-heading"><h2 id="userProfileTitle">Atur profil dashboard</h2><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup pengaturan profil">×</button></div>
       <p class="dialog-description" id="userProfileDescription"></p>
       <div class="profile-preview" id="profilePreview" aria-label="Pratinjau foto"></div>
-      <div class="profile-photo-actions"><button class="secondary-button" type="button" data-action="choose-profile-photo">Upload dari galeri</button><button class="text-button" type="button" data-action="remove-profile-photo">Hapus foto</button></div>
-      <input class="sr-only" id="profilePhoto" name="photo" type="file" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-label="Pilih foto profil dari galeri" aria-describedby="profilePhotoHelp">
-      <p class="field-help" id="profilePhotoHelp">JPG, PNG, atau WebP, maksimal 10 MB. Foto dipotong persegi dan diperkecil sebelum disimpan.</p>
+      <div class="profile-photo-actions"><label class="secondary-button profile-gallery-picker" data-action="choose-profile-photo">Upload dari galeri<input id="profilePhoto" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" aria-label="Pilih foto profil dari galeri" aria-describedby="profilePhotoHelp"></label><button class="text-button" type="button" data-action="remove-profile-photo">Hapus foto</button></div>
+      <p class="field-help" id="profilePhotoHelp">JPG, PNG, WebP, HEIC, atau HEIF, maksimal 10 MB. HEIC/HEIF perlu didukung decoder gambar browser; foto dipotong persegi dan diperkecil sebelum disimpan.</p>
       <p class="field-help" id="profilePhotoStatus" role="status" aria-live="polite"></p>
       <div class="form-grid">
         <div class="field field-full"><label for="profileNickname">Nama panggilan</label><input id="profileNickname" name="nickname" maxlength="40" autocomplete="off" aria-describedby="profileNicknameHelp"><span class="field-help" id="profileNicknameHelp">Kosongkan untuk memakai nama depan dari nama akun.</span></div>

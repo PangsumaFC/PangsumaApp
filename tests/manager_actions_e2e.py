@@ -95,16 +95,22 @@ def main():
         page.screenshot(path=str(SCREENSHOTS / 'manager-own-submissions.png'), full_page=True)
         print('MANAGER_SUBMISSION_UI_PASS types=2 created=201 own_approved=2 self_decision=403 cash_debited_once=1 finance_sent=1 insufficient_rollback=1', flush=True)
 
-        # Save to both profiles with createImageBitmap absent, as on older mobile browsers.
+        # Save to both profiles with the real mobile chooser, including the Manager's own profile.
         page.evaluate('window.createImageBitmap = undefined')
-        page.locator('[data-page="users"]:visible').first.click()
         for target in (manager, user):
+            page.locator('[data-page="users"]:visible').first.click()
             path = f"/api/users/{target['id']}/profile"
             if target['role'] == 'user':
                 page.evaluate('() => { window.createImageBitmap = async () => { throw new Error("Gallery bitmap unavailable"); }; }')
             page.locator(f'[data-action="edit-user-profile"][data-id="{target["id"]}"]').click()
             dialog = visible_dialog(page)
-            set_file(page, '#profilePhoto', 'gallery.png', tiny_png(), 'image/png')
+            with page.expect_file_chooser() as chooser_info:
+                dialog.locator('[data-action="choose-profile-photo"]').click()
+            chooser_info.value.set_files({
+                'name': 'gallery.PNG',
+                'mimeType': 'application/octet-stream' if target['role'] == 'user' else 'image/png',
+                'buffer': tiny_png(),
+            })
             expect(dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap')
             expect(dialog.locator('#profileError')).to_be_hidden()
             with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as response:
@@ -113,12 +119,11 @@ def main():
             dialog.wait_for(state='hidden')
             saved = api(page, path)['data']['user']
             assert saved['photoUrl'], saved
-            loaded = page.evaluate('''async path => {
-                const r = await fetch(path); return {status:r.status, size:(await r.arrayBuffer()).byteLength};
-            }''', saved['photoUrl'])
-            assert loaded['status'] == 200 and loaded['size'] > 0, loaded
-            print('MANAGER_PHOTO_FALLBACK_PASS target=' + target['role'] + ' save=200 read=200 bitmap=' + ('rejects' if target['role'] == 'user' else 'absent'), flush=True)
-
+            page.reload(wait_until='networkidle')
+            if target['role'] == 'user':
+                page.locator('[data-page="users"]:visible').first.click()
+            page.wait_for_function("url => [...document.images].some(img => img.src.includes(url) && img.complete && img.naturalWidth > 0)", arg=saved['photoUrl'])
+            print('MANAGER_PHOTO_CHOOSER_PASS target=' + target['role'] + ' save=200 chooser=1 reload=1 natural_width=1', flush=True)
         # Empty MIME metadata from a gallery must not reject an otherwise valid image.
         page.locator(f'[data-action="edit-user-profile"][data-id="{manager["id"]}"]').click()
         dialog = visible_dialog(page)
