@@ -131,6 +131,160 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function webAuthnBuffer(value) {
+  const base64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, character => character.charCodeAt(0)).buffer;
+}
+
+function webAuthnBase64url(value) {
+  const bytes = new Uint8Array(value || new ArrayBuffer(0));
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function webAuthnPublicKey(options) {
+  const publicKey = { ...options.publicKey, challenge: webAuthnBuffer(options.publicKey.challenge) };
+  if (publicKey.user?.id) publicKey.user = { ...publicKey.user, id: webAuthnBuffer(publicKey.user.id) };
+  for (const field of ['allowCredentials', 'excludeCredentials']) {
+    if (Array.isArray(publicKey[field])) {
+      publicKey[field] = publicKey[field].map(credential => ({ ...credential, id: webAuthnBuffer(credential.id) }));
+    }
+  }
+  return publicKey;
+}
+
+function webAuthnCredentialPayload(credential) {
+  const response = credential.response;
+  const payload = {
+    id: credential.id,
+    rawId: webAuthnBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: webAuthnBase64url(response.clientDataJSON)
+    }
+  };
+  if (response.attestationObject) {
+    payload.response.attestationObject = webAuthnBase64url(response.attestationObject);
+  } else {
+    payload.response.authenticatorData = webAuthnBase64url(response.authenticatorData);
+    payload.response.signature = webAuthnBase64url(response.signature);
+    payload.response.userHandle = response.userHandle ? webAuthnBase64url(response.userHandle) : null;
+  }
+  return payload;
+}
+
+async function refreshPasskeyControls() {
+  const panel = $('#passkeyControls');
+  if (!panel) return;
+  panel.hidden = true;
+  try {
+    const response = await fetch('/api/passkeys/status', { credentials: 'same-origin', cache: 'no-store' });
+    const status = await response.json();
+    if (!response.ok || status.enabled !== true) return;
+    panel.hidden = false;
+    const supported = typeof window.PublicKeyCredential !== 'undefined'
+      && typeof navigator.credentials?.get === 'function'
+      && typeof navigator.credentials?.create === 'function';
+    $('#passkeyLoginButton').disabled = !supported;
+    $$('.passkey-enrollment-form button').forEach(button => { button.disabled = !supported; });
+    $('#passkeyAvailabilityMessage').textContent = supported
+      ? ''
+      : 'Browser ini belum mendukung passkey. Coba browser yang mendukung WebAuthn.';
+  } catch {
+    panel.hidden = true;
+  }
+}
+
+function displayPasskeyError(error) {
+  const message = error?.name === 'NotAllowedError' || error?.name === 'AbortError'
+    ? 'Permintaan passkey dibatalkan atau tidak tersedia. Coba lagi.'
+    : error instanceof ApiFailure ? error.message : friendlyError(error);
+  $('#loginError').textContent = message;
+  $('#loginError').hidden = false;
+}
+
+async function completeLogin(result, form = null) {
+  state.user = result.user;
+  if (state.user.mustChangePassword) {
+    state.cashBalanceIdr = 0;
+    state.submissions = [];
+    state.users = [];
+    state.cashLedger = [];
+    state.auditEvents = [];
+    currentPage = 'change-password';
+  } else {
+    await refreshOverview();
+    currentPage = 'overview';
+  }
+  $('#loginError').hidden = true;
+  if (form) form.reset();
+  else $$('form').forEach(item => item.reset());
+  renderApp();
+  showToast(`Selamat datang, ${state.user.name}.`);
+}
+
+async function performPasskeyLogin(button = $('#passkeyLoginButton')) {
+  if (!button || button.disabled) return;
+  setButtonBusy(button, true, 'Menunggu passkey…');
+  try {
+    const options = await api('/passkeys/login/options', { method: 'POST', body: {} });
+    const credential = await navigator.credentials.get({ publicKey: webAuthnPublicKey(options) });
+    if (!credential) throw new Error('Tidak ada passkey yang dipilih.');
+    const result = await api('/passkeys/login/verify', {
+      method: 'POST',
+      body: { challengeId: options.challengeId, credential: webAuthnCredentialPayload(credential) }
+    });
+    await completeLogin(result);
+  } catch (error) {
+    displayPasskeyError(error);
+    button.focus();
+  } finally {
+    if (button.isConnected) setButtonBusy(button, false);
+  }
+}
+
+async function registerPasskeyFromForm(event, settings) {
+  event.preventDefault();
+  const form = event.target;
+  if (!form.reportValidity()) return;
+  const button = form.querySelector('button[type="submit"]');
+  const requestData = settings.readPayload();
+  form.reset();
+  setButtonBusy(button, true, settings.busyText);
+  try {
+    const options = await api(settings.optionsPath, { method: 'POST', body: requestData });
+    const credential = await navigator.credentials.create({ publicKey: webAuthnPublicKey(options) });
+    if (!credential) throw new Error('Pendaftaran passkey dibatalkan.');
+    const result = await api(settings.verifyPath, {
+      method: 'POST',
+      body: { ...requestData, challengeId: options.challengeId, credential: webAuthnCredentialPayload(credential) }
+    });
+    if (settings.autoLogin) {
+      await completeLogin(result);
+    } else if (settings.refreshApp === false) {
+      $('#loginError').hidden = true;
+      $('#passkeyEnrollmentStatus').textContent = settings.successMessage;
+      $('#passkeyEnrollmentStatus').hidden = false;
+    } else {
+      await refreshOverview();
+      renderApp();
+      showToast(settings.successMessage);
+    }
+  } catch (error) {
+    displayPasskeyError(error);
+    form.querySelector('button[type="submit"]')?.focus();
+  } finally {
+    for (const key of Object.keys(requestData)) requestData[key] = '';
+    form.reset();
+    if (button?.isConnected) setButtonBusy(button, false);
+  }
+}
+
 function showToast(message) {
   const toast = $('#toast');
   toast.textContent = message;
@@ -368,14 +522,17 @@ function ledgerRow(event) {
 
 function usersPage() {
   const userRows = state.users.map(user => {
-    const credential = !user.active ? 'Akses nonaktif' : !user.passwordReady ? 'Password belum diatur' : user.mustChangePassword ? 'Wajib ganti password' : 'Siap masuk';
-    const statusClass = !user.active ? 'status-neutral' : !user.passwordReady || user.mustChangePassword ? 'status-wait' : 'status-ok';
+    const passkeyCount = Number(user.passkeyCount || 0);
+    const credential = !user.active ? 'Akses nonaktif' : passkeyCount ? 'Passkey siap' : !user.passwordReady ? 'Password belum diatur' : user.mustChangePassword ? 'Wajib ganti password' : 'Siap masuk';
+    const statusClass = !user.active ? 'status-neutral' : passkeyCount || (user.passwordReady && !user.mustChangePassword) ? 'status-ok' : 'status-wait';
+    const passkeyLabel = passkeyCount ? `Passkey terdaftar (${passkeyCount})` : 'Belum ada passkey';
     const actions = user.role === 'manager' || !user.active
       ? '<span class="field-help">Tidak ada tindakan</span>'
       : `<div class="user-actions"><button class="secondary-button" type="button" data-action="reset-user-password" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Atur password</button><button class="danger-button" type="button" data-action="deactivate-user" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Nonaktifkan akses</button></div>`;
-    return `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML((user.name || 'U').slice(0, 1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Jabatan">${escapeHTML(user.position || 'Belum diisi')}</td><td data-label="Peran"><span class="status ${user.role === 'manager' ? 'status-neutral' : 'status-neutral'}">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><span class="status ${statusClass}">${credential}</span></td><td data-label="Aksi">${actions}</td></tr>`;
+    return `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML((user.name || 'U').slice(0, 1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Jabatan">${escapeHTML(user.position || 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></td><td data-label="Aksi">${actions}</td></tr>`;
   }).join('');
-  return `${pageHeading('Pengguna', 'Akun hanya dapat dibuat atau dinonaktifkan oleh Manager.', '<button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button>')}
+  const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
+  return `${pageHeading('Pengguna', 'Akun hanya dapat dibuat atau dinonaktifkan oleh Manager.', actions)}
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.users.length} akun</span></div>
     ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Jabatan</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
@@ -830,6 +987,15 @@ function bindEvents() {
 
   document.addEventListener('submit', async event => {
     if (event.target.id === 'loginForm') await performLogin(event);
+    else if (event.target.id === 'managerRecoveryForm') await registerPasskeyFromForm(event, {
+      optionsPath: '/passkeys/manager-recovery/options',
+      verifyPath: '/passkeys/manager-recovery/verify',
+      readPayload: () => ({ secret: $('#managerRecoverySecret').value }),
+      busyText: 'Mengaktifkan passkey…',
+      autoLogin: false,
+      refreshApp: false,
+      successMessage: 'Passkey Manager terdaftar. Masuk dengan passkey untuk melanjutkan.'
+    });
     else if (event.target.id === 'reportForm') await performNewSubmission(event);
     else if (event.target.id === 'userForm') await performNewUser(event);
     else if (event.target.id === 'passwordForm') await performPasswordChange(event);
@@ -869,6 +1035,7 @@ function bindEvents() {
   });
 
   $('#logoutButton').addEventListener('click', logout);
+  $('#passkeyLoginButton').addEventListener('click', () => performPasskeyLogin());
   $('#reportChoice').addEventListener('click', event => {
     if (event.target === event.currentTarget) event.currentTarget.close();
   });
@@ -930,22 +1097,7 @@ async function performLogin(event) {
   setButtonBusy(button, true, 'Memeriksa akun…');
   try {
     const result = await api('/login', { method: 'POST', body: { email, password } });
-    state.user = result.user;
-    if (state.user.mustChangePassword) {
-      state.cashBalanceIdr = 0;
-      state.submissions = [];
-      state.users = [];
-      state.cashLedger = [];
-      state.auditEvents = [];
-      currentPage = 'change-password';
-    } else {
-      await refreshOverview();
-      currentPage = 'overview';
-    }
-    $('#loginError').hidden = true;
-    form.reset();
-    renderApp();
-    showToast(`Selamat datang, ${state.user.name}.`);
+    await completeLogin(result, form);
   } catch (error) {
     $('#loginError').textContent = friendlyError(error);
     $('#loginError').hidden = false;
@@ -961,6 +1113,7 @@ async function initialize() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
   }
+  await refreshPasskeyControls();
   try {
     const result = await api('/session');
     state.user = result.user;

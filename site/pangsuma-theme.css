@@ -604,7 +604,19 @@ tr:last-child td { border-bottom: 0; }
 }
 .history-controls p { margin: 0; color: var(--muted); font-size: 13px; }
 .history-controls .secondary-button { flex: none; }
+.passkey-controls { display: grid; gap: 11px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.passkey-divider { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
+.passkey-login-button, .passkey-enrollment-form button { width: 100%; min-height: 48px; }
+.passkey-details { padding: 10px 0; border-top: 1px solid #e8ecef; }
+.passkey-details summary { min-height: 44px; padding: 10px 2px; color: var(--blue-deep); cursor: pointer; font-size: 14px; font-weight: 700; }
+.passkey-details .field-help { margin: 3px 0 11px; line-height: 1.45; }
+.passkey-enrollment-form { display: grid; gap: 11px; padding-bottom: 8px; }
+.passkey-status { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.passkey-invite-code { width: 100%; min-height: 88px; padding: 11px 12px; border: 1px solid #cbd4dc; border-radius: 12px; color: var(--ink); background: #f8fafb; font: 13px/1.5 var(--body-font); overflow-wrap: anywhere; word-break: break-all; }
+.user-page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 @media (max-width: 560px) {
   .history-controls { align-items: stretch; flex-direction: column; }
   .history-controls .secondary-button { width: 100%; }
+  .user-page-actions { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
+  .user-page-actions button { width: 100%; }
 }

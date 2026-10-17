@@ -79,6 +79,20 @@
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
+          <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
+            <p class="passkey-divider">Atau masuk tanpa password</p>
+            <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
+            <p class="field-help" id="passkeyAvailabilityMessage" role="status"></p>
+            <p class="field-help" id="passkeyEnrollmentStatus" role="status" hidden></p>
+            <details class="passkey-details">
+              <summary>Aktivasi awal akun Manager</summary>
+              <p class="field-help">Hanya untuk aktivasi pertama. Masukkan kode satu kali dari pemilik. Kode disimpan sementara di server dan kedaluwarsa setelah 15 menit. Aktivasi tidak membuka data aplikasi; masuk dengan passkey setelahnya.</p>
+              <form class="passkey-enrollment-form" id="managerRecoveryForm">
+                <div class="login-field"><label for="managerRecoverySecret">Kode aktivasi pemilik</label><input id="managerRecoverySecret" name="secret" type="password" autocomplete="one-time-code" minlength="32" maxlength="256" required></div>
+                <button class="primary-button" id="managerRecoveryButton" type="submit">Aktifkan passkey Manager</button>
+              </form>
+            </details>
+          </section>
           <p class="login-footnote"><strong>Tahap uji.</strong> Jangan masukkan data operasional atau gunakan laporan sebagai dokumen resmi sebelum pemilik mengaktifkan rilis.</p>
         </div>
       </div>

@@ -1,6 +1,8 @@
 # Checklist tinjauan dan rilis produksi Pangsuma
 
-**Status:** paket tinjauan lokal; belum disetujui untuk rilis. Tidak ada migrasi remote, bootstrap, perubahan secret, push, deployment, atau perubahan DNS/domain yang dilakukan dalam tugas ini.
+**Dokumen historis:** checklist ini mencatat rilis awal backend password, yang sudah dideploy dan di-bootstrap. Jangan ulangi bootstrap atau ikuti langkah password di bawah untuk rilis sekarang. Rilis Manager-only passkey mengikuti `docs/passkey-auth-operations.md`.
+
+**Status rilis passkey:** disetujui pemilik; menunggu deployment terpisah. Tidak ada perubahan DNS/domain.
 
 ## Tinjauan lokal
 

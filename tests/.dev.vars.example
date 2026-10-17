@@ -1,0 +1,3 @@
+# File test lokal sebenarnya dibuat sementara oleh tests/run-local.sh
+BOOTSTRAP_TOKEN=<acak-lokal-minimal-32-karakter>
+MANAGER_ENROLLMENT_SECRET=<acak-lokal-minimal-32-karakter>

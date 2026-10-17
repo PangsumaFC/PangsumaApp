@@ -23,7 +23,7 @@ SECOND_USER_EMAIL = "bagas@pangsumafc.com"
 
 def local_vars() -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in Path(".dev.vars").read_text(encoding="utf-8").splitlines():
+    for line in Path("tests/.dev.vars").read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -37,8 +37,9 @@ def local_d1_rows(sql: str):
         raise RuntimeError("Set PANGSUMA_LOCAL_STATE_DIR to the same isolated Wrangler --persist-to directory.")
     completed = subprocess.run(
         [
-            "npx", "wrangler", "d1", "execute", "pangsuma-app-prod",
-            "--local", "--persist-to", state_dir, "--command", sql, "--json",
+            "npx", "wrangler", "d1", "execute", "pangsuma-app-local-test",
+            "--local", "--config", "tests/wrangler.local.toml",
+            "--persist-to", state_dir, "--command", sql, "--json",
         ],
         check=True,
         capture_output=True,

@@ -2,9 +2,25 @@ name = "pangsuma-app"
 compatibility_date = "2026-10-17"
 pages_build_output_dir = "./site"
 
+[vars]
+PASSKEY_AUTH_ENABLED = "false"
+WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
+WEBAUTHN_RP_ID = "app.pangsumafc.com"
+
+[env.production.vars]
+PASSKEY_AUTH_ENABLED = "true"
+WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
+WEBAUTHN_RP_ID = "app.pangsumafc.com"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "pangsuma-app-prod"
 database_id = "be808421-88ce-4a48-9dcd-eb0f39ae0314"
 preview_database_id = "DB"
+migrations_dir = "migrations"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "pangsuma-app-prod"
+database_id = "be808421-88ce-4a48-9dcd-eb0f39ae0314"
 migrations_dir = "migrations"

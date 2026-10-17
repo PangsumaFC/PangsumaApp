@@ -21,6 +21,7 @@ import {
   verifyPassword
 } from '../_lib/auth.js';
 import { INITIAL_ROSTER, MANAGER_EMAIL } from '../_lib/roster.js';
+import { handlePasskeyApi } from '../_lib/webauthn.js';
 
 const PASSWORD_PATH = '/account/password';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -254,7 +255,10 @@ async function bootstrap(context, db) {
   const managerHash = await hashPassword(managerPassword);
   const createdAt = nowIso();
   const manager = INITIAL_ROSTER.find(person => person.email === MANAGER_EMAIL);
-  const managerId = crypto.randomUUID();
+  const testManagerId = env.WEBAUTHN_PROFILE === 'test' && typeof env.PASSKEY_MANAGER_ID === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(env.PASSKEY_MANAGER_ID)
+    ? env.PASSKEY_MANAGER_ID : '';
+  const managerId = testManagerId || crypto.randomUUID();
   const users = INITIAL_ROSTER.map(person => ({
     ...person,
     id: person.email === MANAGER_EMAIL ? managerId : crypto.randomUUID()
@@ -401,6 +405,9 @@ function historyMetadata(page, total) {
 async function overview(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
+  const passkeyCountSql = context.env?.PASSKEY_AUTH_ENABLED === 'true'
+    ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
+    : '0';
   const [cash, submissionPage] = await Promise.all([
     db.prepare("SELECT balance_idr FROM cash_accounts WHERE id = 'operational' LIMIT 1").first(),
     submissionsPage(db, user)
@@ -443,7 +450,7 @@ async function overview(context, db) {
     db.prepare(`
       SELECT id, name, email, position, role, is_active,
              CASE WHEN password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
-             must_change_password, created_at
+             must_change_password, created_at, ${passkeyCountSql} AS passkey_count
       FROM users
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
       LIMIT 100
@@ -471,6 +478,7 @@ async function overview(context, db) {
       active: Boolean(row.is_active),
       passwordReady: Boolean(row.password_ready),
       mustChangePassword: Boolean(row.must_change_password),
+      passkeyCount: Number(row.passkey_count || 0),
       createdAt: row.created_at
     })),
     cashLedger: ledgerPage.items,
@@ -724,10 +732,13 @@ async function users(context, db) {
   const actor = await requireUser(request, db);
   requireManager(actor);
   if (request.method === 'GET') {
+    const passkeyCountSql = context.env?.PASSKEY_AUTH_ENABLED === 'true'
+      ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
+      : '0';
     const result = await db.prepare(`
       SELECT id, name, email, position, role, is_active,
              CASE WHEN password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
-             must_change_password, created_at
+             must_change_password, created_at, ${passkeyCountSql} AS passkey_count
       FROM users
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
       LIMIT 100
@@ -741,6 +752,7 @@ async function users(context, db) {
       active: Boolean(row.is_active),
       passwordReady: Boolean(row.password_ready),
       mustChangePassword: Boolean(row.must_change_password),
+      passkeyCount: Number(row.passkey_count || 0),
       createdAt: row.created_at
     })) });
   }
@@ -996,6 +1008,7 @@ async function exportCsv(context, db) {
 
 async function dispatch(context, db, path) {
   const { request } = context;
+  if (path.startsWith('/passkeys/')) return handlePasskeyApi(context, db, path);
   if (path === '/health') {
     ensureMethod(request, 'GET');
     const row = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users' LIMIT 1").first();

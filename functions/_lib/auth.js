@@ -107,14 +107,16 @@ export function clearSessionCookie() {
   return cookieHeader('', 0);
 }
 
-export async function createSession(db, userId, now = new Date()) {
+export async function createSession(db, userId, options = {}) {
+  const now = options.now instanceof Date ? options.now : new Date();
+  const authMethod = options.authMethod === 'passkey' ? 'passkey' : 'password';
   const token = randomToken();
   const sessionHash = await sha256Hex(token);
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString();
   await db.prepare(
-    'INSERT INTO sessions (session_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).bind(sessionHash, userId, createdAt, expiresAt).run();
+    'INSERT INTO sessions (session_hash, user_id, created_at, expires_at, auth_method) VALUES (?, ?, ?, ?, ?)'
+  ).bind(sessionHash, userId, createdAt, expiresAt, authMethod).run();
   return { token, expiresAt, cookie: cookieHeader(token, SESSION_SECONDS) };
 }
 
@@ -124,7 +126,7 @@ export async function getSessionUser(request, db, now = new Date()) {
   const sessionHash = await sha256Hex(token);
   const row = await db.prepare(`
     SELECT u.id, u.name, u.email, u.position, u.role, u.must_change_password,
-           s.expires_at
+           s.expires_at, s.auth_method
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.session_hash = ? AND s.expires_at > ? AND u.is_active = 1
@@ -138,6 +140,7 @@ export async function getSessionUser(request, db, now = new Date()) {
     position: row.position,
     role: row.role,
     mustChangePassword: Boolean(row.must_change_password),
+    authMethod: row.auth_method === 'passkey' ? 'passkey' : 'password',
     expiresAt: row.expires_at
   };
 }
@@ -156,7 +159,8 @@ export function safeUser(user) {
     email: user.email,
     position: user.position,
     role: user.role,
-    mustChangePassword: Boolean(user.mustChangePassword)
+    mustChangePassword: Boolean(user.mustChangePassword),
+    authMethod: user.authMethod === 'passkey' ? 'passkey' : 'password'
   };
 }
 

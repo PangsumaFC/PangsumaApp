@@ -1,0 +1,16 @@
+name = "pangsuma-app-local-test"
+compatibility_date = "2026-10-17"
+pages_build_output_dir = "../site"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pangsuma-app-local-test"
+database_id = "00000000-0000-4000-8000-000000000001"
+migrations_dir = "../migrations"
+
+[vars]
+PASSKEY_AUTH_ENABLED = "true"
+WEBAUTHN_PROFILE = "test"
+WEBAUTHN_ORIGIN = "http://localhost:8788"
+WEBAUTHN_RP_ID = "localhost"
+PASSKEY_MANAGER_ID = "00000000-0000-4000-8000-000000000002"

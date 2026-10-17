@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pangsuma-app-shell-v8';
+const CACHE_NAME = 'pangsuma-app-shell-v10';
 const APP_SHELL = [
   '/',
   '/pangsuma-theme.css',
