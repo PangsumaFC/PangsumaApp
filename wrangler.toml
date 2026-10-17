@@ -8,7 +8,7 @@ WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
 WEBAUTHN_RP_ID = "app.pangsumafc.com"
 
 [env.production.vars]
-PASSKEY_AUTH_ENABLED = "true"
+PASSKEY_AUTH_ENABLED = "false"
 WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
 WEBAUTHN_RP_ID = "app.pangsumafc.com"
 
