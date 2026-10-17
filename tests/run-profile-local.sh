@@ -40,7 +40,18 @@ with socket.socket() as s:
     print(s.getsockname()[1])
 PY
 )"
-base="http://localhost:$port"
+protocol="http"
+server_tls=()
+if [[ "${PANGSUMA_LOCAL_HTTPS:-0}" == "1" ]]; then
+  protocol="https"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+    -keyout "$project_dir/localhost.key" -out "$project_dir/localhost.crt" \
+    -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
+  export SSL_CERT_FILE="$project_dir/localhost.crt"
+  export CURL_CA_BUNDLE="$project_dir/localhost.crt"
+  server_tls=(--local-protocol https --https-key-path "$project_dir/localhost.key" --https-cert-path "$project_dir/localhost.crt")
+fi
+base="$protocol://localhost:$port"
 cat > "$project_dir/wrangler.jsonc" <<JSON
 {
   "name": "pangsuma-profile-local",
@@ -53,7 +64,7 @@ JSON
 if [[ "${1:-}" != "--smoke" ]]; then
   CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
 fi
-(cd "$project_dir" && exec setsid "$wrangler" pages dev --port "$port" --ip 127.0.0.1 --persist-to "$state_dir") >"$state_dir/wrangler.log" 2>&1 & server_pid=$!
+(cd "$project_dir" && exec setsid "$wrangler" pages dev --port "$port" --inspector-port 0 --ip 127.0.0.1 --persist-to "$state_dir" "${server_tls[@]}") >"$state_dir/wrangler.log" 2>&1 & server_pid=$!
 for _ in $(seq 1 25); do
   response_code="$(curl --connect-timeout 1 --max-time 2 -s -o "$state_dir/health.json" -w '%{http_code}' "$base/api/health" || true)"
   [[ "$response_code" == "503" ]] && break

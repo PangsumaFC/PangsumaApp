@@ -20,7 +20,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 BASE = os.environ.get("PANGSUMA_LOCAL_URL", "http://localhost:8788").rstrip("/")
-assert urlparse(BASE).scheme == "http" and urlparse(BASE).hostname in ("localhost", "127.0.0.1", "::1"), "local loopback URL required"
+assert urlparse(BASE).scheme in ("http", "https") and urlparse(BASE).hostname in ("localhost", "127.0.0.1", "::1"), "local loopback URL required"
 ORIGIN = BASE
 ITER = 600_000
 VERSION = "client-pbkdf2-hmac-v1"

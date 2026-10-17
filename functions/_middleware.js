@@ -9,7 +9,17 @@ export async function onRequest(context) {
     'Content-Security-Policy',
     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; worker-src 'self'"
   );
-  if (new URL(context.request.url).pathname.startsWith('/api/')) {
+  const pathname = new URL(context.request.url).pathname;
+  if (pathname === '/' || [
+    '/index.html',
+    '/app.js',
+    '/password-crypto.js',
+    '/sw.js',
+    '/pangsuma-theme.css',
+    '/manifest.webmanifest',
+  ].includes(pathname)) {
+    headers.set('Cache-Control', 'no-cache');
+  } else if (pathname === '/api' || pathname.startsWith('/api/')) {
     headers.set('Cache-Control', 'no-store, max-age=0');
     headers.set('Pragma', 'no-cache');
   }

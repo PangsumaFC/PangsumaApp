@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pangsuma-app-shell-v15-manager-auto-approval';
+const CACHE_NAME = 'pangsuma-app-shell-v16-network-first-shell';
 const APP_SHELL = [
   '/',
   '/pangsuma-theme.css',
@@ -12,6 +12,23 @@ const APP_SHELL = [
   '/pangsuma-icon-512.png',
   '/pangsuma-icon-maskable-512.png'
 ];
+const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/'));
+
+function cacheable(response) {
+  return response.ok && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '');
+}
+
+function cacheResponse(request, response) {
+  if (cacheable(response)) {
+    const copy = response.clone();
+    caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+  }
+  return response;
+}
+
+function networkRequest(request) {
+  return new Request(request, { cache: 'no-cache' });
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
@@ -28,21 +45,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).then(response => {
-      if (response.ok && response.headers.get('Cache-Control')?.includes('no-store') !== true) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put('/', copy));
-      }
-      return response;
-    }).catch(() => caches.match('/')));
+  if (request.mode === 'navigate' || SHELL_ASSETS.has(url.pathname)) {
+    event.respondWith(fetch(networkRequest(request)).then(response => cacheResponse(
+      request.mode === 'navigate' ? '/' : request,
+      response,
+    )).catch(() => caches.match(request.mode === 'navigate' ? '/' : request)));
     return;
   }
   event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-    if (response.ok && response.headers.get('Cache-Control')?.includes('no-store') !== true) {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-    }
-    return response;
+    return cacheResponse(request, response);
   })));
 });

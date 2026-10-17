@@ -772,7 +772,12 @@ async function openUserProfile(id) {
 async function decodeProfilePhoto(file) {
   if (typeof createImageBitmap === 'function') {
     try { return await createImageBitmap(file); }
-    catch { throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.'); }
+    catch {
+      // WebP must not fall through to Image.decode: some engines accept a
+      // header-only WebP there. JPEG/PNG can still be valid when bitmap
+      // decoding is unavailable for the selected gallery file.
+      if (file.type === 'image/webp') throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+    }
   }
   // Some mobile browsers expose Image.decode but not createImageBitmap.
   // Image.decode can accept header-only WebP, so never use it for that format.
@@ -791,6 +796,15 @@ async function decodeProfilePhoto(file) {
   return image;
 }
 
+function profilePhotoMime(file) {
+  const type = String(file?.type || '').trim().toLowerCase();
+  if (type === 'image/jpg') return 'image/jpeg';
+  if (type) return type;
+  return { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[
+    file?.name?.split('.').pop()?.toLowerCase()
+  ] || '';
+}
+
 async function prepareProfilePhoto(file) {
   if (!file || !profileDraft || profileDraft.loading || profileDraft.saving || profileDraft.conflicted) return;
   const draft = profileDraft;
@@ -803,8 +817,7 @@ async function prepareProfilePhoto(file) {
   $('#profilePhotoStatus').textContent = 'Menyiapkan foto…';
   let image;
   try {
-    const inferredMime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[file.name?.split('.').pop()?.toLowerCase()];
-    const mime = file.type || inferredMime;
+    const mime = profilePhotoMime(file);
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) throw new Error('Pilih foto JPG, PNG, atau WebP. Format lain belum didukung.');
     if (file.size > 10 * 1024 * 1024) throw new Error('Foto melebihi 10 MB. Pilih foto yang lebih kecil.');
     // Never trust Image.onload alone: malformed WebP headers can fire it.
@@ -865,12 +878,18 @@ async function performUserProfileSave(event) {
   setButtonBusy($('#profileSubmit'), true, 'Menyimpan profil…');
   const epoch = authEpoch;
   try {
-    await api(`/users/${encodeURIComponent(draft.id)}/profile`, { method: 'PUT', body: payload });
-    // Reload the confirmed profile and roster, never modify financial state locally.
-    await refreshOverview();
+    const result = await api(`/users/${encodeURIComponent(draft.id)}/profile`, { method: 'PUT', body: payload });
+    // Use only the server-confirmed profile; never modify financial state locally.
+    state.users = state.users.map(user => user.id === draft.id ? { ...user, ...result.user } : user);
+    if (state.user?.id === draft.id) state.user = { ...state.user, ...result.user };
+    let refreshed = true;
+    try { await refreshOverview(); } catch (error) {
+      if (epoch !== authEpoch || !state.user) return;
+      refreshed = false;
+    }
     $('#userProfileDialog').close();
     renderApp();
-    showToast('Profil tersimpan. Perangkat pengguna akan memperbarui profil saat online.');
+    showToast(refreshed ? 'Profil tersimpan. Perangkat pengguna akan memperbarui profil saat online.' : 'Profil dan foto tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia.');
     $(`[data-action="edit-user-profile"][data-id="${draft.id}"]`)?.focus({ preventScroll: true });
   } catch (error) {
     if (epoch !== authEpoch) return;
@@ -1048,15 +1067,27 @@ async function performNewUser(event) {
   }
 }
 
+function newSubmissionKey() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto.getRandomValues !== 'function') {
+    throw new ApiFailure(0, 'browser_unsupported', 'Browser ini belum mendukung pengiriman aman. Gunakan browser terbaru.');
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 async function performNewSubmission(event) {
   event.preventDefault();
   const form = $('#reportForm');
   if (!form.reportValidity()) return;
   const button = form.querySelector('[type="submit"]');
   const data = new FormData(form);
-  if (!submissionIdempotencyKey) submissionIdempotencyKey = crypto.randomUUID();
   setButtonBusy(button, true, 'Mengirim pengajuan…');
   try {
+    if (!submissionIdempotencyKey) submissionIdempotencyKey = newSubmissionKey();
     await api('/submissions', {
       method: 'POST',
       headers: { 'Idempotency-Key': submissionIdempotencyKey },
@@ -1069,10 +1100,14 @@ async function performNewSubmission(event) {
       }
     });
     submissionIdempotencyKey = '';
-    await refreshOverview();
+    let refreshed = true;
+    try { await refreshOverview(); } catch (error) {
+      if (error?.code === 'session_changed' || !state.user) return;
+      refreshed = false;
+    }
     currentPage = state.user.role === 'manager' ? 'overview' : 'my-reports';
     renderApp();
-    showToast(state.user.role === 'manager' ? 'Pengajuan otomatis disetujui dan masuk rekap.' : 'Pengajuan terkirim dan tersimpan di akun Anda.');
+    showToast(!refreshed ? 'Pengajuan sudah tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia, jangan kirim ulang.' : state.user.role === 'manager' ? 'Pengajuan otomatis disetujui dan masuk rekap.' : 'Pengajuan terkirim dan tersimpan di akun Anda.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1082,6 +1117,22 @@ async function performNewSubmission(event) {
 
 async function downloadCsv(button) {
   if (state.user?.role !== 'manager') return;
+  // Keep the native attachment click in the original user gesture on iOS.
+  // A plain location navigation can render CSV inline in WebKit even when
+  // Content-Disposition is attachment, so retain an explicit download attribute.
+  // Desktop and Android keep the Blob path and its in-app error handling.
+  const userAgent = navigator.userAgent || '';
+  const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
+  if (isMobileAppleBrowser) {
+    const anchor = document.createElement('a');
+    anchor.href = '/api/export.csv';
+    anchor.download = `pangsuma-rekap-lengkap-${todayISO()}.csv`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    return;
+  }
   const requestEpoch = authEpoch;
   setButtonBusy(button, true, 'Menyiapkan rekap…');
   try {
@@ -1420,7 +1471,9 @@ async function performLogin(event) {
 async function initialize() {
   bindEvents();
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js')
+      .then(registration => registration.update())
+      .catch(() => {}));
   }
   await refreshPasskeyControls();
   try {

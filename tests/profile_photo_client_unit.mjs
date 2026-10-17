@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8');
 const helper = source.slice(source.indexOf('async function decodeProfilePhoto('), source.indexOf('\nasync function prepareProfilePhoto('));
+const mimeHelper = source.slice(source.indexOf('function profilePhotoMime('), source.indexOf('\nasync function prepareProfilePhoto('));
 
 function harness({ bitmap, decodeFails = false } = {}) {
   const calls = { readers: 0, images: 0 };
@@ -24,6 +25,12 @@ function harness({ bitmap, decodeFails = false } = {}) {
   return { calls, decode: file => context.decodeProfilePhoto(file) };
 }
 
+test('normalizes the image/jpg MIME alias commonly returned by gallery providers', () => {
+  const context = vm.createContext({});
+  vm.runInContext(mimeHelper, context);
+  assert.equal(context.profilePhotoMime({ type: 'image/jpg', name: 'photo.jpg' }), 'image/jpeg');
+});
+
 test('foto memakai createImageBitmap bila tersedia', async () => {
   const decoded = { width: 2, height: 3, close() {} };
   const h = harness({ bitmap: async () => decoded });
@@ -31,7 +38,14 @@ test('foto memakai createImageBitmap bila tersedia', async () => {
   assert.equal(h.calls.readers, 0);
 });
 
-test('penolakan bitmap tidak ditimpa oleh decoder gambar yang lebih permisif', async () => {
+test('foto JPG/PNG memakai Image.decode bila createImageBitmap menolak', async () => {
+  const h = harness({ bitmap: async () => { throw new Error('corrupt'); } });
+  const image = await h.decode({ type: 'image/jpeg' });
+  assert.equal(image.width, 1);
+  assert.equal(h.calls.images, 1);
+});
+
+test('penolakan bitmap WebP tidak ditimpa oleh decoder gambar yang lebih permisif', async () => {
   const h = harness({ bitmap: async () => { throw new Error('corrupt'); } });
   await assert.rejects(h.decode({ type: 'image/webp' }), /Foto tidak dapat dibaca/);
   assert.equal(h.calls.images, 0);

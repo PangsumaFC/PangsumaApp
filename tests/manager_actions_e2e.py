@@ -19,9 +19,15 @@ def main():
     errors = []
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True,
-                                    args=['--no-sandbox'])
-        context = browser.new_context(viewport={'width': 390, 'height': 844})
+        engine = os.environ.get('PANGSUMA_TEST_BROWSER', 'chromium')
+        browser = (p.webkit.launch(headless=True) if engine == 'webkit' else
+                   p.chromium.launch(executable_path='/usr/bin/chromium', headless=True,
+                                     args=['--no-sandbox']))
+        device = p.devices['iPhone 13' if engine == 'webkit' else 'Pixel 7']
+        context = browser.new_context(viewport={'width': 390, 'height': 844},
+                                      is_mobile=True, has_touch=True,
+                                      ignore_https_errors=BASE.startswith('https://'),
+                                      user_agent=device['user_agent'])
         context.set_default_timeout(10_000)
         context.route('**/*', lambda route: route.continue_()
                       if route.request.url.startswith(BASE + '/') else route.abort())
@@ -50,6 +56,7 @@ def main():
         overview = api(page, '/api/overview')['data']
 
         # The Manager must reach the shared form through the actual mobile UI.
+        page.evaluate('Object.defineProperty(crypto, "randomUUID", {value: undefined, configurable: true})')
         for kind in ('petty_cash', 'finance_request'):
             page.locator('[data-action="open-report-choice"]').click()
             page.locator(f'[data-action="choose-report-type"][data-type="{kind}"]').click()
@@ -93,6 +100,8 @@ def main():
         page.locator('[data-page="users"]:visible').first.click()
         for target in (manager, user):
             path = f"/api/users/{target['id']}/profile"
+            if target['role'] == 'user':
+                page.evaluate('() => { window.createImageBitmap = async () => { throw new Error("Gallery bitmap unavailable"); }; }')
             page.locator(f'[data-action="edit-user-profile"][data-id="{target["id"]}"]').click()
             dialog = visible_dialog(page)
             set_file(page, '#profilePhoto', 'gallery.png', tiny_png(), 'image/png')
@@ -108,7 +117,7 @@ def main():
                 const r = await fetch(path); return {status:r.status, size:(await r.arrayBuffer()).byteLength};
             }''', saved['photoUrl'])
             assert loaded['status'] == 200 and loaded['size'] > 0, loaded
-            print('MANAGER_PHOTO_FALLBACK_PASS target=' + target['role'] + ' save=200 read=200', flush=True)
+            print('MANAGER_PHOTO_FALLBACK_PASS target=' + target['role'] + ' save=200 read=200 bitmap=' + ('rejects' if target['role'] == 'user' else 'absent'), flush=True)
 
         # Empty MIME metadata from a gallery must not reject an otherwise valid image.
         page.locator(f'[data-action="edit-user-profile"][data-id="{manager["id"]}"]').click()
@@ -119,13 +128,23 @@ def main():
             await prepareProfilePhoto(new File([bytes], 'gallery.PNG', {type:''}));
         }''', png64)
         expect(dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap')
+        page.evaluate('''async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 4;
+            canvas.getContext('2d').fillRect(0, 0, 4, 4);
+            const raw = canvas.toDataURL('image/jpeg').split(',')[1];
+            const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+            await prepareProfilePhoto(new File([bytes], 'gallery.jpg', {type:'image/jpg'}));
+        }''')
+        expect(dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap')
+        expect(dialog.locator('#profileError')).to_be_hidden()
         previous = dialog.locator('#profilePreview img').get_attribute('src')
         # Image.decode, not just onload, must reject corrupt bytes in the fallback.
         set_file(page, '#profilePhoto', 'broken.jpg', b'not an image', 'image/jpeg')
         expect(dialog.locator('#profileError')).to_be_visible()
         assert dialog.locator('#profilePreview img').get_attribute('src') == previous
         dialog.locator('[data-action="close-dialog"]').first.click()
-        print('MANAGER_PHOTO_METADATA_PASS empty_mime=1 invalid_replacement_rejected=1 draft_preserved=1', flush=True)
+        print('MANAGER_PHOTO_METADATA_PASS empty_mime=1 jpg_alias=1 invalid_replacement_rejected=1 draft_preserved=1', flush=True)
 
         # Consume the complete HTTP stream and then exercise the real download button.
         csv_response = page.evaluate('''async () => {
@@ -143,8 +162,20 @@ def main():
         assert all(row[9].startswith("'=Manager") for row in rows[1:] if row[0] == 'Pengajuan'), rows
         assert any(row[0] == 'Audit' for row in rows[1:]), rows
         page.locator('[data-page="finance"]:visible').first.click()
-        with page.expect_download() as download:
-            page.locator('[data-action="download-csv"]').click()
+        export_events = []
+        page.on('response', lambda response: export_events.append({
+            'status': response.status, 'headers': response.headers
+        }) if response.url.endswith('/api/export.csv') else None)
+        page.on('requestfailed', lambda request: export_events.append({
+            'failure': request.failure
+        }) if request.url.endswith('/api/export.csv') else None)
+        try:
+            with page.expect_download() as download:
+                page.locator('[data-action="download-csv"]').click()
+        except Exception:
+            print('CSV_DOWNLOAD_DIAGNOSTIC url=' + page.url + ' events=' + str(export_events) + ' errors=' + str(errors), flush=True)
+            page.screenshot(path=str(SCREENSHOTS / 'csv-download-failure.png'), full_page=True)
+            raise
         assert download.value.failure() is None
         downloaded = SCREENSHOTS / 'manager-complete-export.csv'
         download.value.save_as(downloaded)
@@ -156,7 +187,7 @@ def main():
         assert not errors, errors
         context.close()
         browser.close()
-    print('MANAGER_ACTIONS_E2E_PASS browser_errors=0 screenshots=' + str(SCREENSHOTS), flush=True)
+    print('MANAGER_ACTIONS_E2E_PASS browser=' + engine + ' browser_errors=0 random_uuid_fallback=1 screenshots=' + str(SCREENSHOTS), flush=True)
 
 
 if __name__ == '__main__':
