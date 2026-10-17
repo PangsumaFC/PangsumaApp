@@ -1,7 +1,8 @@
-const CACHE_NAME = 'pangsuma-app-shell-v10';
+const CACHE_NAME = 'pangsuma-app-shell-v11-password-crypto';
 const APP_SHELL = [
   '/',
   '/pangsuma-theme.css',
+  '/password-crypto.js',
   '/app.js',
   '/pangsuma-login-crest-384.png',
   '/manifest.webmanifest',

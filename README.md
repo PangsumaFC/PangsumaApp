@@ -1,75 +1,48 @@
 # Pangsuma App
 
-## Status rilis
+## Produksi
 
-Backend Cloudflare Pages Functions dan Cloudflare D1, autentikasi password, serta antarmuka operasional berbasis peran sudah diimplementasikan dan lulus pengujian E2E lokal. Perubahan masih berada di branch `feat/cloudflare-d1-operational-backend`; belum didorong ke `main` dan belum diterbitkan. Produksi tetap pada rilis sebelumnya sampai pemilik menyetujui tinjauan dan proses rilis.
+Aplikasi memakai Cloudflare Pages Functions dan Cloudflare D1 di `https://app.pangsumafc.com`. Pemilik telah menyetujui rilis produksi dan pengaturan langsung sepuluh akun yang sudah ada. Tidak ada Supabase, email verifikasi, OTP, atau mailbox yang dibutuhkan untuk login. Passkey tetap nonaktif.
 
-Label dan pemberitahuan **Tahap uji** sengaja dipertahankan. Jangan masukkan data operasional nyata atau memakai laporan untuk keperluan resmi sebelum rilis produksi disetujui dan diverifikasi.
+Database `pangsuma-app-prod` (`be808421-88ce-4a48-9dcd-eb0f39ae0314`) menyimpan roster, sesi, pengajuan, audit, dan ledger. Jangan menjalankan bootstrap ulang pada produksi. Saldo pembuka dan saldo petty cash tetap Rp0 sampai pemilik memberikan angka aktual; perubahan autentikasi tidak boleh mengubah kas atau transaksi.
 
-Pekerjaan ini tidak menjalankan migrasi remote, membuat akun produksi, mengimpor data `localStorage`, mengubah DNS, atau memakai Supabase.
+Workflow `.github/workflows/deploy.yml` berjalan pada push ke `main`, memeriksa domain yang sudah terpasang secara read-only, dan memakai Wrangler `4.151.1`. Workflow tidak menambah domain atau mengubah DNS.
 
-Workflow `.github/workflows/deploy.yml` berjalan saat push ke `main`; pemicu manual hanya bekerja pada ref `main`. Sebelum upload, workflow memeriksa domain yang sudah terpasang secara read-only dan gagal alih-alih menambah atau mengubah domain. Deploy memakai Wrangler `4.151.1` dan `wrangler.toml`. Tidak ada workflow yang dijalankan; `main`, produksi, dan DNS tetap tidak berubah.
+## Password dan akses
+
+Pemilik memilih password awal bersama untuk sepuluh akun. Nilainya tidak disimpan dalam source, test, atau dokumentasi. Setiap akun, termasuk Manager, wajib mengganti password tersebut saat masuk pertama kali. Jabatan berbeda dari role aplikasi: hanya Rahmat Saputro menjadi `manager`; sembilan orang lain, termasuk COO, menjadi `user`. Roster dan ID login ada di `functions/_lib/roster.js`.
+
+Browser menjalankan PBKDF2-HMAC-SHA-256 sebanyak 600.000 iterasi dengan salt acak 16 byte. Server menyimpan HMAC-SHA-256 dari hasil derivasi yang diikat ke versi protokol, ID login, jumlah iterasi, dan salt. Secret `PASSWORD_PEPPER` harus berupa base64 kanonis dari 32 byte acak dan disimpan sebagai secret Pages, bukan di D1 atau Git. Tanpa pepper yang benar, autentikasi gagal tertutup. Jangan mengganti atau menghapus pepper tanpa rencana migrasi seluruh verifier.
+
+Protokol ini menghindari batas PBKDF2 pada runtime produksi tanpa menurunkan jumlah iterasi. Nilai derived merupakan kredensial setara password: kirim hanya melalui HTTPS same-origin dan jangan catat payload autentikasi. Hash PBKDF2 lama tidak diterima pada jalur login aktif; migrasi akun yang sudah ada harus dilakukan secara eksplisit dengan otorisasi pemilik.
+
+- `POST /api/auth/password-parameters`: `{email}`; menghasilkan `{version, iterations, salt}` dengan bentuk yang sama untuk akun dikenal dan tidak dikenal.
+- `POST /api/auth/login` (alias `/api/login`): `{email, credential}`. `credential` berisi `{version: "client-pbkdf2-hmac-v1", iterations: 600000, salt, derived, passwordLength}`. Salt dan derived memakai base64 16 dan 32 byte.
+- `POST /api/account/password`: `{currentCredential, newCredential, newCurrentDerived}`. Kredensial baru memakai salt baru; `newCurrentDerived` adalah string hasil derivasi password baru dengan salt lama untuk pemeriksaan password tidak berubah.
+- `POST /api/users/:id/password`: `{credential}`; khusus Manager, menandai wajib ganti password dan membatalkan sesi target.
+- Bootstrap lokal pada database kosong memakai `{managerCredential}` dan header bearer `BOOTSTRAP_TOKEN`; Manager juga wajib mengganti password. Endpoint ini tidak dipakai untuk memperbarui akun produksi.
+
+Password baru berisi 12–128 karakter. Sesi memakai cookie `HttpOnly`, `Secure`, `SameSite=Strict` dengan masa aktif delapan jam. Login dibatasi per akun dan alamat IP. Backend melarang operasi terlindungi sebelum password awal diganti. Pengguna hanya dapat melihat pengajuannya sendiri; pengelolaan akun dan keputusan dibatasi pada Manager. Reset password membatalkan sesi target, sedangkan perubahan sendiri mempertahankan sesi saat ini dan membatalkan sesi lain.
 
 ## Komponen
 
-- `site/` berisi PWA dan antarmuka responsif. Preloader crest Pangsuma tampil selama pemulihan sesi, mengikuti contoh pemilik, dan mematikan animasi jika perangkat meminta reduced motion. Data akun serta transaksi dibaca dan ditulis melalui API same-origin.
-- `functions/` berisi API Pages Functions, middleware keamanan, autentikasi, dan roster bootstrap yang disetujui.
-- `migrations/0001_initial.sql` membuat tabel akun, sesi, laporan, saldo operasional, ledger append-only, audit, dan aturan status.
-- `tests/e2e_local.py` menjalankan alur browser dan API pada Pages Functions serta D1 lokal.
-
-Binding D1 memakai database `pangsuma-app-prod` dengan ID `be808421-88ce-4a48-9dcd-eb0f39ae0314`. Migrasi pada database tersebut belum dijalankan.
-
-## Aturan akses dan pencatatan
-
-Akun masuk memakai password, bukan email OTP. Password disimpan sebagai hash PBKDF2 dan sesi memakai cookie `HttpOnly`, `Secure`, dan `SameSite=Strict`. Login dibatasi per akun dan per alamat IP; tabel percobaan lama dibersihkan dan jumlah record dibatasi. Role Manager dan User diperiksa pada server. User hanya dapat melihat pengajuannya sendiri; keputusan, perubahan password, dan administrasi akun dibatasi di server. Logout hanya menampilkan keadaan keluar setelah server mengonfirmasi penghapusan sesi; respons sesi berakhir menutup dialog dan mengosongkan data/form sensitif.
-
-Bootstrap satu kali membuat roster 10 orang yang disetujui: Rahmat Saputro sebagai Manager dan sembilan User. ID yang tampak seperti alamat email hanya dipakai sebagai ID masuk, bukan bukti bahwa kotak suratnya dapat menerima pesan. Aplikasi tidak mengirim email. Manager mengatur password sementara yang berbeda untuk setiap User melalui aplikasi, lalu menyampaikannya secara pribadi satu per satu; tiap User wajib menggantinya saat login pertama.
-
-Saldo petty cash dimulai dari nol. Persetujuan petty cash mengurangi saldo dalam operasi database yang sama dengan pencatatan debit ledger; permintaan yang sama tidak dapat mendebit dua kali, dan saldo tidak cukup menolak persetujuan. Kunci idempotensi pengajuan terikat pada fingerprint isi, sehingga retry identik aman dan penggunaan ulang dengan isi berbeda ditolak. Saldo awal hanya dapat dimasukkan sekali oleh Manager setelah pemilik mengonfirmasi angka aktual. Ledger dan audit tidak dapat diubah atau dihapus melalui API aplikasi.
-
-Endpoint riwayat memakai cursor dan menampilkan total serta tombol muat-halaman berikutnya. Ekspor Manager menghasilkan satu CSV server-side berisi seluruh pengajuan, ledger, dan audit, bukan hanya item yang sudah dimuat di layar. CSV dibuat bertahap melalui query terurut dan menetralkan sel formula.
+- `site/`: PWA, helper WebCrypto, antarmuka berbasis role, dan service worker. API tidak masuk cache; versi cache harus dinaikkan saat kontrak autentikasi berubah.
+- `functions/`: API Pages Functions, autentikasi, middleware keamanan, dan roster.
+- `migrations/`: skema D1, trigger integritas, audit, dan ledger append-only.
+- `tests/auth_client_protocol_unit.mjs`: pengujian protokol HMAC dan input cacat.
+- `tests/run-password-local.sh` dan `tests/password_flow_e2e.py`: pengujian browser/API autentikasi dengan Pages Functions dan D1 lokal terisolasi.
 
 ## Uji lokal
 
-Gunakan Node.js, Wrangler 4, Python dengan paket Playwright, Chromium di `/usr/bin/chromium`, dan enam nilai lokal untuk fixture E2E. Simpan nilai tersebut di `.dev.vars`, yang diabaikan Git. Gunakan token bootstrap acak minimal 32 karakter dan password uji yang unik, 12 sampai 128 karakter. Jangan menyalin password produksi ke lingkungan uji.
-
-Nama variabel lokal yang dibaca tes:
-
-- `BOOTSTRAP_TOKEN`
-- `LOCAL_MANAGER_PASSWORD`
-- `LOCAL_USER_TEMP_PASSWORD`
-- `LOCAL_USER_NEW_PASSWORD`
-- `LOCAL_SECOND_TEMP_PASSWORD`
-- `LOCAL_SECOND_NEW_PASSWORD`
-
-Jalankan migrasi hanya pada state lokal yang baru. Pilih direktori state yang berbeda untuk tiap run E2E karena tes membuat roster dan data fixture:
+Gunakan Node.js, Wrangler 4, Python dengan Playwright, dan Chromium. Pengujian password baru membuat state serta secret lokal sementara dan tidak menggunakan password atau D1 produksi.
 
 ```sh
-STATE_DIR=/tmp/pangsuma-d1-local-run
-mkdir -p "$STATE_DIR"
-CI=1 npx wrangler d1 migrations apply pangsuma-app-prod --local --persist-to "$STATE_DIR"
+node --test tests/auth_client_protocol_unit.mjs
+bash tests/run-password-local.sh
 ```
 
-Di terminal pertama, jalankan Pages Functions dengan D1 lokal:
+Suite lama `tests/e2e_local.py` dan dokumentasi checklist rilis awal memuat contoh kontrak password sebelumnya. Jangan gunakan contoh payload plaintext tersebut untuk autentikasi baru; gunakan kontrak di atas. Semua pengujian D1 harus memakai `--local`, bukan `--remote`.
 
-```sh
-npx wrangler pages dev site --port 8788 --persist-to "$STATE_DIR" --ip 127.0.0.1
-```
+## Integritas keuangan
 
-Di terminal kedua, jalankan tes:
-
-```sh
-PANGSUMA_LOCAL_STATE_DIR=/tmp/pangsuma-d1-local-run python3 tests/e2e_local.py
-```
-
-`PANGSUMA_LOCAL_URL` dapat diatur bila alamat lokal berbeda; default-nya `http://localhost:8788`. Path pada `PANGSUMA_LOCAL_STATE_DIR` harus sama dengan `--persist-to` server lokal; tes memakai Wrangler dengan flag `--local` secara eksplisit untuk memeriksa pruning limiter. Tes memeriksa preloader saat request sesi tertunda dan reduced motion, bootstrap, password dan role, isolasi data, persetujuan dan debit petty cash, penolakan, Finance, audit, logout gagal dan 401 pada dialog, replay idempotensi berbeda, throttling per akun/IP, pembersihan dan batas record login, halaman riwayat yang melampaui 500/100 record, CSV lengkap, penonaktifan akun tanpa menghapus riwayat, navigasi keyboard, serta overflow pada beberapa lebar dan orientasi landscape. Screenshot dan ekspor tes disimpan di `/tmp`.
-
-Jangan menambahkan `--remote` pada perintah migrasi atau pengujian lokal.
-
-## Syarat sebelum aktivasi produksi
-
-Jangan push ke `main`, deploy, memigrasikan database produksi, membuat secret Cloudflare, menjalankan bootstrap, atau menghapus pemberitahuan **Tahap uji** sebelum pemilik menyetujui tinjauan akhir kode, preview lokal, dan checklist rilis di `docs/production-release-checklist.md`.
-
-Angka saldo pembuka tidak diperlukan untuk rilis awal: petty cash tetap Rp0. Jangan menetapkan saldo awal sampai pemilik memberikan jumlah aktual. Setelah persetujuan, password awal Manager yang sudah disimpan terpisah hanya boleh dipakai pada bootstrap aman; jangan masukkan ke source, commit, atau log. Manager mengatur sembilan password sementara unik dan menyampaikannya secara pribadi satu per satu. Minta setiap User mengganti password saat login pertama.
-
-Migrasi remote dan secret `BOOTSTRAP_TOKEN` tetap merupakan langkah produksi yang harus menunggu persetujuan pemilik. Jika domain `app.pangsumafc.com` belum terpasang pada proyek Pages, workflow yang diperbarui akan berhenti dan meminta keputusan terpisah; workflow tidak akan menambahkan domain atau mengubah DNS. Pemberitahuan **Tahap uji** hanya boleh dihapus setelah rilis disetujui dan autentikasi serta persistence terverifikasi pada produksi.
+Persetujuan petty cash mengurangi saldo dalam operasi database yang sama dengan ledger. Trigger menolak saldo tidak cukup dan debit ganda. Kunci idempotensi terikat pada fingerprint pengajuan. Saldo awal hanya dapat dimasukkan sekali setelah nominal aktual disetujui pemilik. Ledger dan audit tidak dapat diubah atau dihapus melalui API. Riwayat memakai cursor dan ekspor CSV Manager mencakup seluruh data, dengan penetralan sel formula.

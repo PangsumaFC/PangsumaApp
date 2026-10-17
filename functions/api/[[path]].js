@@ -13,12 +13,13 @@ import {
   createSession,
   deleteCurrentSession,
   getSessionUser,
-  hashPassword,
+  getPasswordParameters,
+  hashClientCredential,
+  verifyClientCredential,
   readSessionToken,
   safeUser,
   secretMatches,
-  sha256Hex,
-  verifyPassword
+  sha256Hex
 } from '../_lib/auth.js';
 import { INITIAL_ROSTER, MANAGER_EMAIL } from '../_lib/roster.js';
 import { handlePasskeyApi } from '../_lib/webauthn.js';
@@ -200,7 +201,7 @@ async function login(context, db) {
   const body = await readJson(request);
   const email = normalizedEmail(body.email);
   const emailKey = email || String(body.email || '').trim().toLowerCase().slice(0, 180);
-  const password = typeof body.password === 'string' && body.password.length <= 128 ? body.password : '';
+  const credential = body.credential;
   const accountKey = await rateKey('account', emailKey || 'invalid-identifier');
   const ipKey = await rateKey('ip', clientAddress(request));
   const nowMs = Date.now();
@@ -218,7 +219,7 @@ async function login(context, db) {
     WHERE email = ? COLLATE NOCASE AND is_active = 1
     LIMIT 1
   `).bind(email).first() : null;
-  const passwordValid = await verifyPassword(password, user?.password_hash || null);
+  const passwordValid = await verifyClientCredential(credential, user?.password_hash || null, user?.email || email, context.env);
   if (!user || !user.password_hash || !passwordValid) {
     await db.batch([
       recordLoginFailure(db, accountKey, nowMs, LOGIN_FAILURE_LIMIT),
@@ -236,6 +237,18 @@ async function login(context, db) {
   }, 200, { 'Set-Cookie': session.cookie });
 }
 
+async function passwordParameters(context, db) {
+  const { request, env } = context;
+  ensureMethod(request, 'POST');
+  ensureSameOrigin(request);
+  const body = await readJson(request, 2_000);
+  const email = normalizedEmail(body.email);
+  if (!email) throw new ApiError(400, 'invalid_login_id', 'ID masuk tidak valid.');
+  const row = await db.prepare('SELECT email, password_hash FROM users WHERE email = ? COLLATE NOCASE AND is_active = 1 LIMIT 1').bind(email).first();
+  const parameters = await getPasswordParameters(row?.password_hash || null, email, env);
+  return jsonResponse(parameters);
+}
+
 async function bootstrap(context, db) {
   const { request, env } = context;
   ensureMethod(request, 'POST');
@@ -246,13 +259,14 @@ async function bootstrap(context, db) {
     throw new ApiError(404, 'not_found', 'Endpoint tidak ditemukan.');
   }
   const body = await readJson(request);
-  const managerPassword = requirePassword(body.managerPassword, 'Password Manager');
+  const managerCredential = body.managerCredential;
+  if (!managerCredential || typeof managerCredential !== 'object') throw new ApiError(400, 'invalid_credential', 'Kredensial password tidak valid.');
   const existing = await db.prepare('SELECT COUNT(*) AS count FROM users').first();
   if (Number(existing?.count || 0) > 0) {
     throw new ApiError(409, 'already_initialized', 'Akun awal sudah disiapkan.');
   }
 
-  const managerHash = await hashPassword(managerPassword);
+  const managerHash = await hashClientCredential(managerCredential, MANAGER_EMAIL, env);
   const createdAt = nowIso();
   const manager = INITIAL_ROSTER.find(person => person.email === MANAGER_EMAIL);
   const testManagerId = env.WEBAUTHN_PROFILE === 'test' && typeof env.PASSKEY_MANAGER_ID === 'string'
@@ -275,7 +289,7 @@ async function bootstrap(context, db) {
     person.position,
     person.role,
     person.email === MANAGER_EMAIL ? managerHash : null,
-    person.email === MANAGER_EMAIL ? 0 : 1,
+    1,
     createdAt,
     createdAt
   ));
@@ -806,11 +820,10 @@ async function resetUserPassword(context, db, id) {
   const actor = await requireUser(request, db);
   requireManager(actor);
   if (!UUID_PATTERN.test(id)) throw new ApiError(404, 'user_not_found', 'Pengguna tidak ditemukan.');
-  const target = await db.prepare("SELECT id, role, is_active FROM users WHERE id = ? LIMIT 1").bind(id).first();
+  const target = await db.prepare("SELECT id, email, role, is_active FROM users WHERE id = ? LIMIT 1").bind(id).first();
   if (!target || target.role !== 'user' || !target.is_active) throw new ApiError(404, 'user_not_found', 'Pengguna aktif tidak ditemukan.');
   const body = await readJson(request);
-  const password = requirePassword(body.temporaryPassword, 'Password sementara');
-  const encoded = await hashPassword(password);
+  const encoded = await hashClientCredential(body.credential, target.email, context.env);
   const updatedAt = nowIso();
   const result = await db.batch([
     db.prepare(`
@@ -856,14 +869,19 @@ async function changeOwnPassword(context, db) {
   ensureSameOrigin(request);
   const actor = await requireUser(request, db, { allowPasswordChange: true });
   const body = await readJson(request);
-  const currentPassword = typeof body.currentPassword === 'string' && body.currentPassword.length <= 128 ? body.currentPassword : '';
-  const newPassword = requirePassword(body.newPassword, 'Password baru');
+  const currentCredential = body.currentCredential;
+  const newCredential = body.newCredential;
   const row = await db.prepare('SELECT password_hash FROM users WHERE id = ? AND is_active = 1 LIMIT 1').bind(actor.id).first();
-  if (!row?.password_hash || !await verifyPassword(currentPassword, row.password_hash)) {
+  if (!row?.password_hash || !await verifyClientCredential(currentCredential, row.password_hash, actor.email, context.env)) {
     throw new ApiError(401, 'current_password_incorrect', 'Password saat ini tidak sesuai.');
   }
-  if (currentPassword === newPassword) throw new ApiError(400, 'password_unchanged', 'Gunakan password baru yang berbeda.');
-  const encoded = await hashPassword(newPassword);
+  const encoded = await hashClientCredential(newCredential, actor.email, context.env);
+  const currentParts = String(row.password_hash).split('$');
+  if (currentParts.length !== 4 || newCredential?.salt === currentParts[2]) throw new ApiError(400, 'password_salt_reused', 'Gunakan salt baru untuk password baru.');
+  if (typeof body.newCurrentDerived !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(body.newCurrentDerived)) {
+    throw new ApiError(400, 'invalid_credential', 'Bukti password baru tidak valid.');
+  }
+  if (await verifyClientCredential({ ...newCredential, salt: currentParts[2], derived: body.newCurrentDerived }, row.password_hash, actor.email, context.env)) throw new ApiError(400, 'password_unchanged', 'Gunakan password baru yang berbeda.');
   const updatedAt = nowIso();
   const result = await db.prepare(`
     UPDATE users
@@ -1016,7 +1034,8 @@ async function dispatch(context, db, path) {
     return jsonResponse({ ok: true, service: 'pangsuma-api', database: 'ready' });
   }
   if (path === '/bootstrap') return bootstrap(context, db);
-  if (path === '/login') return login(context, db);
+  if (path === '/password-parameters' || path === '/auth/password-parameters') return passwordParameters(context, db);
+  if (path === '/login' || path === '/auth/login') return login(context, db);
   if (path === '/session') return session(context, db);
   if (path === '/logout') return logout(context, db);
   if (path === '/overview') return overview(context, db);

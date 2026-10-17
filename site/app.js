@@ -702,9 +702,12 @@ async function performUserPasswordReset(event) {
   const button = $('#userPasswordSubmit');
   setButtonBusy(button, true, 'Menyimpan password…');
   try {
+    const target = state.users.find(user => user.id === resetTargetId);
+    if (!target?.email) throw new Error('Akun pengguna tidak ditemukan. Muat ulang halaman lalu coba lagi.');
+    const credential = await PasswordCrypto.deriveWithRandomSalt($('#temporaryPassword').value);
     await api(`/users/${encodeURIComponent(resetTargetId)}/password`, {
       method: 'POST',
-      body: { temporaryPassword: $('#temporaryPassword').value }
+      body: { credential }
     });
     closeDialogs();
     form.reset();
@@ -724,6 +727,7 @@ async function performPasswordChange(event) {
   const form = $('#passwordForm');
   if (!form.reportValidity()) return;
   const errorBox = $('#passwordError');
+  const currentPassword = $('#currentPassword').value;
   const newPassword = $('#newPassword').value;
   if (newPassword !== $('#confirmPassword').value) {
     errorBox.textContent = 'Password baru tidak sama. Periksa kembali kedua kolom.';
@@ -735,9 +739,17 @@ async function performPasswordChange(event) {
   const button = form.querySelector('[type="submit"]');
   setButtonBusy(button, true, 'Menyimpan password…');
   try {
+    if (!state.user?.email) throw new Error('Sesi pengguna tidak tersedia. Masuk kembali lalu coba lagi.');
+    const parameters = await api('/auth/password-parameters', {
+      method: 'POST',
+      body: { email: state.user.email }
+    });
+    const currentCredential = await PasswordCrypto.derive(currentPassword, parameters);
+    const newCredential = await PasswordCrypto.deriveWithRandomSalt(newPassword);
+    const newCurrentDerived = await PasswordCrypto.derive(newPassword, parameters);
     const result = await api('/account/password', {
       method: 'POST',
-      body: { currentPassword: $('#currentPassword').value, newPassword }
+      body: { currentCredential, newCredential, newCurrentDerived: newCurrentDerived.derived }
     });
     state.user = result.user;
     await refreshOverview();
@@ -1096,7 +1108,9 @@ async function performLogin(event) {
   const password = $('#loginPassword').value;
   setButtonBusy(button, true, 'Memeriksa akun…');
   try {
-    const result = await api('/login', { method: 'POST', body: { email, password } });
+    const parameters = await api('/auth/password-parameters', { method: 'POST', body: { email } });
+    const credential = await PasswordCrypto.derive(password, parameters);
+    const result = await api('/login', { method: 'POST', body: { email, credential } });
     await completeLogin(result, form);
   } catch (error) {
     $('#loginError').textContent = friendlyError(error);
