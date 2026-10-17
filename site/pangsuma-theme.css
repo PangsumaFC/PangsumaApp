@@ -63,7 +63,6 @@ body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobil
 .brand-name { color: var(--blue-deep); font-family: var(--display-font); font-size: 19px; font-weight: 720; letter-spacing: -.035em; line-height: 1.15; }
 .brand-sub { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
-.demo-label { display: inline-flex; min-height: 30px; align-items: center; padding: 3px 9px; border-radius: 8px; background: var(--gold-pale); color: #594715; font-size: 12px; font-weight: 650; }
 .account-meta { display: grid; min-width: 0; gap: 2px; }
 .account-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .account-detail { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--muted); font-size: 11px; line-height: 1.3; }
@@ -344,7 +343,7 @@ tr:last-child td { border-bottom: 0; }
   .brand { gap: 8px; }
   .brand img { width: 38px; height: 38px; }
   .brand-name { font-size: 17px; }
-  .brand-sub, .demo-label, .account-meta, .install-button { display: none; }
+  .brand-sub, .account-meta, .install-button { display: none; }
   .top-actions { flex: none; gap: 0; }
   .logout-button { min-height: 44px; padding: 7px 12px; border-radius: 12px; font-size: 13px; }
   .app-shell { display: block; min-height: 0; flex: 1; overflow: hidden; }

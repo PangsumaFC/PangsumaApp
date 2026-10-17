@@ -94,7 +94,6 @@
               </form>
             </details>
           </section>
-          <p class="login-footnote"><strong>Tahap uji.</strong> Jangan masukkan data operasional atau gunakan laporan sebagai dokumen resmi sebelum pemilik mengaktifkan rilis.</p>
         </div>
       </div>
     </div>
@@ -106,7 +105,6 @@
       <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
-      <span class="demo-label">Tahap uji</span>
       <div class="account-meta" id="accountMeta" aria-label="Identitas pengguna">
         <span class="account-name" id="accountName"></span>
         <span class="account-detail" id="accountRole"></span>
@@ -130,7 +128,6 @@
     </aside>
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
-        <div class="notice" id="demoDisclosure" role="note">Versi uji belum disetujui untuk operasional. Jangan masukkan data nyata atau memakai laporan untuk keperluan resmi.</div>
         <div id="appContent" aria-live="off"></div>
       </div>
     </main>
@@ -187,7 +184,7 @@
   <dialog class="app-dialog" id="openingBalanceDialog" aria-labelledby="openingBalanceTitle" aria-describedby="openingBalanceDescription">
     <form class="dialog-panel" id="openingBalanceForm">
       <div class="dialog-heading"><div><p class="choice-kicker">Keuangan operasional</p><h2 id="openingBalanceTitle">Tetapkan saldo awal</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
-      <p class="dialog-description" id="openingBalanceDescription">Saldo hanya dapat ditetapkan satu kali. Isi nilai aktual yang sudah dikonfirmasi pemilik. Jangan gunakan perkiraan atau data demo.</p>
+      <p class="dialog-description" id="openingBalanceDescription">Saldo hanya dapat ditetapkan satu kali. Masukkan nilai aktual yang diberikan pemilik, bukan perkiraan.</p>
       <div class="field"><label for="openingAmount">Saldo awal (rupiah)</label><input id="openingAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Masukkan angka dari pemilik"></div>
       <label class="confirmation-check"><input id="ownerConfirmed" name="ownerConfirmed" type="checkbox" required><span>Saya mengonfirmasi angka ini diberikan pemilik sebagai saldo awal aktual.</span></label>
       <div class="form-note">Nilai ini dan nama Manager dicatat pada ledger serta riwayat audit.</div>
