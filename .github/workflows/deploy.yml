@@ -27,3 +27,37 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+
+      - name: Ensure custom domain is attached
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+        run: |
+          set -euo pipefail
+          domain="app.pangsumafc.com"
+          endpoint="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/pangsuma-app/domains"
+
+          current="$(curl --fail --silent --show-error "$endpoint" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json')"
+          if ! jq -e '.success == true' <<< "$current" >/dev/null; then
+            jq -c '{success, errors}' <<< "$current" >&2
+            exit 1
+          fi
+
+          if jq -e --arg domain "$domain" 'any(.result[]?; .name == $domain)' <<< "$current" >/dev/null; then
+            record="$(jq -c --arg domain "$domain" '.result[] | select(.name == $domain)' <<< "$current")"
+          else
+            created="$(curl --fail --silent --show-error --request POST "$endpoint" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -cn --arg name "$domain" '{name: $name}')")"
+            if ! jq -e '.success == true' <<< "$created" >/dev/null; then
+              jq -c '{success, errors}' <<< "$created" >&2
+              exit 1
+            fi
+            record="$(jq -c '.result' <<< "$created")"
+          fi
+
+          jq -c '{name, status, validation_status: (.validation_data.status // null), verification_status: (.verification_data.status // null)}' <<< "$record"
