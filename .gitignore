@@ -1,0 +1,11 @@
+# Cloudflare local runtime state
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Local dependencies and test artifacts
+node_modules/
+coverage/
+playwright-report/
+test-results/

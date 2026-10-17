@@ -1,0 +1,10 @@
+name = "pangsuma-app"
+compatibility_date = "2026-10-17"
+pages_build_output_dir = "./site"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pangsuma-app-prod"
+database_id = "be808421-88ce-4a48-9dcd-eb0f39ae0314"
+preview_database_id = "DB"
+migrations_dir = "migrations"

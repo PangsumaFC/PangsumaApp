@@ -4,282 +4,58 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
-  <meta name="description" content="Prototipe Pangsuma App untuk laporan harian, petty cash, dan request Finance.">
-  <title>Pangsuma App | Laporan operasional</title>
+  <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
+  <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <style>
-    :root {
-      color-scheme: light;
-      --blue: #1557a6;
-      --blue-deep: #0d315b;
-      --blue-soft: #eaf2fc;
-      --gold: #d5a62e;
-      --gold-pale: #f8f1dc;
-      --ink: #172536;
-      --muted: #57687b;
-      --canvas: #f5f7fa;
-      --paper: #ffffff;
-      --line: #dbe3ed;
-      --green: #23704c;
-      --green-pale: #e8f4ed;
-      --red: #a33b36;
-      --red-pale: #faedeb;
-      --radius-sm: 8px;
-      --radius-md: 13px;
-      --radius-lg: 18px;
-      --shadow: 0 8px 24px rgba(17, 44, 77, .07);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-synthesis: none;
-      text-rendering: optimizeLegibility;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; color: var(--ink); background: var(--canvas); font-size: 15px; line-height: 1.5; }
-    button, input, select, textarea { font: inherit; }
-    button { cursor: pointer; }
-    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
-      outline: 3px solid #e2b848; outline-offset: 2px;
-    }
-    .topbar {
-      min-height: 72px; background: var(--paper); border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-      padding: 10px clamp(16px, 3vw, 34px); position: relative; z-index: 2;
-    }
-    .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-    .brand img { display: block; width: 44px; height: 44px; object-fit: contain; flex: none; }
-    .brand-name { font-weight: 760; letter-spacing: -.035em; font-size: 17px; line-height: 1.15; }
-    .brand-sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
-    .top-actions { display: flex; gap: 10px; align-items: center; }
-    .demo-label { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 9px; border-radius: 6px; background: var(--gold-pale); color: #5c4712; font-size: 12px; font-weight: 680; }
-    .role-wrap { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-    .role-wrap select { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); padding: 8px 30px 8px 10px; min-height: 42px; }
-    .install-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); background: white; color: var(--blue-deep); border-radius: var(--radius-sm); padding: 8px 12px; min-height: 42px; font-weight: 650; }
-    .install-button:hover, .quiet-button:hover { background: #f4f7fb; }
-    .app-shell { min-height: calc(100vh - 72px); display: grid; grid-template-columns: 224px minmax(0, 1fr); }
-    .sidebar { border-right: 1px solid var(--line); background: #fff; padding: 22px 14px; display: flex; flex-direction: column; gap: 22px; }
-    .nav-caption { color: #6c7887; padding: 0 10px; font-size: 11px; letter-spacing: .045em; margin: 0 0 5px; }
-    .nav-list { display: grid; gap: 4px; }
-    .nav-button { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 11px; border: 0; background: transparent; color: #46586c; text-align: left; padding: 9px 11px; border-radius: 9px; font-weight: 560; }
-    .nav-button svg { width: 19px; height: 19px; flex: none; }
-    .nav-button:hover { background: #edf2f8; color: var(--blue-deep); }
-    .sidebar .nav-button[aria-current="page"] { position: relative; background: var(--blue-deep); color: #fff; font-weight: 680; }
-    /* Garis emas menandai lokasi aktif; aksen ini tidak dipakai sebagai dekorasi umum. */
-    .sidebar .nav-button[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; background: var(--gold); }
-    .side-note { margin-top: auto; padding: 13px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-    .side-note strong { display: block; color: var(--ink); margin-bottom: 3px; font-size: 13px; }
-    main { padding: clamp(19px, 3vw, 34px); min-width: 0; width: 100%; max-width: 1300px; margin: 0 auto; }
-    .main-inner { max-width: 1120px; margin: 0 auto; }
-    .notice { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid #ead9a5; border-radius: var(--radius-sm); background: #fbf7e9; color: #51451f; font-size: 13px; margin-bottom: 23px; }
-    .notice svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
-    .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 21px; }
-    h1 { font-size: clamp(25px, 3.2vw, 34px); line-height: 1.14; letter-spacing: -.04em; margin: 0; }
-    .page-description { margin: 7px 0 0; color: var(--muted); max-width: 65ch; }
-    .date-label { color: var(--muted); white-space: nowrap; font-size: 13px; }
-    .hero-panel { background: var(--blue-deep); color: #fff; border-radius: var(--radius-md); padding: clamp(17px, 2.4vw, 23px); position: relative; overflow: hidden; margin-bottom: 18px; }
-    .hero-panel::after { display: none; }
-    .hero-content { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; }
-    .hero-kicker { color: #e9c660; font-size: 13px; font-weight: 650; margin-bottom: 4px; }
-    .hero-panel h2 { font-size: clamp(21px, 2.7vw, 28px); letter-spacing: -.03em; margin: 0; line-height: 1.2; }
-    .hero-panel p { color: #d6e2ef; margin: 8px 0 0; max-width: 55ch; font-size: 14px; }
-    .hero-stat { min-width: 115px; text-align: right; padding-right: 6px; }
-    .hero-stat strong { display: block; font-size: clamp(38px, 5vw, 54px); line-height: 1; letter-spacing: -.06em; color: #f0ca59; }
-    .hero-stat span { display: block; margin-top: 6px; font-size: 12px; color: #d7e2ee; }
-    .balance-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .balance-panel span { color: #d7e2ee; }
-    .balance-panel strong { color: #f0ca59; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.04em; white-space: nowrap; }
-    .hero-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 21px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.18); }
-    .progress-track { height: 7px; background: rgba(255,255,255,.2); border-radius: 10px; overflow: hidden; flex: 1; }
-    .progress-fill { height: 100%; background: var(--gold); border-radius: inherit; transition: width .2s ease; }
-    .progress-caption { color: #e0e8f1; font-size: 12px; white-space: nowrap; }
-    .primary-button, .secondary-button, .quiet-button, .danger-button {
-      min-height: 44px; border-radius: var(--radius-sm); padding: 9px 14px; border: 1px solid transparent; font-weight: 660; transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
-    }
-    .primary-button { background: var(--blue); color: #fff; }
-    .primary-button:hover { background: #104884; }
-    .hero-panel .primary-button { background: #e5bb4c; color: #152a40; }
-    .hero-panel .primary-button:hover { background: #f0ca63; }
-    .secondary-button { background: #fff; color: var(--blue-deep); border-color: var(--line); }
-    .secondary-button:hover { background: #f4f7fb; border-color: #b8c8dc; }
-    .quiet-button { background: transparent; color: var(--blue); border-color: #c8d7e8; }
-    .danger-button { background: #fff; color: var(--red); border-color: #e4c4c1; }
-    button:disabled { cursor: not-allowed; opacity: .55; }
-    .hero-panel button { flex: none; }
-    .metric-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin: 18px 0 24px; border-block: 1px solid var(--line); background: var(--paper); }
-    .metric { padding: 13px 16px; background: transparent; border: 0; border-right: 1px solid var(--line); border-radius: 0; min-width: 0; }
-    .metric:last-child { border-right: 0; }
-    .metric-label { color: var(--muted); font-size: 12px; }
-    .metric-value { font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.035em; font-weight: 730; margin-top: 3px; }
-    .metric-detail { display: none; }
-    .section-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 24px 0 11px; }
-    .section-row h2 { font-size: 17px; margin: 0; letter-spacing: -.02em; }
-    .section-row p { display: none; }
-    .text-button { border: 0; background: none; color: var(--blue); text-decoration: underline; text-underline-offset: 3px; padding: 8px; min-height: 44px; font-weight: 650; }
-    .division-list { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
-    .division-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 13px 16px; min-height: 62px; border-bottom: 1px solid #e7ecf2; }
-    .division-row:last-child { border-bottom: 0; }
-    .division-name { font-weight: 640; }
-    .division-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .status { display: inline-flex; justify-content: center; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 650; white-space: nowrap; }
-    .status-ok { background: var(--green-pale); color: #225e42; }
-    .status-wait { background: var(--gold-pale); color: #695213; }
-    .status-neutral { background: #edf1f5; color: #495a6b; }
-    .surface { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); }
-    .surface-pad { padding: 18px; }
-    .two-col { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 16px; align-items: start; }
-    .list-stack { display: grid; gap: 10px; }
-    .item-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
-    .item-title { font-weight: 680; }
-    .item-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
-    .item-amount { font-weight: 730; white-space: nowrap; text-align: right; }
-    .item-actions { grid-column: 1/-1; display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid #edf0f4; }
-    .item-actions button { min-height: 42px; }
-    .type-label { display: none; }
-    .form-card { max-width: 760px; padding: clamp(17px, 3vw, 25px); }
-    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 15px; }
-    .field { display: grid; gap: 6px; min-width: 0; }
-    .field-full { grid-column: 1/-1; }
-    .field label { font-size: 13px; font-weight: 650; }
-    .field input, .field select, .field textarea { min-height: 44px; width: 100%; border: 1px solid #cbd6e3; border-radius: var(--radius-sm); padding: 10px 11px; color: var(--ink); background: #fff; }
-    .field textarea { min-height: 98px; resize: vertical; }
-    .field-help { color: var(--muted); font-size: 12px; }
-    .form-note { padding: 12px; margin: 17px 0; border-radius: 8px; background: #f3f6fa; color: #4e5f73; font-size: 13px; }
-    .form-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
-    .empty-state { padding: 28px 18px; text-align: center; color: var(--muted); }
-    .empty-state strong { display: block; color: var(--ink); margin-bottom: 4px; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fff; }
-    table { width: 100%; border-collapse: collapse; text-align: left; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid #e7ecf2; vertical-align: middle; }
-    th { font-size: 12px; font-weight: 650; color: #526275; background: #f7f9fc; white-space: nowrap; }
-    td { font-size: 13px; }
-    tr:last-child td { border-bottom: 0; }
-    .user-initial { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--blue-soft); color: var(--blue-deep); font-weight: 700; margin-right: 8px; vertical-align: middle; }
-    .page-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 20px 0 32px; margin-top: 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-    .page-footer details { max-width: 700px; }
-    .page-footer summary { cursor: pointer; color: var(--blue-deep); font-weight: 650; min-height: 36px; }
-    .page-footer details p { margin: 5px 0; }
-    .mobile-nav { display: none; }
-    .toast { position: fixed; z-index: 5; left: 50%; bottom: 25px; transform: translate(-50%, 16px); opacity: 0; pointer-events: none; max-width: min(92vw, 530px); width: max-content; padding: 12px 15px; border-radius: 9px; background: #18324e; color: #fff; box-shadow: var(--shadow); transition: opacity .18s ease, transform .18s ease; }
-    .toast.show { opacity: 1; transform: translate(-50%, 0); }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-    [hidden] { display: none !important; }
-    body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobile-nav, body.logged-out > #toast { display: none !important; }
-    .login-screen { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow-y: auto; padding: clamp(18px, 5vw, 56px); background: var(--canvas); }
-    .login-panel { width: min(100%, 460px); min-height: 0; display: block; background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--gold); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 10px 28px rgba(17, 44, 77, .08); }
-    .login-intro { display: none; }
-    .login-brand { display: flex; align-items: center; gap: 12px; }
-    .login-brand img { width: 48px; height: 48px; object-fit: contain; }
-    .login-brand strong { font-size: 16px; letter-spacing: -.025em; }
-    .login-brand span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .login-kicker { margin: auto 0 11px; color: #e9c660; font-size: 13px; font-weight: 680; }
-    .login-intro h1 { max-width: 11ch; font-size: clamp(29px, 4vw, 43px); line-height: 1.08; letter-spacing: -.045em; }
-    .login-intro > p { max-width: 39ch; color: #d6e2ef; margin: 13px 0 0; }
-    .login-safety { margin-top: auto; padding-top: 19px; border-top: 1px solid rgba(255,255,255,.2); color: #e2eaf2; font-size: 12px; line-height: 1.55; }
-    .login-safety strong { display: block; color: #f0ca59; margin-bottom: 4px; }
-    .login-form-panel { display: grid; align-items: center; padding: clamp(24px, 5vw, 38px); }
-    .login-form-content { width: 100%; margin-inline: auto; }
-    .login-form-content h1 { margin: 26px 0 0; font-size: clamp(23px, 3vw, 28px); letter-spacing: -.035em; }
-    .login-form { display: grid; gap: 15px; margin-top: 18px; }
-    .login-field { display: grid; gap: 6px; }
-    .login-field label { font-size: 13px; font-weight: 650; }
-    .login-field input { width: 100%; min-height: 48px; padding: 11px 12px; border: 1px solid #cbd6e3; border-radius: var(--radius-sm); background: #fff; color: var(--ink); }
-    .login-field input::placeholder { color: #718096; }
-    .login-submit { width: 100%; min-height: 48px; margin-top: 3px; }
-    .login-error { margin: 0; padding: 10px 12px; border: 1px solid #e4c4c1; border-radius: var(--radius-sm); background: var(--red-pale); color: #7d2925; font-size: 13px; }
-    .login-footnote { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-    .login-footnote strong { color: var(--blue-deep); }
-    .account-meta { display: grid; gap: 2px; min-width: 0; }
-    .account-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-    .account-detail { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--muted); font-size: 11px; line-height: 1.3; }
-    .account-access strong { color: var(--blue-deep); }
-    .logout-button { white-space: nowrap; }
-    @media (max-width: 850px) {
-      .app-shell { grid-template-columns: 190px minmax(0,1fr); }
-      .sidebar { padding-inline: 10px; }
-      main { padding: 22px 18px; }
-      .two-col { grid-template-columns: minmax(0,1fr); }
-    }
-    @media (max-width: 760px) {
-      .login-panel { grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr); min-height: 0; }
-      .login-intro { padding: 25px; }
-      .login-form-panel { padding: 28px 24px; }
-    }
-    @media (max-width: 640px) {
-      body { font-size: 14px; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-      .topbar { min-height: 64px; flex: none; padding: 8px 14px; }
-      .brand img { width: 38px; height: 38px; }
-      .brand-sub, .role-wrap span { display: none; }
-      .brand-name { font-size: 15px; }
-      .topbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 8px; padding: 7px 11px; }
-      .brand { min-width: 0; }
-      .top-actions { display: grid; grid-template-columns: minmax(92px,1fr) auto auto; grid-template-rows: auto auto; align-items: center; gap: 1px 5px; }
-      .demo-label { font-size: 11px; padding: 3px 7px; }
-      .account-meta { max-width: 142px; }
-      .account-name { font-size: 11px; }
-      .account-detail { font-size: 10px; gap: 1px 5px; }
-      .logout-button { grid-column: 2; grid-row: 1/3; min-height: 42px; padding: 6px 8px; font-size: 12px; }
-      .install-button { width: 42px; padding: 0; font-size: 0; }
-      .top-actions .demo-label { grid-column: 1; grid-row: 1; justify-self: start; }
-      .top-actions .account-meta { grid-column: 1; grid-row: 2; }
-      .top-actions .install-button { grid-column: 3; grid-row: 1/3; }
-      .install-button svg { width: 18px; height: 18px; }
-      .app-shell { display: block; flex: 1; min-height: 0; overflow: hidden; }
-      .sidebar { display: none; }
-      main { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 17px 14px 24px; max-width: none; }
-      .notice { margin-bottom: 18px; font-size: 12px; }
-      .page-heading { align-items: flex-start; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-      .date-label { white-space: normal; }
-      .hero-panel { border-radius: 14px; padding: 18px 16px; margin-bottom: 14px; }
-      .hero-content { grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-      .hero-stat { min-width: 62px; padding-right: 0; }
-      .hero-stat strong { font-size: 38px; }
-      .hero-stat span { max-width: 72px; margin-left: auto; }
-      .hero-footer { align-items: flex-start; flex-wrap: wrap; margin-top: 17px; }
-      .hero-footer .progress-track { order: 1; flex-basis: 100%; }
-      .hero-footer .progress-caption { order: 2; }
-      .hero-panel .primary-button { order: 3; }
-      .metric-row { grid-template-columns: 1fr 1fr; gap: 0; margin: 14px 0 21px; }
-      .metric:last-child:nth-child(odd) { grid-column: 1/-1; }
-      .metric { padding: 11px 10px; border-bottom: 1px solid var(--line); }
-      .metric:nth-child(2) { border-right: 0; }
-      .metric:last-child { border-bottom: 0; }
-      .metric-value { font-size: 20px; }
-      .section-row { margin-top: 21px; align-items: flex-start; }
-      .division-row { grid-template-columns: minmax(0,1fr) auto; padding: 12px; gap: 7px 9px; }
-      .division-row .status { grid-column: 2; grid-row: 1/3; }
-      .division-row .division-meta { grid-column: 1; }
-      .item-row { padding: 12px; }
-      .form-grid { grid-template-columns: minmax(0,1fr); }
-      .field-full { grid-column: auto; }
-      .surface-pad { padding: 14px; }
-      .mobile-nav { position: static; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); flex: none; width: 100%; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.98); border-top: 1px solid var(--line); }
-      .mobile-nav .nav-button { min-height: 52px; border-radius: 8px; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 2px; font-size: 10px; line-height: 1.15; }
-      .mobile-nav .nav-button svg { width: 18px; height: 18px; }
-      .mobile-nav .nav-button[aria-current="page"] { background: var(--blue-soft); color: var(--blue-deep); font-weight: 700; }
-      .page-footer { padding-bottom: 10px; }
-      .table-wrap { border: 0; background: transparent; overflow: visible; }
-      table, tbody, tr, td { display: block; width: 100%; }
-      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-      tbody { display: grid; gap: 9px; }
-      tr { background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; }
-      td { display: grid; grid-template-columns: minmax(94px, .6fr) minmax(0,1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid #edf0f4; }
-      td:last-child { border-bottom: 0; }
-      td::before { content: attr(data-label); color: var(--muted); font-size: 11px; }
-      .login-screen { align-items: start; padding: 12px; }
-      .login-panel { width: 100%; border-radius: 14px; }
-      .login-brand img { width: 38px; height: 38px; }
-      .login-form-content h1 { margin-top: 20px; font-size: 25px; }
-      .login-form-panel { padding: 22px 18px; }
-      .login-form { gap: 12px; margin-top: 16px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-    }
-  </style>
   <link rel="stylesheet" href="/pangsuma-theme.css">
+  <script src="/app.js" defer></script>
 </head>
-<body class="logged-out">
+<body class="logged-out" aria-busy="true">
+  <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
+    <span class="sr-only">Memuat Pangsuma App. Mohon tunggu.</span>
+    <div class="pangsuma-loader-art" aria-hidden="true">
+      <svg viewBox="0 0 400 400" focusable="false">
+        <defs>
+          <path id="pangsumaTopArcPath" d="M 68,200 A 132,132 0 0,1 332,200" />
+          <path id="pangsumaBottomArcPath" d="M 332,200 A 132,132 0 0,1 68,200" />
+          <clipPath id="pangsumaInnerCircleClip"><circle cx="200" cy="200" r="114" /></clipPath>
+        </defs>
+        <g class="pangsuma-loader-ring">
+          <circle cx="200" cy="200" r="185" fill="#155AAB" stroke="#E5C158" stroke-width="4" />
+          <circle cx="200" cy="200" r="120" fill="#E5C158" stroke="#155AAB" stroke-width="3" />
+          <text fill="#FFFFFF" font-family="sans-serif" font-weight="900" font-size="31" letter-spacing="4"><textPath href="#pangsumaTopArcPath" startOffset="50%" text-anchor="middle">PANGSUMA</textPath></text>
+          <text fill="#FFFFFF" font-family="sans-serif" font-weight="900" font-size="28" letter-spacing="3"><textPath href="#pangsumaBottomArcPath" startOffset="50%" text-anchor="middle">FUTSAL CLUB</textPath></text>
+          <g transform="translate(48, 200) scale(0.85)"><path d="M 0,-12 L 3,-3 L 12,-3 L 5,3 L 8,11 L 0,6 L -8,11 L -5,3 L -12,-3 L -3,-3 Z" fill="#FFFFFF" /></g>
+          <g transform="translate(352, 200) scale(0.85)"><path d="M 0,-12 L 3,-3 L 12,-3 L 5,3 L 8,11 L 0,6 L -8,11 L -5,3 L -12,-3 L -3,-3 Z" fill="#FFFFFF" /></g>
+        </g>
+        <g class="pangsuma-loader-emblem">
+          <g clip-path="url(#pangsumaInnerCircleClip)">
+            <rect x="80" y="80" width="240" height="240" fill="#DCA327" />
+            <rect x="80" y="94" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="118" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="142" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="166" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="190" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="214" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="238" width="240" height="11" fill="#FFFFFF" />
+            <rect x="80" y="262" width="240" height="11" fill="#FFFFFF" />
+          </g>
+          <polygon points="200,72 208,135 192,135" fill="#155AAB" stroke="#FFFFFF" stroke-width="2" />
+          <polygon points="200,135 244,162 244,242 200,285 156,242 156,162" fill="#155AAB" stroke="#FFFFFF" stroke-width="3" />
+          <polygon points="200,135 244,162 244,242 200,285" fill="#0E4282" />
+          <path d="M 166,192 C 166,174 234,174 234,192 L 234,212 C 234,212 200,200 166,212 Z" fill="none" stroke="#FFFFFF" stroke-width="5" />
+          <polyline points="175,208 186,216 193,208" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+          <polyline points="225,208 214,216 207,208" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+          <line x1="200" y1="212" x2="200" y2="238" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+          <line x1="188" y1="242" x2="212" y2="242" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+        </g>
+      </svg>
+    </div>
+  </div>
   <a class="skip-link" href="#mainContent">Lewati ke konten</a>
+
   <section class="login-screen" id="loginGate" aria-labelledby="loginTitle">
     <div class="login-panel">
       <aside class="login-intro" aria-label="Identitas Pangsuma Football Club">
@@ -288,29 +64,42 @@
       </aside>
       <div class="login-form-panel">
         <div class="login-form-content">
+          <p class="login-kicker">PANGSUMA FOOTBALL CLUB</p>
           <h1 id="loginTitle">Masuk</h1>
-          <form class="login-form" id="loginForm">
-            <div class="login-field"><label for="loginEmail">Email demo</label><input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="nama@pangsumafc.com" required></div>
-            <div class="login-field"><label for="loginPassword">Password demo</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required></div>
-            <p class="login-error" id="loginError" role="alert" hidden>Email atau password demo tidak sesuai. Periksa kembali lalu coba lagi.</p>
-            <button class="primary-button login-submit" type="submit">Masuk</button>
+          <p class="login-description">Gunakan ID masuk dan password akun Anda.</p>
+          <form class="login-form" id="loginForm" novalidate>
+            <div class="login-field">
+              <label for="loginIdentifier">ID masuk</label>
+              <input id="loginIdentifier" name="email" type="text" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" maxlength="180" placeholder="nama@pangsumafc.com" required>
+            </div>
+            <div class="login-field">
+              <label for="loginPassword">Password</label>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+            </div>
+            <p class="login-error" id="loginError" role="alert" hidden></p>
+            <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
-          <p class="login-footnote"><strong>Demo browser.</strong> Bukan autentikasi. Gunakan akun dan data contoh saja.</p>
+          <p class="login-footnote"><strong>Tahap uji.</strong> Jangan masukkan data operasional atau gunakan laporan sebagai dokumen resmi sebelum pemilik mengaktifkan rilis.</p>
         </div>
       </div>
     </div>
   </section>
+
   <header class="topbar">
     <div class="brand">
       <img src="/pangsuma-icon-192.png" alt="" width="192" height="192">
       <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
-      <span class="demo-label">Demo · lokal</span>
+      <span class="demo-label">Tahap uji</span>
       <div class="account-meta" id="accountMeta" aria-label="Identitas pengguna">
         <span class="account-name" id="accountName"></span>
-        <span class="account-detail"><span class="account-access" id="accountAccess"></span></span>
+        <span class="account-detail" id="accountRole"></span>
       </div>
+      <button class="quiet-button account-password-button" type="button" data-page="change-password" aria-label="Ganti password" title="Ganti password">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke-linecap="round"/></svg>
+        <span>Password</span>
+      </button>
       <button class="quiet-button logout-button" id="logoutButton" type="button">Keluar</button>
       <button class="install-button" id="installButton" type="button" aria-label="Pasang Pangsuma App">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -318,446 +107,77 @@
       </button>
     </div>
   </header>
+
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigasi utama">
       <div><p class="nav-caption">Menu</p><nav class="nav-list" id="desktopNav"></nav></div>
+      <div class="side-note"><strong>Data akun</strong>Informasi dimuat dari layanan Pangsuma setelah Anda masuk.</div>
     </aside>
-    <main id="mainContent" tabindex="-1"><div class="main-inner"></div></main>
+    <main id="mainContent" tabindex="-1">
+      <div class="main-inner">
+        <div class="notice" id="demoDisclosure" role="note">Versi uji belum disetujui untuk operasional. Jangan masukkan data nyata atau memakai laporan untuk keperluan resmi.</div>
+        <div id="appContent" aria-live="off"></div>
+      </div>
+    </main>
   </div>
   <nav class="mobile-nav" id="mobileNav" aria-label="Navigasi mobile"></nav>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
   <dialog class="report-choice" id="reportChoice" aria-labelledby="reportChoiceTitle" aria-describedby="reportChoiceDescription">
     <div class="choice-panel">
       <div class="choice-heading">
         <div><p class="choice-kicker">Pengajuan baru</p><h2 id="reportChoiceTitle">Pilih jenis laporan</h2></div>
-        <button class="choice-close" type="button" data-action="close-report-choice" aria-label="Tutup pilihan laporan"><span aria-hidden="true">×</span></button>
+        <button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup pilihan laporan"><span aria-hidden="true">×</span></button>
       </div>
-      <p class="choice-description" id="reportChoiceDescription">Pilih jenis sebelum mengisi laporan.</p>
+      <p class="choice-description" id="reportChoiceDescription">Saldo petty cash berkurang setelah disetujui Manager. Request Finance masuk setelah persetujuan.</p>
       <div class="choice-options">
-        <button class="choice-option" type="button" data-action="choose-report-type" data-type="pettycash">
+        <button class="choice-option" type="button" data-action="choose-report-type" data-type="petty_cash">
           <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15a1.5 1.5 0 0 1 1.5 1.5v11H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h13M4 7v2m11 4h5.5v4H15a2 2 0 0 1 0-4Z" stroke-linejoin="round"/><path d="M16.5 15h.1" stroke-linecap="round"/></svg></span>
-          <span class="choice-copy"><strong>Petty cash</strong><small>Saldo berkurang setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
+          <span class="choice-copy"><strong>Petty cash</strong><small>Pengeluaran mengurangi saldo setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
         </button>
-        <button class="choice-option" type="button" data-action="choose-report-type" data-type="request">
+        <button class="choice-option" type="button" data-action="choose-report-type" data-type="finance_request">
           <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg></span>
-          <span class="choice-copy"><strong>Request Finance</strong><small>Masuk ke Finance setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
+          <span class="choice-copy"><strong>Request Finance</strong><small>Masuk ke daftar Finance setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
         </button>
       </div>
     </div>
   </dialog>
-  <script>
-    // DEMO ONLY: every identity and the shared passphrase below are fabricated for this prototype.
-    // This client-side check is not security: visitors can inspect or bypass it. Never add real passwords or data here.
-    const DEMO_PASSWORD = 'Pangsuma2026';
-    const DEMO_SESSION_KEY = 'pangsuma-demo-session-v1';
-    const MANAGER_EMAIL = 'rahmat@pangsumafc.com';
-    const demoAccounts = [
-      { name: 'Muhammad Maruf', email: 'muhammad.maruf@pangsumafc.com', position: 'KITMAN', accessRole: 'User' },
-      { name: 'Asep Zainal Arifin', email: 'asep@pangsumafc.com', position: 'PHYSIOTHERAPY', accessRole: 'User' },
-      { name: 'Bagas Wijaya', email: 'bagas@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
-      { name: 'Muhammad Farhan', email: 'muhammad.farhan@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
-      { name: 'Dias Riansyah', email: 'dias@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
-      { name: 'Faeyza Ramadhan', email: 'faeyza@pangsumafc.com', position: 'PLAYER', accessRole: 'User' },
-      { name: 'Moch. Bagus Widya Pura', email: 'moch@pangsumafc.com', position: 'GK COACH', accessRole: 'User' },
-      { name: 'Abdul Manan', email: 'abdul@pangsumafc.com', position: 'FITNESS COACH', accessRole: 'User' },
-      { name: 'Rahmat Saputro', email: MANAGER_EMAIL, position: 'MANAGER', accessRole: 'Manager' },
-      { name: 'Muhammad Ilham', email: 'muhammad.ilham@pangsumafc.com', position: 'COO', accessRole: 'User' }
-    ];
-    function restoreDemoUser() {
-      try { return demoAccounts.find(account => account.email === sessionStorage.getItem(DEMO_SESSION_KEY)) || null; }
-      catch { return null; }
-    }
-    const STORAGE_KEY = 'pangsuma-app-demo-v1';
-    const datePartsJakarta = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-    const todayISO = `${datePartsJakarta.find(part => part.type === 'year').value}-${datePartsJakarta.find(part => part.type === 'month').value}-${datePartsJakarta.find(part => part.type === 'day').value}`;
-    const sampleState = () => ({
-      cashBalance: 1250000,
-      divisions: [
-        { name: 'Operasional', submitted: true },
-        { name: 'Tim Pelatih', submitted: true },
-        { name: 'Perlengkapan', submitted: true },
-        { name: 'Administrasi', submitted: false }
-      ],
-      submissions: [
-        { id: 'demo-001', type: 'pettycash', status: 'pending', division: 'Operasional', amount: 185000, description: 'Transport kegiatan lapangan', date: todayISO },
-        { id: 'demo-002', type: 'request', status: 'pending', division: 'Tim Pelatih', amount: 420000, description: 'Perlengkapan latihan', date: todayISO }
-      ],
-      users: [
-        { name: 'Staff Demo 01', division: 'Operasional', email: 'staff.demo@example.test' },
-        { name: 'Staff Demo 02', division: 'Tim Pelatih', email: 'pelatih.demo@example.test' }
-      ]
-    });
-    function loadState() {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (!saved) return sampleState();
-        const parsed = JSON.parse(saved);
-        if (!Array.isArray(parsed.divisions) || !Array.isArray(parsed.submissions) || !Array.isArray(parsed.users)) return sampleState();
-        return parsed;
-      } catch { return sampleState(); }
-    }
-    let state = loadState();
-    let currentUser = restoreDemoUser();
-    let role = currentUser?.email === MANAGER_EMAIL ? 'manager' : 'staff';
-    let currentPage = 'overview';
-    let installPrompt = null;
-    let toastTimer;
-    let reportTypePreset = null;
-    let archiveTypeFilter = 'all';
-    let archiveYearFilter = 'all';
-    let archiveSearchTerm = '';
-    const icons = {
-      overview: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 17h7m-3.5-3.5v7" stroke-linecap="round"/></svg>',
-      report: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg>',
-      review: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h14v16H5zM8 8h8M8 12h4" stroke-linecap="round" stroke-linejoin="round"/><path d="m13.5 16 1.8 1.8 3.4-3.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      finance: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7.5h16v12H4zM4 7.5l2-3h12l2 3M4 11h16" stroke-linejoin="round"/><path d="M8 15h3" stroke-linecap="round"/></svg>',
-      users: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3 2.3-4.5 5.5-4.5s5 1.5 5.5 4.5M17 8h4m-2-2v4m-2 6c2.1.2 3.4 1.2 4 3" stroke-linecap="round"/></svg>',
-      wallet: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6.5h15a1.5 1.5 0 0 1 1.5 1.5v11H5a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h13" stroke-linejoin="round"/><path d="M15 12h5.5v4H15a2 2 0 0 1 0-4Z"/><path d="M16.5 14h.1" stroke-linecap="round"/></svg>'
-    };
-    const navByRole = {
-      manager: [
-        { id: 'overview', label: 'Ringkasan', icon: 'overview' },
-        { id: 'approvals', label: 'Persetujuan', icon: 'review' },
-        { id: 'finance', label: 'Laporan Finance', icon: 'finance' },
-        { id: 'users', label: 'Pengguna', icon: 'users' }
-      ],
-      staff: [
-        { id: 'overview', label: 'Beranda', icon: 'overview' },
-        { id: 'new-report', label: 'Buat laporan', icon: 'report' },
-        { id: 'my-reports', label: 'Laporan saya', icon: 'review' },
-        { id: 'cash-info', label: 'Petty cash', icon: 'wallet' }
-      ]
-    };
-    const money = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(n) || 0);
-    const compactMoney = n => new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 2 }).format(Number(n) || 0).replace(/\s+/g, '');
-    const dateLong = value => new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
-    const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-    function greetingLabel() {
-      const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-      return hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam';
-    }
-    function welcomePanel() {
-      const name = currentUser?.name || 'Pengguna';
-      const firstName = name.trim().split(/\s+/)[0];
-      const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase();
-      return `<section class="welcome-card"><span class="welcome-avatar" aria-hidden="true">${escapeHTML(initials)}</span><div class="welcome-copy"><p class="welcome-date">${dateLong(todayISO)}</p><h1>${greetingLabel()}, ${escapeHTML(firstName)}</h1></div></section>`;
-    }
-    function metricCard(icon, label, value, page = '', accessibleValue = value) {
-      const accessibleLabel = `${escapeHTML(label)}: ${escapeHTML(accessibleValue)}`;
-      const content = `<span class="metric-icon" aria-hidden="true">${icons[icon]}</span><span class="metric-copy"><span class="metric-label">${escapeHTML(label)}</span><strong class="metric-value">${escapeHTML(value)}</strong></span>`;
-      return page ? `<button class="metric metric-link" type="button" data-page="${page}" aria-label="${accessibleLabel}">${content}</button>` : `<article class="metric" aria-label="${accessibleLabel}">${content}</article>`;
-    }
-    function monthLabel(key) {
-      const [year, month] = key.split('-').map(Number);
-      return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
-    }
-    const reportTypeLabel = type => type === 'pettycash' ? 'Petty cash' : 'Request Finance';
-    function staffReports() { return state.submissions.filter(item => item.division === 'Operasional'); }
-    function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
-    function showToast(message) {
-      const box = document.getElementById('toast'); box.textContent = message; box.classList.add('show');
-      clearTimeout(toastTimer); toastTimer = setTimeout(() => box.classList.remove('show'), 2800);
-    }
-    function statusText(item) {
-      if (item.status === 'approved') return ['Disetujui', 'status-ok'];
-      if (item.status === 'sent') return ['Dikirim ke Finance', 'status-ok'];
-      if (item.status === 'rejected') return ['Ditolak', 'status-neutral'];
-      return ['Menunggu manager', 'status-wait'];
-    }
-    function navButton(item) {
-      return `<button class="nav-button" type="button" data-page="${item.id}" aria-current="${currentPage === item.id ? 'page' : 'false'}">${icons[item.icon]}<span>${item.label}</span></button>`;
-    }
-    function navMarkup(items) {
-      return items.map(navButton).join('');
-    }
-    function renderNav() {
-      const items = navByRole[role];
-      document.getElementById('desktopNav').innerHTML = navMarkup(items, 'desktop');
-      const mobileNav = document.getElementById('mobileNav');
-      mobileNav.className = `mobile-nav ${role === 'manager' ? 'is-manager' : 'is-staff'}`;
-      if (role === 'staff') {
-        const home = items.find(item => item.id === 'overview');
-        const reports = items.find(item => item.id === 'my-reports');
-        mobileNav.innerHTML = `${navButton(home)}<button class="mobile-add ${currentPage === 'new-report' ? 'is-active' : ''}" type="button" data-action="open-report-choice" aria-label="Buat laporan" aria-haspopup="dialog" aria-controls="reportChoice"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span class="sr-only">Buat laporan</span></button>${navButton({ ...reports, label: 'Laporan' })}`;
-      } else mobileNav.innerHTML = navMarkup(items);
-      document.querySelectorAll('#desktopNav [data-page], #mobileNav [data-page]').forEach(button => button.addEventListener('click', () => {
-        currentPage = button.dataset.page; renderApp(); document.getElementById('mainContent').focus({ preventScroll: true });
-      }));
-    }
-    function pageHeading(title, right = '') {
-      return `<div class="page-heading"><h1>${title}</h1>${right}</div>`;
-    }
-    function divisionRows() {
-      return state.divisions.map((division, index) => `<div class="division-row"><div><div class="division-name">${escapeHTML(division.name)}</div></div><span class="status ${division.submitted ? 'status-ok' : 'status-wait'}">${division.submitted ? 'Masuk' : 'Menunggu'}</span>${!division.submitted && role === 'manager' ? `<button class="text-button" type="button" data-action="complete-division" data-index="${index}">Tandai masuk</button>` : '<span></span>'}</div>`).join('');
-    }
-    function managerOverview() {
-      const done = state.divisions.filter(d => d.submitted).length;
-      const allDone = done === state.divisions.length;
-      const pending = state.submissions.filter(i => i.status === 'pending').length;
-      const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected').length;
-      const percent = state.divisions.length ? Math.round(done / state.divisions.length * 100) : 0;
-      return `${welcomePanel()}
-        <div class="metric-row">${metricCard('wallet', 'Petty cash', compactMoney(state.cashBalance), '', money(state.cashBalance))}${metricCard('review', 'Menunggu', String(pending), 'approvals')}${metricCard('finance', 'Request Finance', String(requests), 'finance')}</div>
-        <section class="ledger-band" aria-labelledby="dayStatusTitle"><div class="ledger-band-label"><h2 id="dayStatusTitle">Laporan harian</h2><span class="ledger-count"><strong>${done}</strong><span>/ ${state.divisions.length} divisi masuk</span></span></div><div class="ledger-progress"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><span class="ledger-percent">${percent}%</span></div><button class="secondary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh rekap</button></section>
-        <div class="manager-layout"><section class="manager-ledger"><div class="section-row"><div><h2>Laporan divisi</h2></div></div><div class="division-list">${divisionRows()}</div></section><section class="manager-queue"><div class="section-row"><div><h2>Menunggu persetujuan</h2></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pendingItems(2)}</section></div>`;
-    }
-    function pendingItems(limit = Infinity) {
-      const rows = state.submissions.filter(item => item.status === 'pending').slice(0, limit);
-      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada pengajuan</strong></div>`;
-      return `<div class="list-stack">${rows.map(item => {
-        const isCash = item.type === 'pettycash';
-        return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)} · ${isCash ? 'Petty cash' : 'Request Finance'}</div></div><div class="item-amount">${money(item.amount)}</div><div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}">${isCash ? 'Setujui & kurangi saldo' : 'Setujui request'}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}">Tolak</button></div></article>`;
-      }).join('')}</div>`;
-    }
-    function managerApprovals() {
-      const pending = state.submissions.filter(item => item.status === 'pending');
-      const done = state.submissions.filter(item => item.status !== 'pending');
-      return `${pageHeading('Persetujuan')}
-        <div class="metric-row"><div class="metric"><div class="metric-label">Menunggu</div><div class="metric-value">${pending.length}</div></div><div class="metric"><div class="metric-label">Saldo petty cash</div><div class="metric-value">${money(state.cashBalance)}</div></div><div class="metric"><div class="metric-label">Masuk hari ini</div><div class="metric-value">${state.submissions.filter(i => i.date === todayISO).length}</div></div></div>
-        <div class="section-row"><div><h2>Antrian</h2></div></div>${pendingItems()}
-        <div class="section-row"><div><h2>Riwayat</h2></div></div>${done.length ? `<div class="list-stack">${done.map(item => { const [label, cls] = statusText(item); return `<div class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'}</div></div><div><span class="status ${cls}">${label}</span><div class="item-amount" style="margin-top:6px">${money(item.amount)}</div></div></div>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada riwayat</strong></div>`}`;
-    }
-    function financePage() {
-      const requests = state.submissions.filter(item => item.type === 'request' && item.status !== 'rejected');
-      const pending = requests.filter(item => item.status === 'pending').length;
-      return `${pageHeading('Finance', `<button class="secondary-button" type="button" data-action="download-pdf" ${state.divisions.every(d => d.submitted) ? '' : 'disabled'}>Unduh rekap</button>`)}
-        <div class="metric-row"><div class="metric"><div class="metric-label">Total request</div><div class="metric-value">${requests.length}</div></div><div class="metric"><div class="metric-label">Belum dikirim</div><div class="metric-value">${pending}</div></div><div class="metric"><div class="metric-label">Terkirim</div><div class="metric-value">${requests.filter(i => i.status === 'sent').length}</div></div></div>
-        <div class="section-row"><div><h2>Daftar request</h2></div></div>
-        ${requests.length ? `<div class="list-stack">${requests.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${escapeHTML(item.division)} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div>${item.status === 'pending' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim</button></div>` : ''}</article>`; }).join('')}</div>` : `<div class="surface empty-state"><strong>Belum ada request</strong></div>`}`;
-    }
-    function usersPage() {
-      return `${pageHeading('Pengguna', `<button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button>`)}
-        <div class="form-card surface" id="addUserCard" hidden><h2 style="margin:0 0 15px;font-size:18px">Tambah staff</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama tampilan</label><input id="userName" name="name" required maxlength="60" autocomplete="off" placeholder="Contoh: Staff Demo 03"></div><div class="field"><label for="userEmail">Email demo</label><input id="userEmail" name="email" type="email" required maxlength="100" placeholder="nama@example.test"></div><div class="field field-full"><label for="userDivision">Divisi</label><select id="userDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div></div><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></div>
-        <div class="section-row"><div><h2>Daftar staff</h2></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Divisi</th><th>Peran</th><th>Email</th><th>Aksi</th></tr></thead><tbody>${state.users.map((user,index) => `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML(user.name.slice(0,1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Divisi">${escapeHTML(user.division)}</td><td data-label="Peran">Staff</td><td data-label="Email">${escapeHTML(user.email)}</td><td data-label="Aksi"><button class="text-button" type="button" data-action="remove-user" data-index="${index}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`;
-    }
-    function staffOverview() {
-      const own = staffReports();
-      const pending = own.filter(i => i.status === 'pending').length;
-      return `${welcomePanel()}
-        <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(own.length))}${metricCard('review', 'Menunggu', String(pending))}${metricCard('wallet', 'Petty cash', compactMoney(state.cashBalance), 'cash-info', money(state.cashBalance))}</div>
-        <section class="guide-card" aria-labelledby="guideTitle"><div class="guide-heading"><h2 id="guideTitle">Alur pengajuan</h2><button class="primary-button home-report-cta" type="button" data-page="new-report">Buat laporan</button></div><ol class="guide-steps"><li><span>1</span><strong>Pilih jenis</strong></li><li><span>2</span><strong>Isi keperluan</strong></li><li><span>3</span><strong>Kirim untuk ditinjau</strong></li></ol></section>
-        <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,2))}`;
-    }
-    function myReportsList(rows = state.submissions.filter(i => i.division === 'Operasional')) {
-      if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada laporan</strong></div>`;
-      return `<div class="list-stack">${rows.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div></article>`; }).join('')}</div>`;
-    }
-    function archiveResultsMarkup() {
-      const query = archiveSearchTerm.trim().toLocaleLowerCase('id-ID');
-      const records = staffReports().filter(item => {
-        const month = String(item.date).slice(0, 7);
-        const searchText = `${item.description} ${item.division} ${reportTypeLabel(item.type)} ${dateLong(item.date)} ${monthLabel(month)}`.toLocaleLowerCase('id-ID');
-        return (archiveTypeFilter === 'all' || item.type === archiveTypeFilter) && (archiveYearFilter === 'all' || String(item.date).slice(0, 4) === archiveYearFilter) && (!query || searchText.includes(query));
-      }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-      if (!records.length) return `<div class="surface empty-state"><strong>${query || archiveTypeFilter !== 'all' || archiveYearFilter !== 'all' ? 'Tidak ada laporan yang cocok' : 'Belum ada laporan'}</strong><span>${query || archiveTypeFilter !== 'all' || archiveYearFilter !== 'all' ? 'Ubah kata kunci atau filter.' : 'Gunakan tombol + untuk membuat pengajuan.'}</span></div>`;
-      const types = archiveTypeFilter === 'all' ? ['pettycash', 'request'] : [archiveTypeFilter];
-      return types.map(type => {
-        const typeRecords = records.filter(item => item.type === type);
-        if (!typeRecords.length) return '';
-        const months = [...new Set(typeRecords.map(item => String(item.date).slice(0, 7)))].sort().reverse();
-        return `<section class="archive-type"><div class="section-row"><h2>${reportTypeLabel(type)}</h2><span class="archive-total">${typeRecords.length} laporan</span></div><div class="archive-month-list">${months.map((month, index) => {
-          const monthRecords = typeRecords.filter(item => String(item.date).startsWith(month));
-          return `<details class="archive-month" ${index === 0 ? 'open' : ''}><summary><span class="archive-month-copy"><strong>${monthLabel(month)}</strong><small>${monthRecords.length} laporan</small></span><span class="archive-chevron" aria-hidden="true"></span></summary><div class="archive-month-content">${myReportsList(monthRecords)}</div></details>`;
-        }).join('')}</div></section>`;
-      }).join('');
-    }
-    function reportArchive() {
-      const years = [...new Set(staffReports().map(item => String(item.date).slice(0, 4)))].sort().reverse();
-      return `<div class="page-heading archive-page-heading"><div><p class="archive-kicker">Arsip pribadi</p><h1>Laporan</h1></div></div>
-        <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan berdasarkan keperluan, bulan, atau tahun</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" name="search" type="search" autocomplete="off" placeholder="Cari laporan (bulan, tahun)…" value="${escapeHTML(archiveSearchTerm)}"></label>
-          <div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${archiveTypeFilter === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="pettycash" aria-pressed="${archiveTypeFilter === 'pettycash'}">Petty cash</button><button class="filter-chip" type="button" data-report-filter="request" aria-pressed="${archiveTypeFilter === 'request'}">Request Finance</button></div>
-          <label class="archive-year"><span class="sr-only">Filter tahun</span><select id="archiveYear" name="year"><option value="all">Semua tahun</option>${years.map(year => `<option value="${year}" ${archiveYearFilter === year ? 'selected' : ''}>${year}</option>`).join('')}</select></label>
-        </div><div id="archiveResults">${archiveResultsMarkup()}</div>`;
-    }
-    function reportForm(preset = 'pettycash') {
-      const isCash = preset === 'pettycash';
-      return `${pageHeading('Buat laporan')}
-        <form id="reportForm" class="form-card surface"><div class="form-grid">
-          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash" ${isCash ? 'selected' : ''}>Petty cash</option><option value="request" ${isCash ? '' : 'selected'}>Request Finance</option></select><div class="field-help" id="typeHelp">${isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance setelah disetujui manager.'}</div></div>
-          <div class="field"><label for="reportDivision">Divisi</label><select id="reportDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div>
-          <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO}" required></div>
-          <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required maxlength="120" placeholder="Contoh: Transport kegiatan lapangan"></div>
-          <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amount" type="number" inputmode="numeric" min="1" step="1" required placeholder="Contoh: 150000"></div>
-          <div class="field"><label for="reportNote">Catatan (opsional)</label><input id="reportNote" name="note" maxlength="120" placeholder="Informasi tambahan"></div>
-        </div><div class="form-actions"><button class="primary-button" type="submit">Simpan laporan</button><button class="secondary-button" type="button" data-page="overview">Batal</button></div></form>`;
-    }
-    function cashInfo() {
-      const approved = state.submissions.filter(i => i.type === 'pettycash' && i.status === 'approved');
-      return `${pageHeading('Petty cash')}
-        <div class="hero-panel balance-panel"><span>Saldo tersedia</span><strong>${money(state.cashBalance)}</strong></div>
-        <div class="section-row"><div><h2>Pengeluaran disetujui</h2></div><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div>
-        ${approved.length ? myReportsList(approved) : `<div class="surface empty-state"><strong>Belum ada pengeluaran disetujui</strong></div>`}`;
-    }
-    function renderApp() {
-      if (!currentUser) return;
-      role = currentUser.email === MANAGER_EMAIL ? 'manager' : 'staff';
-      if (role === 'manager' && !['overview','approvals','finance','users'].includes(currentPage)) currentPage = 'overview';
-      if (role === 'staff' && !['overview','new-report','my-reports','cash-info'].includes(currentPage)) currentPage = 'overview';
-      renderNav();
-      let body;
-      if (role === 'manager') {
-        body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
-      } else {
-        body = currentPage === 'new-report' ? reportForm(reportTypePreset || 'pettycash') : currentPage === 'my-reports' ? reportArchive() : currentPage === 'cash-info' ? cashInfo() : staffOverview();
-        reportTypePreset = null;
-      }
-      document.querySelector('#mainContent .main-inner').innerHTML = body;
-      document.getElementById('accountName').textContent = currentUser.name;
-      document.getElementById('accountAccess').textContent = role === 'manager' ? 'Manager' : 'Staff';
-      bindActions();
-    }
-    function bindActions() {
-      document.querySelectorAll('#mainContent [data-page]').forEach(button => button.addEventListener('click', () => { currentPage = button.dataset.page; renderApp(); }));
-      document.querySelectorAll('#mainContent [data-action], #mobileNav [data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
-      const archiveSearch = document.getElementById('archiveSearch');
-      if (archiveSearch) archiveSearch.addEventListener('input', () => { archiveSearchTerm = archiveSearch.value; const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup(); });
-      const archiveYear = document.getElementById('archiveYear');
-      if (archiveYear) archiveYear.addEventListener('change', () => { archiveYearFilter = archiveYear.value; const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup(); });
-      document.querySelectorAll('[data-report-filter]').forEach(button => button.addEventListener('click', () => {
-        archiveTypeFilter = button.dataset.reportFilter;
-        document.querySelectorAll('[data-report-filter]').forEach(chip => chip.setAttribute('aria-pressed', String(chip === button)));
-        const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup();
-      }));
-      const form = document.getElementById('reportForm');
-      if (form) {
-        const type = form.elements.type;
-        const updateTypeHelp = () => {
-          const isCash = type.value === 'pettycash';
-          document.getElementById('typeHelp').textContent = isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance setelah disetujui manager.';
-        };
-        type.addEventListener('change', updateTypeHelp);
-        updateTypeHelp();
-        form.addEventListener('submit', event => {
-          event.preventDefault(); if (!form.reportValidity()) return;
-          const data = new FormData(form);
-          const division = String(data.get('division'));
-          const item = { id: `local-${Date.now()}`, type: String(data.get('type')), status: 'pending', division, description: String(data.get('description')).trim(), amount: Number(data.get('amount')), date: String(data.get('date')) };
-          state.submissions.unshift(item);
-          const target = state.divisions.find(d => d.name === division); if (target) target.submitted = true;
-          archiveTypeFilter = 'all'; archiveYearFilter = 'all'; archiveSearchTerm = '';
-          save(); currentPage = 'my-reports'; renderApp(); showToast('Laporan demo tersimpan di browser ini.');
-        });
-      }
-      const userForm = document.getElementById('userForm');
-      if (userForm) userForm.addEventListener('submit', event => {
-        event.preventDefault(); if (!userForm.reportValidity()) return;
-        const data = new FormData(userForm);
-        state.users.push({ name: String(data.get('name')).trim(), email: String(data.get('email')).trim(), division: String(data.get('division')) });
-        save(); renderApp(); showToast('Pengguna contoh ditambahkan. Tidak ada undangan yang dikirim.');
-      });
-    }
-    function handleAction(button) {
-      const action = button.dataset.action;
-      if (action === 'open-report-choice') {
-        if (role !== 'staff') { showToast('Pengajuan demo hanya tersedia untuk User.'); return; }
-        document.getElementById('reportChoice').showModal(); return;
-      }
-      if (action === 'close-report-choice') { document.getElementById('reportChoice').close(); return; }
-      if (action === 'choose-report-type') {
-        if (role !== 'staff') return;
-        reportTypePreset = button.dataset.type === 'request' ? 'request' : 'pettycash';
-        document.getElementById('reportChoice').close(); currentPage = 'new-report'; renderApp();
-        document.getElementById('reportType')?.focus(); return;
-      }
-      if (['complete-division','approve','reject','send-finance','download-pdf','open-add-user','cancel-add-user','remove-user'].includes(action) && currentUser?.email !== MANAGER_EMAIL) {
-        showToast('Fitur Manager demo hanya tersedia untuk Rahmat Saputro.'); return;
-      }
-      if (action === 'complete-division') {
-        const division = state.divisions[Number(button.dataset.index)]; if (division) division.submitted = true;
-        save(); renderApp(); showToast('Status divisi demo diperbarui.'); return;
-      }
-      if (action === 'approve' || action === 'reject' || action === 'send-finance') {
-        const item = state.submissions.find(i => i.id === button.dataset.id); if (!item) return;
-        if (action === 'approve') {
-          if (item.type === 'pettycash' && item.amount > state.cashBalance) { showToast('Saldo petty cash demo tidak mencukupi.'); return; }
-          item.status = 'approved'; if (item.type === 'pettycash') state.cashBalance -= item.amount;
-          save(); renderApp(); showToast(item.type === 'pettycash' ? 'Disetujui. Saldo petty cash demo sudah dikurangi.' : 'Request disetujui dan masuk rekap Finance demo.'); return;
-        }
-        if (action === 'reject') { item.status = 'rejected'; save(); renderApp(); showToast('Pengajuan contoh ditolak.'); return; }
-        item.status = 'sent'; save(); renderApp(); showToast('Status request diubah menjadi dikirim ke Finance (demo).'); return;
-      }
-      if (action === 'download-pdf') { downloadDemoPDF(); return; }
-      if (action === 'open-add-user') { const card = document.getElementById('addUserCard'); if (card) { card.hidden = false; document.getElementById('userName').focus(); } return; }
-      if (action === 'cancel-add-user') { renderApp(); return; }
-      if (action === 'remove-user') {
-        const index = Number(button.dataset.index); if (!Number.isNaN(index)) { state.users.splice(index,1); save(); renderApp(); showToast('Pengguna demo dihapus dari browser ini.'); }
-      }
-    }
-    function downloadDemoPDF() {
-      if (currentUser?.email !== MANAGER_EMAIL) { showToast('Rekap PDF demo hanya tersedia untuk Manager.'); return; }
-      if (!state.divisions.every(d => d.submitted)) { showToast('Lengkapi semua divisi demo sebelum membuat rekap.'); return; }
-      const cash = state.submissions.filter(i => i.type === 'pettycash' && i.status === 'approved');
-      const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected');
-      const lines = [
-        'PANGSUMA APP - LAPORAN HARIAN (DEMO)',
-        `Tanggal: ${dateLong(todayISO)}`,
-        'Status: DATA CONTOH - BUKAN LAPORAN RESMI',
-        '',
-        'STATUS DIVISI',
-        ...state.divisions.map(d => `${d.name}: ${d.submitted ? 'Lengkap' : 'Belum masuk'}`),
-        '',
-        `Saldo petty cash demo: ${money(state.cashBalance)}`,
-        `Pengeluaran petty cash disetujui: ${cash.length}`,
-        ...cash.map(i => `- ${i.description} | ${money(i.amount)}`),
-        '',
-        `Request untuk Finance: ${requests.length}`,
-        ...requests.map(i => `- ${i.description} | ${money(i.amount)} | ${i.status === 'sent' ? 'Dikirim' : 'Belum dikirim'}`),
-        '',
-        'Area tanda tangan manager: [PLACEHOLDER]',
-        'Area stempel Pangsuma: [PLACEHOLDER]',
-        '',
-        'Dokumen demo. Tidak memiliki tanda tangan atau stempel asli.'
-      ];
-      const clean = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,' ').replace(/[\\()]/g, ch => `\\${ch}`);
-      const content = lines.slice(0, 46).map((line, index) => `BT /F1 ${index === 0 ? 15 : 10} Tf 48 ${754 - index * 16} Td (${clean(line)}) Tj ET`).join('\n');
-      const streamLength = new TextEncoder().encode(content).length;
-      const objects = [
-        '<< /Type /Catalog /Pages 2 0 R >>',
-        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-        `<< /Length ${streamLength} >>\nstream\n${content}\nendstream`
-      ];
-      let pdf = '%PDF-1.4\n'; const offsets = [0];
-      for (let index = 0; index < objects.length; index++) { offsets.push(new TextEncoder().encode(pdf).length); pdf += `${index+1} 0 obj\n${objects[index]}\nendobj\n`; }
-      const xref = new TextEncoder().encode(pdf).length;
-      pdf += `xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-      const blob = new Blob([pdf], { type: 'application/pdf' }); const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `pangsuma-laporan-demo-${todayISO}.pdf`; document.body.appendChild(anchor); anchor.click(); anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500); showToast('PDF demo berhasil diunduh.');
-    }
-    document.querySelectorAll('#reportChoice [data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
-    document.getElementById('reportChoice').addEventListener('click', event => { if (event.target === event.currentTarget) event.currentTarget.close(); });
-    const loginForm = document.getElementById('loginForm');
-    const loginError = document.getElementById('loginError');
-    loginForm.addEventListener('input', () => { loginError.hidden = true; });
-    loginForm.addEventListener('submit', event => {
-      event.preventDefault(); if (!loginForm.reportValidity()) return;
-      const email = String(loginForm.elements.email.value).trim().toLowerCase();
-      const password = String(loginForm.elements.password.value);
-      const account = demoAccounts.find(item => item.email === email);
-      if (!account || password !== DEMO_PASSWORD) { loginError.hidden = false; return; }
-      currentUser = account; role = account.email === MANAGER_EMAIL ? 'manager' : 'staff'; currentPage = 'overview';
-      try { sessionStorage.setItem(DEMO_SESSION_KEY, account.email); } catch {}
-      document.body.classList.remove('logged-out'); document.getElementById('loginGate').hidden = true;
-      loginError.hidden = true; loginForm.reset(); renderApp(); showToast(`Login demo aktif untuk ${account.name}.`);
-    });
-    document.getElementById('logoutButton').addEventListener('click', () => {
-      try { sessionStorage.removeItem(DEMO_SESSION_KEY); } catch {}
-      currentUser = null; role = 'staff'; currentPage = 'overview'; loginForm.reset(); loginError.hidden = true;
-      document.body.classList.add('logged-out'); document.getElementById('loginGate').hidden = false;
-      document.getElementById('loginEmail').focus();
-    });
-    document.getElementById('installButton').addEventListener('click', async () => {
-      if (installPrompt) { installPrompt.prompt(); const result = await installPrompt.userChoice; installPrompt = null; showToast(result.outcome === 'accepted' ? 'Pangsuma App dipasang.' : 'Pemasangan belum dilakukan.'); }
-      else showToast('Gunakan menu browser lalu pilih Tambahkan ke layar utama.');
-    });
-    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installPrompt = event; });
-    if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
-    if (currentUser) {
-      document.getElementById('loginGate').hidden = true; document.body.classList.remove('logged-out'); renderApp();
-    } else document.body.classList.add('logged-out');
-  </script>
+
+  <dialog class="app-dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmDescription">
+    <form class="dialog-panel" id="confirmForm">
+      <div class="dialog-heading"><div><p class="choice-kicker" id="confirmKicker">Konfirmasi tindakan</p><h2 id="confirmTitle"></h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <p class="dialog-description" id="confirmDescription"></p>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="confirmSubmit" type="submit">Lanjutkan</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="app-dialog" id="rejectDialog" aria-labelledby="rejectTitle">
+    <form class="dialog-panel" id="rejectForm">
+      <div class="dialog-heading"><div><p class="choice-kicker">Catatan keputusan</p><h2 id="rejectTitle">Tolak pengajuan</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <p class="dialog-description" id="rejectDescription"></p>
+      <div class="field"><label for="rejectReason">Alasan penolakan</label><textarea id="rejectReason" name="reason" maxlength="500" required></textarea><span class="field-help">Alasan dicatat bersama keputusan Manager.</span></div>
+      <div class="form-actions dialog-actions"><button class="danger-button" id="rejectSubmit" type="submit">Tolak pengajuan</button><button class="secondary-button" type="button" data-action="close-dialog">Kembali</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="app-dialog" id="userPasswordDialog" aria-labelledby="userPasswordTitle">
+    <form class="dialog-panel" id="userPasswordForm">
+      <div class="dialog-heading"><div><p class="choice-kicker">Akses pengguna</p><h2 id="userPasswordTitle">Atur password sementara</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <p class="dialog-description" id="userPasswordDescription"></p>
+      <div class="field"><label for="temporaryPassword">Password sementara</label><input id="temporaryPassword" name="temporaryPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Minimal 12 karakter. Pengguna wajib menggantinya saat masuk pertama kali.</span></div>
+      <div class="form-note">Aplikasi tidak mengirim email atau pesan. Sampaikan password sementara secara terpisah melalui saluran yang disetujui.</div>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="userPasswordSubmit" type="submit">Simpan password</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+    </form>
+  </dialog>
+  <dialog class="app-dialog" id="openingBalanceDialog" aria-labelledby="openingBalanceTitle" aria-describedby="openingBalanceDescription">
+    <form class="dialog-panel" id="openingBalanceForm">
+      <div class="dialog-heading"><div><p class="choice-kicker">Keuangan operasional</p><h2 id="openingBalanceTitle">Tetapkan saldo awal</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <p class="dialog-description" id="openingBalanceDescription">Saldo hanya dapat ditetapkan satu kali. Isi nilai aktual yang sudah dikonfirmasi pemilik. Jangan gunakan perkiraan atau data demo.</p>
+      <div class="field"><label for="openingAmount">Saldo awal (rupiah)</label><input id="openingAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Masukkan angka dari pemilik"></div>
+      <label class="confirmation-check"><input id="ownerConfirmed" name="ownerConfirmed" type="checkbox" required><span>Saya mengonfirmasi angka ini diberikan pemilik sebagai saldo awal aktual.</span></label>
+      <div class="form-note">Nilai ini dan nama Manager dicatat pada ledger serta riwayat audit.</div>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="openingBalanceSubmit" type="submit">Tetapkan saldo</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+    </form>
+  </dialog>
 </body>
 </html>

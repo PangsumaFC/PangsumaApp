@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     name: Deploy existing Cloudflare Pages project
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,13 +23,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Deploy static app
-        run: npx --yes wrangler@4 pages deploy site --project-name=pangsuma-app --branch=main
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
-
-      - name: Ensure custom domain is attached
+      - name: Verify custom domain is already attached (read-only)
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -46,18 +41,15 @@ jobs:
             exit 1
           fi
 
-          if jq -e --arg domain "$domain" 'any(.result[]?; .name == $domain)' <<< "$current" >/dev/null; then
-            record="$(jq -c --arg domain "$domain" '.result[] | select(.name == $domain)' <<< "$current")"
-          else
-            created="$(curl --fail --silent --show-error --request POST "$endpoint" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H 'Content-Type: application/json' \
-              --data "$(jq -cn --arg name "$domain" '{name: $name}')")"
-            if ! jq -e '.success == true' <<< "$created" >/dev/null; then
-              jq -c '{success, errors}' <<< "$created" >&2
-              exit 1
-            fi
-            record="$(jq -c '.result' <<< "$created")"
+          if ! jq -e --arg domain "$domain" 'any(.result[]?; .name == $domain)' <<< "$current" >/dev/null; then
+            echo "Refusing to add or change a Pages custom domain from the deploy workflow." >&2
+            exit 1
           fi
-
+          record="$(jq -c --arg domain "$domain" '.result[] | select(.name == $domain)' <<< "$current")"
           jq -c '{name, status, validation_status: (.validation_data.status // null), verification_status: (.verification_data.status // null)}' <<< "$record"
+
+      - name: Deploy Pages app with Functions and D1 config
+        run: npx --yes wrangler@4.151.1 pages deploy site --project-name=pangsuma-app --branch=main --config=wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
