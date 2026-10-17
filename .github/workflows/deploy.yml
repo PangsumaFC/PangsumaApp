@@ -65,9 +65,20 @@ jobs:
         run: |
           set -euo pipefail
           # Missing table/columns or unavailable DB permissions must stop this release.
-          npx --yes wrangler@4.151.1 d1 execute pangsuma-app-prod --remote \
+          if ! npx --yes wrangler@4.151.1 d1 execute pangsuma-app-prod --remote \
             --command "SELECT user_id, nickname, dashboard_position, quote, photo, photo_mime, version FROM user_profiles LIMIT 0;" \
-            --json > "$RUNNER_TEMP/profile-schema.json"
+            --json > "$RUNNER_TEMP/profile-schema.json" 2> "$RUNNER_TEMP/profile-schema.stderr"; then
+            # Emit only allowlisted classifications/codes, never raw API output or credentials.
+            python3 -c '
+          import pathlib, re, sys
+          text = "\n".join(pathlib.Path(p).read_text(errors="replace") for p in sys.argv[1:])
+          labels = {"authentication error": "authentication_error", "invalid access token": "invalid_access_token", "permission": "permission_error", "not authorized": "not_authorized", "no such table": "missing_table", "no such column": "missing_column"}
+          categories = sorted({label for phrase, label in labels.items() if phrase in text.lower()})
+          codes = sorted(set(re.findall(r"\bcode[^0-9\n]{0,12}([0-9]{3,6})\b", text, re.I)))
+          print("::error::D1 migration probe failed; categories=" + ",".join(categories or ["unclassified_api_or_cli_failure"]) + "; API codes=" + ",".join(codes or ["unavailable"]))
+          ' "$RUNNER_TEMP/profile-schema.json" "$RUNNER_TEMP/profile-schema.stderr"
+            exit 1
+          fi
           jq -e 'length > 0 and all(.[]; .success == true)' "$RUNNER_TEMP/profile-schema.json" >/dev/null
 
       - name: Deploy Pages app with Functions and D1 config
