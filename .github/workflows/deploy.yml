@@ -5,17 +5,45 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      apply_manager_migration:
+        description: 'Apply approved migration 0004 only; do not deploy'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: pangsuma-app-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  tests:
+    name: Validate before production preflight
+    uses: ./.github/workflows/test.yml
+
+  migrate-manager:
+    needs: tests
+    if: github.event_name == 'workflow_dispatch' && inputs.apply_manager_migration
+    name: Apply approved Manager migration 0004 only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify target, recovery bookmark, and apply only 0004
+        run: python3 scripts/migrate-manager-0004.py
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+          CI: 'true'
+
   deploy:
-    if: github.ref == 'refs/heads/main'
+    needs: tests
+    if: github.ref == 'refs/heads/main' && !inputs.apply_manager_migration
     name: Deploy existing Cloudflare Pages project
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -57,7 +85,7 @@ jobs:
           record="$(jq -c --arg domain "$domain" '.result[] | select(.name == $domain)' <<< "$current")"
           jq -c '{name, status, validation_status: (.validation_data.status // null), verification_status: (.verification_data.status // null)}' <<< "$record"
 
-      - name: Require profile migration before deploy (read-only, no migrations)
+      - name: Require auth and profile migrations before deploy (read-only, no migrations)
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -65,8 +93,9 @@ jobs:
         run: |
           set -euo pipefail
           # Missing table/columns or unavailable DB permissions must stop this release.
+          # Resolve 0002 auth columns even with passkeys disabled or empty tables; return no data.
           if ! npx --yes wrangler@4.151.1 d1 execute pangsuma-app-prod --remote \
-            --command "SELECT user_id, nickname, dashboard_position, quote, photo, photo_mime, version FROM user_profiles LIMIT 0;" \
+            --command "SELECT p.user_id, p.nickname, p.dashboard_position, p.quote, p.photo, p.photo_mime, p.version, s.auth_method, u.webauthn_user_handle FROM user_profiles p CROSS JOIN sessions s CROSS JOIN users u LIMIT 0;" \
             --json > "$RUNNER_TEMP/profile-schema.json" 2> "$RUNNER_TEMP/profile-schema.stderr"; then
             # Emit only allowlisted classifications/codes, never raw API output or credentials.
             python3 -c '
@@ -80,6 +109,18 @@ jobs:
             exit 1
           fi
           jq -e 'length > 0 and all(.[]; .success == true)' "$RUNNER_TEMP/profile-schema.json" >/dev/null
+
+      - name: Require Manager migration 0004 (read-only)
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.151.1 d1 execute pangsuma-app-prod --remote \
+            --command "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND name IN ('submissions_user_only', 'submissions_active_account_only');" \
+            --json > "$RUNNER_TEMP/manager-schema.json"
+          jq -e 'length == 1 and .[0].success == true and (.[0].results | length) == 1 and .[0].results[0].name == "submissions_active_account_only" and (.[0].results[0].sql | contains("active_account_required_to_submit"))' "$RUNNER_TEMP/manager-schema.json" >/dev/null
 
       - name: Deploy Pages app with Functions and D1 config
         run: npx --yes wrangler@4.151.1 pages deploy site --project-name=pangsuma-app --branch=main

@@ -88,7 +88,7 @@ for path in ('/api/login', '/api/session', '/api/overview', '/api/users', '/api/
         assert e.code == 503 and body['error']['code'] == 'migration_required', (path, e.code, body)
 print('PROFILE_MIGRATION_PRE_PASS health=503 login=503 session=503 overview=503 users=503 profile=503 raw_sql_errors=0')
 PY
-cp "$repo_root/migrations/0003_user_profiles.sql" "$project_dir/migrations/"
+cp "$repo_root/migrations/0003_user_profiles.sql" "$repo_root/migrations/0004_manager_submissions.sql" "$project_dir/migrations/"
 CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
 curl --connect-timeout 1 --max-time 5 -fsS "$base/api/health" >/dev/null || { cat "$state_dir/wrangler.log" >&2; exit 1; }
 echo 'PROFILE_MIGRATION_POST_PASS health=200 same_server_recovered=1'
@@ -103,6 +103,9 @@ if [[ "${1:-}" == "--manager-sync" ]]; then
 elif [[ "${1:-}" == "--image-upload" ]]; then
   shift
   timeout -k 5s 90s python3 -B tests/profile_image_e2e.py "$@"
+elif [[ "${1:-}" == "--manager-actions" ]]; then
+  shift
+  timeout -k 5s 120s python3 -B tests/manager_actions_e2e.py "$@"
 else
   timeout -k 5s 180s python3 -B tests/profile_flow_e2e.py "$@"
 fi

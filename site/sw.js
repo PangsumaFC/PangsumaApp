@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pangsuma-app-shell-v13-user-profiles';
+const CACHE_NAME = 'pangsuma-app-shell-v15-manager-auto-approval';
 const APP_SHELL = [
   '/',
   '/pangsuma-theme.css',

@@ -25,6 +25,7 @@ import { INITIAL_ROSTER, MANAGER_EMAIL } from '../_lib/roster.js';
 import { handlePasskeyApi } from '../_lib/webauthn.js';
 import { validProfileImage } from '../_lib/profile-photo.js';
 import { ensureUserProfilesSchema } from '../_lib/migration-guard.js';
+import { csvLine, csvHeader } from '../_lib/csv-export.js';
 
 const PASSWORD_PATH = '/account/password';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -624,7 +625,7 @@ async function createSubmission(context, db) {
   ensureMethod(request, 'POST');
   ensureSameOrigin(request);
   const user = await requireUser(request, db);
-  if (user.role !== 'user') throw new ApiError(403, 'user_role_required', 'Hanya akun User yang dapat membuat pengajuan.');
+  if (!['user', 'manager'].includes(user.role)) throw new ApiError(403, 'submission_role_required', 'Akun ini tidak dapat membuat pengajuan.');
   const body = await readJson(request);
   const type = body.type;
   const amount = body.amountIdr;
@@ -652,7 +653,7 @@ async function createSubmission(context, db) {
   const id = crypto.randomUUID();
   const createdAt = nowIso();
   try {
-    await db.batch([
+    const statements = [
       db.prepare(`
         INSERT INTO submissions
           (id, idempotency_key, payload_hash, created_by, type, status, amount_idr, date,
@@ -663,9 +664,26 @@ async function createSubmission(context, db) {
         INSERT INTO audit_events (actor_id, action, entity_type, entity_id, details_json, created_at)
         VALUES (?, 'submission.created', 'submission', ?, ?, ?)
       `).bind(user.id, id, JSON.stringify({ type, amountIdr: amount }), createdAt)
-    ]);
+    ];
+    if (user.role === 'manager') {
+      // Automatic acceptance is not a manual self-decision: resolved_by stays
+      // NULL. Reuse status triggers for balance checks, ledger and audit, in the
+      // same atomic batch so insufficient cash cannot leave a pending request.
+      statements.push(db.prepare(`
+        UPDATE submissions
+        SET status = 'approved', updated_by = ?, updated_at = ?
+        WHERE id = ? AND created_by = ? AND status = 'pending'
+      `).bind(user.id, createdAt, id, user.id));
+    }
+    await db.batch(statements);
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if (String(error?.message || '').includes('insufficient_petty_cash_balance')) {
+      throw new ApiError(409, 'insufficient_petty_cash', 'Saldo petty cash tidak mencukupi. Minta pemilik mengonfirmasi saldo awal yang benar.');
+    }
+    if (user.role === 'manager' && String(error?.message || '').includes('only_user_accounts_may_submit')) {
+      throw new ApiError(503, 'migration_required', 'Pengajuan Manager belum tersedia. Administrator perlu menerapkan migrasi 0004_manager_submissions.sql.');
+    }
     let duplicate = null;
     try {
       duplicate = await findIdempotentSubmission(db, user.id, idempotencyKey, payloadHash);
@@ -1041,23 +1059,8 @@ async function logout(context, db) {
   return jsonResponse({ ok: true }, 200, { 'Set-Cookie': '__Host-pangsuma_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
 }
 
-function csvCell(value) {
-  let text = String(value ?? '');
-  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-function csvLine(values) {
-  return `${values.map(csvCell).join(',')}\r\n`;
-}
-
 async function* fullExportCsv(db, snapshotAt) {
-  yield `\uFEFF${csvLine([
-    'Kategori', 'ID', 'Waktu', 'Tanggal laporan', 'Jenis', 'Status', 'Nominal IDR',
-    'Pengaju', 'Jabatan', 'Keperluan', 'Catatan', 'Alasan keputusan', 'Aktor',
-    'Arah ledger', 'Saldo setelah IDR', 'Aksi audit', 'Tipe entitas', 'ID entitas', 'Rincian audit'
-  ])}`;
-
+  yield csvHeader();
   let submissionCursor = null;
   while (true) {
     const filters = ['s.created_at <= ?'];

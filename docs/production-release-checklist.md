@@ -1,8 +1,8 @@
 # Checklist tinjauan dan rilis produksi Pangsuma
 
-**Dokumen historis:** checklist ini mencatat rilis awal backend password, yang sudah dideploy dan di-bootstrap. Jangan ulangi bootstrap atau ikuti langkah password di bawah untuk rilis sekarang. Rilis Manager-only passkey mengikuti `docs/passkey-auth-operations.md`.
+**Arsip, bukan panduan rilis aktif:** checklist ini mencatat rilis awal backend password, yang sudah dideploy dan di-bootstrap. Jangan ulangi bootstrap atau ikuti langkah password di bawah untuk rilis sekarang. Rujukan aktif adalah [status kesiapan rilis](release-status.md) dan [urutan migrasi profil](migration-first-auth-account.md).
 
-**Status rilis passkey:** disetujui pemilik; menunggu deployment terpisah. Tidak ada perubahan DNS/domain.
+**Koreksi status terkini:** passkey nonaktif pada konfigurasi default maupun production. Catatan persetujuan, preview, branch, dan hasil uji di bawah adalah riwayat tahap sebelumnya, bukan persetujuan untuk push, migrasi, atau deploy branch saat ini. Panduan passkey terpisah tidak boleh dipakai untuk mengaktifkannya tanpa keputusan baru.
 
 ## Tinjauan lokal
 

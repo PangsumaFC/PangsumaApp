@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import csv
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -535,14 +537,21 @@ def main():
         for key, value in financial_before.items():
             assert final_overview[key] == value, key
         report_csv_after = manager2.evaluate("async () => { const r = await fetch('/api/export.csv'); if (!r.ok) throw new Error('export failed'); return r.text(); }")
-        assert report_csv_after == report_csv_before, "profile edits must not change exported report"
+        # The complete export includes audit events, so successful profile saves
+        # must add rows. Compare financial rows and preserve all prior audit rows.
+        before_rows = list(csv.DictReader(io.StringIO(report_csv_before.lstrip('\ufeff'))))
+        after_rows = list(csv.DictReader(io.StringIO(report_csv_after.lstrip('\ufeff'))))
+        assert [r for r in after_rows if r['Kategori'] != 'Audit'] == [r for r in before_rows if r['Kategori'] != 'Audit'], "profile edits must not change exported submissions or ledger"
+        after_audit = {r['ID']: r for r in after_rows if r['Kategori'] == 'Audit'}
+        assert all(after_audit.get(r['ID']) == r for r in before_rows if r['Kategori'] == 'Audit'), "profile edits must preserve previous audit export rows"
+        assert any(r['Aksi audit'] == 'user.profile_updated' for r in after_audit.values()), "profile saves must appear in the complete audit export"
         for original in overview['data']['users']:
             final_user = next(u for u in final_overview['users'] if u['id'] == original['id'])
             for key in ('id', 'name', 'email', 'position', 'role', 'active'):
                 assert final_user[key] == original[key], (original['id'], key)
         user_ctx.close(); manager_ctx.close(); browser.close()
     assert not browser_errors, browser_errors
-    print("PROFILE_FLOW_PASS bootstrap=1 manager_rotation=1 manager_target_profile=1 user_sync=1 concurrent_contexts=1 fresh_editor=1 conflict_409=1 conflict_no_audit=1 initial_conflict=1 missing_version=1 load_error=1 validation=1 csrf=1 auth=1 photo_isolation=1 financial_unchanged=1 nonempty_report_unchanged=1 csv_unchanged=1 roster_unchanged=1 responsive=320,390,768,1280 screenshots=" + str(SCREENSHOTS))
+    print("PROFILE_FLOW_PASS bootstrap=1 manager_rotation=1 manager_target_profile=1 user_sync=1 concurrent_contexts=1 fresh_editor=1 conflict_409=1 conflict_no_audit=1 initial_conflict=1 missing_version=1 load_error=1 validation=1 csrf=1 auth=1 photo_isolation=1 financial_unchanged=1 nonempty_report_unchanged=1 financial_csv_unchanged=1 audit_export_preserved=1 roster_unchanged=1 responsive=320,390,768,1280 screenshots=" + str(SCREENSHOTS))
 
 
 if __name__ == "__main__":

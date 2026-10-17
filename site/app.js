@@ -551,6 +551,7 @@ function managerOverview() {
   const pendingCount = state.summary.pending ?? pending.length;
   const todayCount = state.summary.today ?? todayItems.length;
   return `${welcomePanel()}
+    <div class="section-row"><div><h2>Pengajuan Anda</h2><p>Pengajuan Manager otomatis disetujui dan digabung dengan pengajuan lain yang sudah disetujui.</p></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div><button class="secondary-button" type="button" data-page="finance">Lihat Finance</button></section>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount), 'approvals')}${metricCard('finance', 'Menunggu Finance', String(financeWaiting), 'finance')}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
     <div class="manager-layout"><section class="manager-ledger"><div class="section-row"><div><h2>Aktivitas hari ini</h2><p>${todayCount} pengajuan pada ${dateLong(today)}</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>${todayItems.length ? `<div class="list-stack">${todayItems.slice(0, 3).map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan hari ini', 'Aktivitas akan tampil di sini setelah User mengirim laporan.')}</section><section class="manager-queue"><div class="section-row"><div><h2>Menunggu persetujuan</h2></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pending.length ? `<div class="list-stack">${pending.slice(0, 2).map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Antrian kosong', 'Pengajuan baru akan tampil setelah dikirim User.')}</section></div>
@@ -579,7 +580,7 @@ function managerApprovals() {
 
 function financePage() {
   const finance = state.submissions.filter(item => item.type === 'finance_request');
-  const waiting = finance.filter(item => ['pending', 'approved'].includes(item.status));
+  const waiting = finance.filter(item => item.status === 'approved');
   const sent = finance.filter(item => item.status === 'sent');
   const ledgers = state.cashLedger;
   const openingConfigured = ledgers.some(event => event.event_type === 'opening_balance' && Number(event.amount_idr) > 0);
@@ -655,7 +656,7 @@ function reportForm() {
   const type = reportTypePreset;
   return `${pageHeading('Buat pengajuan', 'Isi kebutuhan Anda. Nominal dan status akan tersimpan di server.')}
     <form id="reportForm" class="form-card surface"><div class="form-grid">
-      <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${type === 'petty_cash' ? 'Saldo petty cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.'}</div></div>
+      <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${state.user?.role === 'manager' ? (type === 'petty_cash' ? 'Otomatis disetujui; saldo petty cash langsung berkurang saat dikirim dan harus mencukupi.' : 'Otomatis disetujui dan langsung masuk daftar menunggu Finance.') : (type === 'petty_cash' ? 'Saldo petty cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.')}</div></div>
       <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO()}" required></div>
       <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Contoh: 150000"></div>
       <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required minlength="3" maxlength="150" placeholder="Jelaskan kebutuhan operasional"></div>
@@ -689,7 +690,7 @@ function renderApp() {
   if (state.user.mustChangePassword) currentPage = 'change-password';
   const role = state.user.role;
   const allowed = role === 'manager'
-    ? ['overview', 'approvals', 'finance', 'users', 'change-password']
+    ? ['overview', 'approvals', 'finance', 'users', 'change-password', 'new-report']
     : ['overview', 'my-reports', 'change-password', 'new-report'];
   if (!allowed.includes(currentPage)) currentPage = 'overview';
   const pageChanged = currentPage !== lastRenderedPage;
@@ -700,6 +701,7 @@ function renderApp() {
   renderNav();
   let body;
   if (currentPage === 'change-password') body = changePasswordPage();
+  else if (currentPage === 'new-report') body = reportForm();
   else if (role === 'manager') {
     body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
   } else {
@@ -767,6 +769,28 @@ async function openUserProfile(id) {
   }
 }
 
+async function decodeProfilePhoto(file) {
+  if (typeof createImageBitmap === 'function') {
+    try { return await createImageBitmap(file); }
+    catch { throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.'); }
+  }
+  // Some mobile browsers expose Image.decode but not createImageBitmap.
+  // Image.decode can accept header-only WebP, so never use it for that format.
+  if (file.type === 'image/webp') throw new Error('Browser ini belum dapat memvalidasi WebP. Pilih foto JPG atau PNG, atau perbarui browser.');
+  // Use data: rather than blob: so the fallback respects our image CSP.
+  const source = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Foto tidak dapat dibaca.'));
+    reader.readAsDataURL(file);
+  });
+  const image = new Image();
+  if (typeof image.decode !== 'function') throw new Error('Browser tidak dapat memvalidasi foto. Perbarui browser atau coba browser lain.');
+  image.src = source;
+  try { await image.decode(); } catch { throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.'); }
+  return image;
+}
+
 async function prepareProfilePhoto(file) {
   if (!file || !profileDraft || profileDraft.loading || profileDraft.saving || profileDraft.conflicted) return;
   const draft = profileDraft;
@@ -779,15 +803,12 @@ async function prepareProfilePhoto(file) {
   $('#profilePhotoStatus').textContent = 'Menyiapkan foto…';
   let image;
   try {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Pilih foto JPG, PNG, atau WebP. Format lain belum didukung.');
+    const inferredMime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[file.name?.split('.').pop()?.toLowerCase()];
+    const mime = file.type || inferredMime;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) throw new Error('Pilih foto JPG, PNG, atau WebP. Format lain belum didukung.');
     if (file.size > 10 * 1024 * 1024) throw new Error('Foto melebihi 10 MB. Pilih foto yang lebih kecil.');
-    if (typeof createImageBitmap !== 'function') throw new Error('Browser tidak dapat memvalidasi foto. Perbarui browser atau coba browser lain.');
-    try {
-      // Image.onload can accept truncated WebP headers without decoding pixels.
-      image = await createImageBitmap(file);
-    } catch {
-      throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
-    }
+    // Never trust Image.onload alone: malformed WebP headers can fire it.
+    image = await decodeProfilePhoto(file.type ? file : file.slice(0, file.size, mime));
     if (profileDraft !== draft || selection !== profileSelection) return;
     if (!image.width || !image.height || image.width * image.height > 40_000_000) throw new Error('Resolusi foto terlalu besar. Pilih foto dengan resolusi lebih kecil.');
     const side = Math.min(image.width, image.height);
@@ -813,7 +834,7 @@ async function prepareProfilePhoto(file) {
     errorBox.hidden = false;
     $('#profilePhotoStatus').textContent = '';
   } finally {
-    image?.close();
+    image?.close?.();
     if (profileDraft === draft && selection === profileSelection) {
       draft.processing = false;
       $('#profileSubmit').disabled = false;
@@ -1049,20 +1070,14 @@ async function performNewSubmission(event) {
     });
     submissionIdempotencyKey = '';
     await refreshOverview();
-    currentPage = 'my-reports';
+    currentPage = state.user.role === 'manager' ? 'overview' : 'my-reports';
     renderApp();
-    showToast('Pengajuan terkirim dan tersimpan di akun Anda.');
+    showToast(state.user.role === 'manager' ? 'Pengajuan otomatis disetujui dan masuk rekap.' : 'Pengajuan terkirim dan tersimpan di akun Anda.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
     if (button.isConnected) setButtonBusy(button, false);
   }
-}
-
-function csvCell(value) {
-  let text = String(value ?? '');
-  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 async function downloadCsv(button) {
@@ -1140,7 +1155,10 @@ async function handleAction(button) {
   if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
-    if (state.user?.role !== 'user' || state.user.mustChangePassword) return;
+    if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
+    $('#reportChoiceDescription').textContent = state.user?.role === 'manager'
+      ? 'Pengajuan otomatis disetujui. Petty cash langsung mengurangi saldo yang tersedia; Request Finance langsung menunggu Finance.'
+      : 'Saldo petty cash berkurang setelah disetujui Manager. Request Finance masuk setelah persetujuan.';
     openDialog('reportChoice');
   } else if (action === 'choose-report-type') {
     reportTypePreset = button.dataset.type === 'finance_request' ? 'finance_request' : 'petty_cash';

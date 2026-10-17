@@ -1,0 +1,44 @@
+name: Test Pangsuma App
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit and offline schema tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Run JavaScript unit tests
+        run: npm test
+
+      - name: Run offline SQLite migration tests
+        run: |
+          python3 -B tests/profile_schema_unit.py
+          python3 -B tests/manager_submission_schema_unit.py

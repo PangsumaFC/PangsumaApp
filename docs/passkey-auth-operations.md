@@ -1,5 +1,7 @@
 # Operasional passkey Pangsuma
 
+**Arsip prosedur rollout, tidak aktif:** branch saat ini memakai `PASSKEY_AUTH_ENABLED=false` pada default dan production. Persetujuan serta rencana pada bagian berikut berasal dari tahap passkey terdahulu, bukan izin menjalankan prosedur ini sekarang. Jangan membuat secret enrollment, mengaktifkan passkey, atau mengirim token berdasarkan arsip ini. Ikuti [status kesiapan rilis](release-status.md) untuk pekerjaan aktif.
+
 ## Status dan batas perubahan
 
 **Jalur Manager lulus E2E lokal; rollout passkey Manager disetujui tetapi produksi belum diaktifkan.** Blocker enrollment diperbaiki: D1 menghitung efek trigger dalam `meta.changes`, sehingga pengecekan `=== 1` keliru menolak insert yang berhasil. Recovery memakai `INSERT ... RETURNING credential_id`. Tes `bash tests/run-local.sh --manager-only` lulus untuk reissue grant kedaluwarsa yang belum dikonsumsi, penolakan challenge generasi lama, grant aktif tidak diperpanjang, penolakan grant consumed/kredensial yang sudah ada, identitas/role/status Manager, enrollment UI tanpa sesi/roster, discoverable login, logout/login ulang, origin/RP/signature/UP/UV/backup/challenge/replay dan throttling. Tes unit membuktikan endpoint undangan/backup-key 404 tanpa akses DB, default-off, dan kill switch. Log: `/workspace/PangsumaApp-manager-blockers-test-20261017.log`. Undangan, onboarding sembilan User, dan passkey cadangan ditutup untuk tahap ini.

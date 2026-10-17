@@ -1,0 +1,163 @@
+"""Local-only regression for Manager submissions, CSV downloads and mobile photo decoding."""
+import base64
+import csv
+import io
+import os
+
+from playwright.sync_api import expect, sync_playwright
+from profile_flow_e2e import (
+    BASE, MANAGER, SCREENSHOTS, api, credential, http, login,
+    rotate_first_login, set_file, tiny_png, visible_dialog,
+)
+
+
+def main():
+    password = os.environ['LOCAL_MANAGER_PASSWORD']
+    status, data, _ = http('/api/bootstrap', {'managerCredential': credential(password)},
+                           headers={'Authorization': 'Bearer ' + os.environ['BOOTSTRAP_TOKEN']})
+    assert status == 201, (status, data)
+    errors = []
+    SCREENSHOTS.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True,
+                                    args=['--no-sandbox'])
+        context = browser.new_context(viewport={'width': 390, 'height': 844})
+        context.set_default_timeout(10_000)
+        context.route('**/*', lambda route: route.continue_()
+                      if route.request.url.startswith(BASE + '/') else route.abort())
+        page = context.new_page()
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(BASE, wait_until='networkidle')
+        login(page, MANAGER, password)
+        rotate_first_login(page, password)
+        overview = api(page, '/api/overview')['data']
+        manager = overview['user']
+        user = next(u for u in overview['users'] if u['role'] == 'user')
+        assert manager['role'] == 'manager'
+
+        # Insufficient cash must reject the whole Manager transaction, not leave pending.
+        blocked = api(page, '/api/submissions', 'POST', {
+            'type': 'petty_cash', 'amountIdr': 125000, 'date': '2026-10-18',
+            'description': 'Manager balance guard local'
+        }, {'Idempotency-Key': '44444444-4444-4444-8444-444444444444'})
+        assert blocked['status'] == 409 and blocked['data']['error']['code'] == 'insufficient_petty_cash', blocked
+        unchanged = api(page, '/api/overview')['data']
+        assert unchanged['submissions'] == overview['submissions']
+        assert unchanged['cashLedger'] == overview['cashLedger']
+        assert unchanged['auditEvents'] == overview['auditEvents']
+        opening = api(page, '/api/cash/opening-balance', 'POST', {'amountIdr': 500000, 'ownerConfirmed': True})
+        assert opening['status'] == 201, opening
+        overview = api(page, '/api/overview')['data']
+
+        # The Manager must reach the shared form through the actual mobile UI.
+        for kind in ('petty_cash', 'finance_request'):
+            page.locator('[data-action="open-report-choice"]').click()
+            page.locator(f'[data-action="choose-report-type"][data-type="{kind}"]').click()
+            expect(page.locator('#reportForm')).to_be_visible()
+            page.locator('#reportAmount').fill('125000')
+            page.locator('#reportDescription').fill('=Manager local ' + kind)
+            with page.expect_response(lambda r: r.url.endswith('/api/submissions')
+                                      and r.request.method == 'POST') as response:
+                page.locator('#reportForm [type="submit"]').click()
+            assert response.value.status == 201, response.value.text()
+            original = response.value.json()['submission']
+            assert original['status'] == 'approved', original
+            replay = api(page, '/api/submissions', 'POST', response.value.request.post_data_json,
+                         {'Idempotency-Key': response.value.request.all_headers()['idempotency-key']})
+            assert replay['status'] == 200 and replay['data']['alreadyCreated'], replay
+            assert replay['data']['submission']['id'] == original['id'], replay
+            page.locator('#reportForm').wait_for(state='detached')
+            expect(page.locator('[data-action="open-report-choice"]')).to_be_visible()
+        after = api(page, '/api/overview')['data']
+        own = [s for s in after['submissions'] if s['createdBy'] == manager['id']]
+        assert len(own) == 2 and all(s['status'] == 'approved' for s in own), own
+        for action in ('approve', 'reject'):
+            denied = api(page, f"/api/submissions/{own[0]['id']}/{action}", 'POST',
+                         {'reason': 'Local rejection'} if action == 'reject' else {})
+            assert denied['status'] == 403 and denied['data']['error']['code'] == 'self_decision_not_allowed', denied
+        assert after['cashBalanceIdr'] == overview['cashBalanceIdr'] - 125000
+        assert len(after['cashLedger']) == len(overview['cashLedger']) + 1
+        assert after['summary']['pending'] == 0 and after['summary']['financeWaiting'] == 1
+        petty = next(s for s in own if s['type'] == 'petty_cash')
+        assert sum(e['submission_id'] == petty['id'] for e in after['cashLedger']) == 1
+        finance = next(s for s in own if s['type'] == 'finance_request')
+        sent = api(page, f"/api/submissions/{finance['id']}/send", 'POST', {})
+        assert sent['status'] == 200 and sent['data']['submission']['status'] == 'sent', sent
+        sent_replay = api(page, f"/api/submissions/{finance['id']}/send", 'POST', {})
+        assert sent_replay['status'] == 200 and sent_replay['data']['alreadyApplied'], sent_replay
+        page.screenshot(path=str(SCREENSHOTS / 'manager-own-submissions.png'), full_page=True)
+        print('MANAGER_SUBMISSION_UI_PASS types=2 created=201 own_approved=2 self_decision=403 cash_debited_once=1 finance_sent=1 insufficient_rollback=1', flush=True)
+
+        # Save to both profiles with createImageBitmap absent, as on older mobile browsers.
+        page.evaluate('window.createImageBitmap = undefined')
+        page.locator('[data-page="users"]:visible').first.click()
+        for target in (manager, user):
+            path = f"/api/users/{target['id']}/profile"
+            page.locator(f'[data-action="edit-user-profile"][data-id="{target["id"]}"]').click()
+            dialog = visible_dialog(page)
+            set_file(page, '#profilePhoto', 'gallery.png', tiny_png(), 'image/png')
+            expect(dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap')
+            expect(dialog.locator('#profileError')).to_be_hidden()
+            with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as response:
+                dialog.locator('#profileSubmit').click()
+            assert response.value.status == 200, response.value.text()
+            dialog.wait_for(state='hidden')
+            saved = api(page, path)['data']['user']
+            assert saved['photoUrl'], saved
+            loaded = page.evaluate('''async path => {
+                const r = await fetch(path); return {status:r.status, size:(await r.arrayBuffer()).byteLength};
+            }''', saved['photoUrl'])
+            assert loaded['status'] == 200 and loaded['size'] > 0, loaded
+            print('MANAGER_PHOTO_FALLBACK_PASS target=' + target['role'] + ' save=200 read=200', flush=True)
+
+        # Empty MIME metadata from a gallery must not reject an otherwise valid image.
+        page.locator(f'[data-action="edit-user-profile"][data-id="{manager["id"]}"]').click()
+        dialog = visible_dialog(page)
+        png64 = base64.b64encode(tiny_png()).decode()
+        page.evaluate('''async raw => {
+            const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+            await prepareProfilePhoto(new File([bytes], 'gallery.PNG', {type:''}));
+        }''', png64)
+        expect(dialog.locator('#profilePhotoStatus')).to_contain_text('Foto siap')
+        previous = dialog.locator('#profilePreview img').get_attribute('src')
+        # Image.decode, not just onload, must reject corrupt bytes in the fallback.
+        set_file(page, '#profilePhoto', 'broken.jpg', b'not an image', 'image/jpeg')
+        expect(dialog.locator('#profileError')).to_be_visible()
+        assert dialog.locator('#profilePreview img').get_attribute('src') == previous
+        dialog.locator('[data-action="close-dialog"]').first.click()
+        print('MANAGER_PHOTO_METADATA_PASS empty_mime=1 invalid_replacement_rejected=1 draft_preserved=1', flush=True)
+
+        # Consume the complete HTTP stream and then exercise the real download button.
+        csv_response = page.evaluate('''async () => {
+            const r=await fetch('/api/export.csv');
+            return {status:r.status, type:r.headers.get('content-type'), text:await r.text()};
+        }''')
+        assert csv_response['status'] == 200 and 'text/csv' in csv_response['type'], csv_response
+        rows = list(csv.reader(io.StringIO(csv_response['text'].lstrip('\ufeff'))))
+        assert all(len(row) == 19 for row in rows), rows
+        exported = {row[1] for row in rows[1:] if row[0] == 'Pengajuan'}
+        assert {s['id'] for s in own} <= exported, rows
+        export_statuses = {row[1]: row[5] for row in rows[1:] if row[0] == 'Pengajuan'}
+        assert export_statuses[petty['id']] == 'approved', export_statuses
+        assert export_statuses[finance['id']] == 'sent', export_statuses
+        assert all(row[9].startswith("'=Manager") for row in rows[1:] if row[0] == 'Pengajuan'), rows
+        assert any(row[0] == 'Audit' for row in rows[1:]), rows
+        page.locator('[data-page="finance"]:visible').first.click()
+        with page.expect_download() as download:
+            page.locator('[data-action="download-csv"]').click()
+        assert download.value.failure() is None
+        downloaded = SCREENSHOTS / 'manager-complete-export.csv'
+        download.value.save_as(downloaded)
+        raw = downloaded.read_bytes()
+        assert raw.startswith(b'\xef\xbb\xbf') and b'\r\n' in raw
+        assert len(list(csv.reader(io.StringIO(raw.decode('utf-8-sig'))))) == len(rows)
+        page.screenshot(path=str(SCREENSHOTS / 'manager-csv-downloaded.png'), full_page=True)
+        print('MANAGER_CSV_UI_PASS status=200 download=1 rows=' + str(len(rows)) + ' bom=1 columns=19 formula_safe=1', flush=True)
+        assert not errors, errors
+        context.close()
+        browser.close()
+    print('MANAGER_ACTIONS_E2E_PASS browser_errors=0 screenshots=' + str(SCREENSHOTS), flush=True)
+
+
+if __name__ == '__main__':
+    main()

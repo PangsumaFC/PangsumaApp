@@ -8,7 +8,9 @@ Fitur profil hanya menambah tabel `user_profiles` melalui `0003_user_profiles.sq
 
 Bila 0003 belum diterapkan, API dan health check mengembalikan HTTP 503 `migration_required`, bukan error SQL mentah atau 401 password salah. Server yang sama dapat pulih pada request berikutnya sesudah migrasi tersedia. Ini adalah pengaman fail-closed, bukan janji bahwa login tetap tersedia bila urutan rilis dilanggar.
 
-File workflow `.github/workflows/deploy.yml` memiliki langkah **Require profile migration before deploy** sebelum langkah deploy. Langkah tersebut hanya membaca kolom tabel profil lewat `SELECT ... LIMIT 0`; tabel/kolom hilang, akses D1 gagal, atau hasil tidak sukses akan menghentikan workflow. Workflow tidak menerapkan migrasi otomatis. Perubahan workflow masih lokal, belum di-commit, di-push, atau dijalankan pada produksi.
+File workflow `.github/workflows/deploy.yml` mensyaratkan job tes dari `.github/workflows/test.yml` lulus sebelum job deploy dimulai. Job tes menjalankan unit JavaScript dan regresi SQLite offline tanpa secret produksi. Tes yang gagal menghentikan seluruh job deploy, termasuk pemeriksaan domain dan D1 remote.
+
+Setelah tes lulus, langkah **Require auth and profile migrations before deploy (read-only, no migrations)** memeriksa kolom profil dari 0003 serta `sessions.auth_method` dan `users.webauthn_user_handle` dari 0002. Query `SELECT ... LIMIT 0` tetap memeriksa tabel kosong tanpa mengembalikan data akun/sesi. Tabel/kolom hilang, akses D1 gagal, atau hasil tidak sukses menghentikan workflow. Workflow tidak menerapkan migrasi otomatis. Perluasan gate dan workflow tes masih lokal pada branch `chore/local-test-gate`, belum di-commit, di-push, atau dijalankan pada produksi; lihat [status rilis](release-status.md).
 
 ## Urutan aman untuk rilis yang kelak disetujui
 

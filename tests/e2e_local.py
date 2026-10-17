@@ -432,7 +432,10 @@ def main():
             "type": "petty_cash", "amountIdr": 1000, "date": date.today().isoformat(),
             "description": "Manager self submission", "note": ""
         }, {"Idempotency-Key": str(uuid.uuid4())})
-        assert own_submission["status"] == 403 and own_submission["data"]["error"]["code"] == "user_role_required", own_submission
+        assert own_submission["status"] == 201, own_submission
+        own_id = own_submission["data"]["submission"]["id"]
+        self_decision = api(page, f"/api/submissions/{own_id}/approve", "POST", {})
+        assert self_decision["status"] == 403 and self_decision["data"]["error"]["code"] == "self_decision_not_allowed", self_decision
 
         page.get_by_role("button", name="Persetujuan", exact=True).click()
         cash_row = page.locator(".item-row").filter(has_text="Transport kegiatan lapangan")

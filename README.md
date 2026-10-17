@@ -1,5 +1,7 @@
 # Pangsuma App
 
+Status branch, hasil verifikasi, dan batas tindakan produksi terbaru ada di [Status kesiapan rilis](docs/release-status.md). Dokumen passkey dan checklist rilis awal adalah arsip, bukan instruksi rilis aktif.
+
 ## Produksi
 
 Aplikasi memakai Cloudflare Pages Functions dan Cloudflare D1 di `https://app.pangsumafc.com`. Pemilik telah menyetujui rilis produksi dan pengaturan langsung sepuluh akun yang sudah ada. Tidak ada Supabase, email verifikasi, OTP, atau mailbox yang dibutuhkan untuk login. Passkey tetap nonaktif.
@@ -41,8 +43,22 @@ node --test tests/auth_client_protocol_unit.mjs
 bash tests/run-password-local.sh
 ```
 
+Untuk pemeriksaan cepat seluruh unit JavaScript dan integritas migrasi tanpa server, browser, secret, atau koneksi D1:
+
+```sh
+npm ci --ignore-scripts
+npm test
+python3 -B tests/profile_schema_unit.py
+```
+
+Workflow `.github/workflows/test.yml` menjalankan kedua suite pada push branch selain `main` dan pada pull request. Workflow deploy `main` memanggil pemeriksaan yang sama sebagai prasyarat: jika tes gagal, job deploy tidak berjalan, termasuk pemeriksaan domain dan D1 remote. Job tes hanya memiliki izin baca source dan tidak menerima secret produksi. Tes ini tidak menggantikan E2E browser lokal atau gate migrasi produksi.
+
+Probe migrasi deploy memeriksa kolom profil dari `0003_user_profiles.sql` serta `sessions.auth_method` dan `users.webauthn_user_handle` dari `0002_passkey_auth.sql`, termasuk saat passkey nonaktif. Query bersifat read-only dengan `LIMIT 0`: tabel kosong tetap diperiksa tanpa mengembalikan data akun atau sesi. Suite SQLite offline menjalankan query yang diambil langsung dari workflow untuk memastikan database dengan seluruh migrasi lolos, kolom/tabel yang direferensikan hilang atau parsial ditolak, dan data tidak berubah. Probe ini bukan verifikasi seluruh skema passkey, indeks, trigger, CHECK, atau catatan migrasi remote; passkey tetap nonaktif, dan aktivasi kelak memerlukan pemeriksaan serta pengujian tersendiri.
+
 Suite lama `tests/e2e_local.py` dan dokumentasi checklist rilis awal memuat contoh kontrak password sebelumnya. Jangan gunakan contoh payload plaintext tersebut untuk autentikasi baru; gunakan kontrak di atas. Semua pengujian D1 harus memakai `--local`, bukan `--remote`.
 
 ## Integritas keuangan
 
 Persetujuan petty cash mengurangi saldo dalam operasi database yang sama dengan ledger. Trigger menolak saldo tidak cukup dan debit ganda. Kunci idempotensi terikat pada fingerprint pengajuan. Saldo awal hanya dapat dimasukkan sekali setelah nominal aktual disetujui pemilik. Ledger dan audit tidak dapat diubah atau dihapus melalui API. Riwayat memakai cursor dan ekspor CSV Manager mencakup seluruh data, dengan penetralan sel formula.
+
+Pengajuan baru milik Manager otomatis berstatus `approved` dalam transaksi pembuatan, tanpa keputusan manual, dan bergabung dengan pengajuan lain yang sudah disetujui. Pengajuan User tetap `pending` sampai diputuskan Manager. Petty cash Manager langsung mengurangi saldo dan menambah ledger satu kali; jika saldo tidak cukup, seluruh pembuatan dibatalkan (HTTP 409), bukan dibiarkan pending. Request Finance Manager langsung menunggu Finance dan tetap perlu ditandai terkirim. Riwayat `submission.created` dan perubahan status tetap tercatat; `resolved_by` kosong karena persetujuan bersifat otomatis. Perubahan ini tidak mengubah status pengajuan lama atau data produksi.

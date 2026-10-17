@@ -1,5 +1,7 @@
 # Pangsuma: enrollment dan login passkey Manager lulus lokal
 
+**Arsip eksperimen passkey:** hasil, branch, path, dan persetujuan di dokumen ini bersifat historis. Konfigurasi branch aktif menonaktifkan passkey untuk default dan production; jangan menggunakan langkah produksi di bawah sebagai izin aktivasi. Rujukan terkini: [status kesiapan rilis](release-status.md).
+
 ## Hasil utama
 
 E2E minimal Manager lulus menggunakan Chromium virtual authenticator dan D1 Wrangler lokal sintetis. Tidak ada deployment atau perubahan produksi. Sembilan User ditunda sesuai arahan pemilik dan bukan blocker tahap ini.
