@@ -624,7 +624,6 @@ async function createSubmission(context, db) {
   ensureMethod(request, 'POST');
   ensureSameOrigin(request);
   const user = await requireUser(request, db);
-  if (user.role !== 'user') throw new ApiError(403, 'user_role_required', 'Hanya akun User yang dapat membuat pengajuan.');
   const body = await readJson(request);
   const type = body.type;
   const amount = body.amountIdr;

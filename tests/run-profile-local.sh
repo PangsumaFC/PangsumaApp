@@ -92,6 +92,9 @@ cp "$repo_root/migrations/0003_user_profiles.sql" "$project_dir/migrations/"
 CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
 curl --connect-timeout 1 --max-time 5 -fsS "$base/api/health" >/dev/null || { cat "$state_dir/wrangler.log" >&2; exit 1; }
 echo 'PROFILE_MIGRATION_POST_PASS health=200 same_server_recovered=1'
+cp "$repo_root/migrations/0004_manager_submissions.sql" "$project_dir/migrations/"
+CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
+echo 'MANAGER_SUBMISSION_MIGRATION_LOCAL_PASS migration=0004 remote=0'
 export PANGSUMA_LOCAL_URL="$base"
 export PROFILE_REVIEW_DIR="$(mktemp -d /workspace/pangsuma-profile-review.XXXXXX)"
 export PYTHONDONTWRITEBYTECODE=1
@@ -103,6 +106,9 @@ if [[ "${1:-}" == "--manager-sync" ]]; then
 elif [[ "${1:-}" == "--image-upload" ]]; then
   shift
   timeout -k 5s 90s python3 -B tests/profile_image_e2e.py "$@"
+elif [[ "${1:-}" == "--manager-defects" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/manager_defects_e2e.py "$@"
 else
   timeout -k 5s 180s python3 -B tests/profile_flow_e2e.py "$@"
 fi

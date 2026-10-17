@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.pangsuma.fc'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.pangsuma.fc'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+}

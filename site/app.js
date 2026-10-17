@@ -551,6 +551,7 @@ function managerOverview() {
   const pendingCount = state.summary.pending ?? pending.length;
   const todayCount = state.summary.today ?? todayItems.length;
   return `${welcomePanel()}
+    <div class="section-row"><div><h2>Pengajuan pribadi</h2><p>Pengajuan Anda tetap memerlukan keputusan Manager lain.</p></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div><button class="secondary-button" type="button" data-page="finance">Lihat Finance</button></section>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount), 'approvals')}${metricCard('finance', 'Menunggu Finance', String(financeWaiting), 'finance')}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
     <div class="manager-layout"><section class="manager-ledger"><div class="section-row"><div><h2>Aktivitas hari ini</h2><p>${todayCount} pengajuan pada ${dateLong(today)}</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>${todayItems.length ? `<div class="list-stack">${todayItems.slice(0, 3).map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan hari ini', 'Aktivitas akan tampil di sini setelah User mengirim laporan.')}</section><section class="manager-queue"><div class="section-row"><div><h2>Menunggu persetujuan</h2></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pending.length ? `<div class="list-stack">${pending.slice(0, 2).map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Antrian kosong', 'Pengajuan baru akan tampil setelah dikirim User.')}</section></div>
@@ -689,7 +690,7 @@ function renderApp() {
   if (state.user.mustChangePassword) currentPage = 'change-password';
   const role = state.user.role;
   const allowed = role === 'manager'
-    ? ['overview', 'approvals', 'finance', 'users', 'change-password']
+    ? ['overview', 'approvals', 'finance', 'users', 'change-password', 'new-report']
     : ['overview', 'my-reports', 'change-password', 'new-report'];
   if (!allowed.includes(currentPage)) currentPage = 'overview';
   const pageChanged = currentPage !== lastRenderedPage;
@@ -700,6 +701,7 @@ function renderApp() {
   renderNav();
   let body;
   if (currentPage === 'change-password') body = changePasswordPage();
+  else if (currentPage === 'new-report') body = reportForm();
   else if (role === 'manager') {
     body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
   } else {
@@ -1049,7 +1051,7 @@ async function performNewSubmission(event) {
     });
     submissionIdempotencyKey = '';
     await refreshOverview();
-    currentPage = 'my-reports';
+    currentPage = state.user?.role === 'manager' ? 'approvals' : 'my-reports';
     renderApp();
     showToast('Pengajuan terkirim dan tersimpan di akun Anda.');
   } catch (error) {
@@ -1081,20 +1083,29 @@ async function downloadCsv(button) {
       if (requestEpoch !== authEpoch) throw new ApiFailure(401, 'session_changed', 'Sesi telah berubah. Masuk kembali untuk melanjutkan.');
       throw new ApiFailure(response.status, error.code || 'request_failed', error.message || 'Rekap lengkap tidak dapat dibuat.');
     }
-    if (requestEpoch !== authEpoch || !state.user) return;
-    const blob = await response.blob();
-    if (requestEpoch !== authEpoch || !state.user) return;
     const disposition = response.headers.get('Content-Disposition') || '';
     const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `pangsuma-rekap-lengkap-${todayISO()}.csv`;
-    const url = URL.createObjectURL(blob);
+    // Older APKs only intercept blob links through their existing CSV bridge.
+    // New APKs advertise HTTPS downloads; ordinary browsers use HTTPS as well.
+    const legacyApk = window.PangsumaFileBridge && window.__pangsumaNativeDownloads !== true;
+    let blobUrl;
+    if (legacyApk) {
+      const blob = await response.blob();
+      if (requestEpoch !== authEpoch || !state.user) return;
+      blobUrl = URL.createObjectURL(blob);
+    } else {
+      // Keep inline auth errors without buffering the entire streamed report.
+      await response.body?.cancel();
+    }
+    if (requestEpoch !== authEpoch || !state.user) return;
     const anchor = document.createElement('a');
-    anchor.href = url;
+    anchor.href = blobUrl || '/api/export.csv';
     anchor.download = filename;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-    showToast('Rekap lengkap pengajuan, ledger, dan audit berhasil dibuat.');
+    if (blobUrl) window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    showToast('Permintaan unduh CSV dikirim. Periksa unduhan perangkat Anda.');
   } catch (error) {
     if (error.code !== 'session_changed') showToast(friendlyError(error));
   } finally {
@@ -1140,7 +1151,7 @@ async function handleAction(button) {
   if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
-    if (state.user?.role !== 'user' || state.user.mustChangePassword) return;
+    if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
     openDialog('reportChoice');
   } else if (action === 'choose-report-type') {
     reportTypePreset = button.dataset.type === 'finance_request' ? 'finance_request' : 'petty_cash';
