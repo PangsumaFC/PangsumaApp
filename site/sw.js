@@ -1,6 +1,8 @@
-const CACHE_NAME = 'pangsuma-app-demo-v3';
+const CACHE_NAME = 'pangsuma-app-demo-v6';
 const APP_SHELL = [
   '/',
+  '/pangsuma-theme.css',
+  '/pangsuma-login-crest-384.png',
   '/manifest.webmanifest',
   '/favicon-32.png',
   '/apple-touch-icon.png',

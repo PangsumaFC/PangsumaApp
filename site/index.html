@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1557a6">
+  <meta name="theme-color" content="#f2f4f6">
   <meta name="description" content="Prototipe Pangsuma App untuk laporan harian, petty cash, dan request Finance.">
   <title>Pangsuma App | Laporan operasional</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -276,13 +276,18 @@
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
   </style>
+  <link rel="stylesheet" href="/pangsuma-theme.css">
 </head>
 <body class="logged-out">
+  <a class="skip-link" href="#mainContent">Lewati ke konten</a>
   <section class="login-screen" id="loginGate" aria-labelledby="loginTitle">
     <div class="login-panel">
+      <aside class="login-intro" aria-label="Identitas Pangsuma Football Club">
+        <img class="login-crest" src="/pangsuma-login-crest-384.png" alt="Logo Pangsuma Football Club" width="384" height="384" fetchpriority="high">
+        <div class="login-brand"><strong>Pangsuma App</strong><span>Operasional klub</span></div>
+      </aside>
       <div class="login-form-panel">
         <div class="login-form-content">
-          <div class="login-brand"><img src="/pangsuma-icon-192.png" alt=""><div><strong>Pangsuma App</strong><span>Operasional klub</span></div></div>
           <h1 id="loginTitle">Masuk</h1>
           <form class="login-form" id="loginForm">
             <div class="login-field"><label for="loginEmail">Email demo</label><input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="nama@pangsumafc.com" required></div>
@@ -297,7 +302,7 @@
   </section>
   <header class="topbar">
     <div class="brand">
-      <img src="/pangsuma-icon-192.png" alt="">
+      <img src="/pangsuma-icon-192.png" alt="" width="192" height="192">
       <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
@@ -321,6 +326,25 @@
   </div>
   <nav class="mobile-nav" id="mobileNav" aria-label="Navigasi mobile"></nav>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog class="report-choice" id="reportChoice" aria-labelledby="reportChoiceTitle" aria-describedby="reportChoiceDescription">
+    <div class="choice-panel">
+      <div class="choice-heading">
+        <div><p class="choice-kicker">Pengajuan baru</p><h2 id="reportChoiceTitle">Pilih jenis laporan</h2></div>
+        <button class="choice-close" type="button" data-action="close-report-choice" aria-label="Tutup pilihan laporan"><span aria-hidden="true">×</span></button>
+      </div>
+      <p class="choice-description" id="reportChoiceDescription">Pilih jenis sebelum mengisi laporan.</p>
+      <div class="choice-options">
+        <button class="choice-option" type="button" data-action="choose-report-type" data-type="pettycash">
+          <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15a1.5 1.5 0 0 1 1.5 1.5v11H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h13M4 7v2m11 4h5.5v4H15a2 2 0 0 1 0-4Z" stroke-linejoin="round"/><path d="M16.5 15h.1" stroke-linecap="round"/></svg></span>
+          <span class="choice-copy"><strong>Petty cash</strong><small>Saldo berkurang setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
+        </button>
+        <button class="choice-option" type="button" data-action="choose-report-type" data-type="request">
+          <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg></span>
+          <span class="choice-copy"><strong>Request Finance</strong><small>Masuk ke Finance setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </div>
+  </dialog>
   <script>
     // DEMO ONLY: every identity and the shared passphrase below are fabricated for this prototype.
     // This client-side check is not security: visitors can inspect or bypass it. Never add real passwords or data here.
@@ -378,6 +402,10 @@
     let currentPage = 'overview';
     let installPrompt = null;
     let toastTimer;
+    let reportTypePreset = null;
+    let archiveTypeFilter = 'all';
+    let archiveYearFilter = 'all';
+    let archiveSearchTerm = '';
     const icons = {
       overview: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 17h7m-3.5-3.5v7" stroke-linecap="round"/></svg>',
       report: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg>',
@@ -401,8 +429,30 @@
       ]
     };
     const money = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(n) || 0);
+    const compactMoney = n => new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 2 }).format(Number(n) || 0).replace(/\s+/g, '');
     const dateLong = value => new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
     const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    function greetingLabel() {
+      const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+      return hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam';
+    }
+    function welcomePanel() {
+      const name = currentUser?.name || 'Pengguna';
+      const firstName = name.trim().split(/\s+/)[0];
+      const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase();
+      return `<section class="welcome-card"><span class="welcome-avatar" aria-hidden="true">${escapeHTML(initials)}</span><div class="welcome-copy"><p class="welcome-date">${dateLong(todayISO)}</p><h1>${greetingLabel()}, ${escapeHTML(firstName)}</h1></div></section>`;
+    }
+    function metricCard(icon, label, value, page = '', accessibleValue = value) {
+      const accessibleLabel = `${escapeHTML(label)}: ${escapeHTML(accessibleValue)}`;
+      const content = `<span class="metric-icon" aria-hidden="true">${icons[icon]}</span><span class="metric-copy"><span class="metric-label">${escapeHTML(label)}</span><strong class="metric-value">${escapeHTML(value)}</strong></span>`;
+      return page ? `<button class="metric metric-link" type="button" data-page="${page}" aria-label="${accessibleLabel}">${content}</button>` : `<article class="metric" aria-label="${accessibleLabel}">${content}</article>`;
+    }
+    function monthLabel(key) {
+      const [year, month] = key.split('-').map(Number);
+      return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
+    }
+    const reportTypeLabel = type => type === 'pettycash' ? 'Petty cash' : 'Request Finance';
+    function staffReports() { return state.submissions.filter(item => item.division === 'Operasional'); }
     function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
     function showToast(message) {
       const box = document.getElementById('toast'); box.textContent = message; box.classList.add('show');
@@ -414,15 +464,23 @@
       if (item.status === 'rejected') return ['Ditolak', 'status-neutral'];
       return ['Menunggu manager', 'status-wait'];
     }
-    function navMarkup(items, location) {
-      return items.map(item => `<button class="nav-button" type="button" data-page="${item.id}" aria-current="${currentPage === item.id ? 'page' : 'false'}">${icons[item.icon]}<span>${item.label}</span></button>`).join('');
+    function navButton(item) {
+      return `<button class="nav-button" type="button" data-page="${item.id}" aria-current="${currentPage === item.id ? 'page' : 'false'}">${icons[item.icon]}<span>${item.label}</span></button>`;
+    }
+    function navMarkup(items) {
+      return items.map(navButton).join('');
     }
     function renderNav() {
       const items = navByRole[role];
       document.getElementById('desktopNav').innerHTML = navMarkup(items, 'desktop');
-      const mobileItems = items.slice(0, 4);
-      document.getElementById('mobileNav').innerHTML = navMarkup(mobileItems, 'mobile');
-      document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => {
+      const mobileNav = document.getElementById('mobileNav');
+      mobileNav.className = `mobile-nav ${role === 'manager' ? 'is-manager' : 'is-staff'}`;
+      if (role === 'staff') {
+        const home = items.find(item => item.id === 'overview');
+        const reports = items.find(item => item.id === 'my-reports');
+        mobileNav.innerHTML = `${navButton(home)}<button class="mobile-add ${currentPage === 'new-report' ? 'is-active' : ''}" type="button" data-action="open-report-choice" aria-label="Buat laporan" aria-haspopup="dialog" aria-controls="reportChoice"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span class="sr-only">Buat laporan</span></button>${navButton({ ...reports, label: 'Laporan' })}`;
+      } else mobileNav.innerHTML = navMarkup(items);
+      document.querySelectorAll('#desktopNav [data-page], #mobileNav [data-page]').forEach(button => button.addEventListener('click', () => {
         currentPage = button.dataset.page; renderApp(); document.getElementById('mainContent').focus({ preventScroll: true });
       }));
     }
@@ -438,13 +496,10 @@
       const pending = state.submissions.filter(i => i.status === 'pending').length;
       const requests = state.submissions.filter(i => i.type === 'request' && i.status !== 'rejected').length;
       const percent = state.divisions.length ? Math.round(done / state.divisions.length * 100) : 0;
-      return `${pageHeading('Ringkasan', `<div class="date-label">${dateLong(todayISO)}</div>`)}
-        <section class="hero-panel" aria-labelledby="dayStatusTitle"><div class="hero-content"><h2 id="dayStatusTitle">Laporan harian</h2><div class="hero-stat"><strong>${done}/${state.divisions.length}</strong><span>divisi masuk</span></div></div><div class="hero-footer"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><button class="primary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh rekap</button></div></section>
-        <div class="metric-row"><div class="metric"><div class="metric-label">Saldo petty cash</div><div class="metric-value">${money(state.cashBalance)}</div></div><div class="metric"><div class="metric-label">Menunggu</div><div class="metric-value">${pending}</div></div><div class="metric"><div class="metric-label">Request Finance</div><div class="metric-value">${requests}</div></div></div>
-        <div class="section-row"><div><h2>Laporan divisi</h2></div><button class="text-button" type="button" data-page="approvals">Persetujuan</button></div>
-        <div class="division-list">${divisionRows()}</div>
-        <div class="section-row"><div><h2>Perlu ditinjau</h2></div></div>
-        ${pendingItems(2)}`;
+      return `${welcomePanel()}
+        <div class="metric-row">${metricCard('wallet', 'Petty cash', compactMoney(state.cashBalance), '', money(state.cashBalance))}${metricCard('review', 'Menunggu', String(pending), 'approvals')}${metricCard('finance', 'Request Finance', String(requests), 'finance')}</div>
+        <section class="ledger-band" aria-labelledby="dayStatusTitle"><div class="ledger-band-label"><h2 id="dayStatusTitle">Laporan harian</h2><span class="ledger-count"><strong>${done}</strong><span>/ ${state.divisions.length} divisi masuk</span></span></div><div class="ledger-progress"><div class="progress-track" role="progressbar" aria-label="Kelengkapan laporan divisi" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><span class="ledger-percent">${percent}%</span></div><button class="secondary-button" type="button" data-action="download-pdf" ${allDone ? '' : 'disabled'}>Unduh rekap</button></section>
+        <div class="manager-layout"><section class="manager-ledger"><div class="section-row"><div><h2>Laporan divisi</h2></div></div><div class="division-list">${divisionRows()}</div></section><section class="manager-queue"><div class="section-row"><div><h2>Menunggu persetujuan</h2></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pendingItems(2)}</section></div>`;
     }
     function pendingItems(limit = Infinity) {
       const rows = state.submissions.filter(item => item.status === 'pending').slice(0, limit);
@@ -477,20 +532,49 @@
         <div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Divisi</th><th>Peran</th><th>Email</th><th>Aksi</th></tr></thead><tbody>${state.users.map((user,index) => `<tr><td data-label="Pengguna"><span class="user-initial" aria-hidden="true">${escapeHTML(user.name.slice(0,1).toUpperCase())}</span>${escapeHTML(user.name)}</td><td data-label="Divisi">${escapeHTML(user.division)}</td><td data-label="Peran">Staff</td><td data-label="Email">${escapeHTML(user.email)}</td><td data-label="Aksi"><button class="text-button" type="button" data-action="remove-user" data-index="${index}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`;
     }
     function staffOverview() {
-      const own = state.submissions.filter(i => i.division === 'Operasional');
+      const own = staffReports();
       const pending = own.filter(i => i.status === 'pending').length;
-      return `${pageHeading('Beranda', `<div class="date-label">${dateLong(todayISO)}</div>`)}
-        <section class="hero-panel"><div class="hero-content"><h2>Laporan saya</h2><div class="hero-stat"><strong>${pending}</strong><span>menunggu</span></div></div><div class="hero-footer"><button class="primary-button" type="button" data-page="new-report">Buat laporan</button></div></section>
-        <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,3))}`;
+      return `${welcomePanel()}
+        <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(own.length))}${metricCard('review', 'Menunggu', String(pending))}${metricCard('wallet', 'Petty cash', compactMoney(state.cashBalance), 'cash-info', money(state.cashBalance))}</div>
+        <section class="guide-card" aria-labelledby="guideTitle"><div class="guide-heading"><h2 id="guideTitle">Alur pengajuan</h2><button class="primary-button home-report-cta" type="button" data-page="new-report">Buat laporan</button></div><ol class="guide-steps"><li><span>1</span><strong>Pilih jenis</strong></li><li><span>2</span><strong>Isi keperluan</strong></li><li><span>3</span><strong>Kirim untuk ditinjau</strong></li></ol></section>
+        <div class="section-row"><div><h2>Laporan terbaru</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${myReportsList(own.slice(0,2))}`;
     }
     function myReportsList(rows = state.submissions.filter(i => i.division === 'Operasional')) {
       if (!rows.length) return `<div class="surface empty-state"><strong>Belum ada laporan</strong></div>`;
       return `<div class="list-stack">${rows.map(item => { const [label, cls] = statusText(item); return `<article class="item-row"><div><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${item.type === 'pettycash' ? 'Petty cash' : 'Request Finance'} · ${dateLong(item.date)}</div></div><div class="item-amount">${money(item.amount)}<br><span class="status ${cls}">${label}</span></div></article>`; }).join('')}</div>`;
     }
-    function reportForm() {
+    function archiveResultsMarkup() {
+      const query = archiveSearchTerm.trim().toLocaleLowerCase('id-ID');
+      const records = staffReports().filter(item => {
+        const month = String(item.date).slice(0, 7);
+        const searchText = `${item.description} ${item.division} ${reportTypeLabel(item.type)} ${dateLong(item.date)} ${monthLabel(month)}`.toLocaleLowerCase('id-ID');
+        return (archiveTypeFilter === 'all' || item.type === archiveTypeFilter) && (archiveYearFilter === 'all' || String(item.date).slice(0, 4) === archiveYearFilter) && (!query || searchText.includes(query));
+      }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      if (!records.length) return `<div class="surface empty-state"><strong>${query || archiveTypeFilter !== 'all' || archiveYearFilter !== 'all' ? 'Tidak ada laporan yang cocok' : 'Belum ada laporan'}</strong><span>${query || archiveTypeFilter !== 'all' || archiveYearFilter !== 'all' ? 'Ubah kata kunci atau filter.' : 'Gunakan tombol + untuk membuat pengajuan.'}</span></div>`;
+      const types = archiveTypeFilter === 'all' ? ['pettycash', 'request'] : [archiveTypeFilter];
+      return types.map(type => {
+        const typeRecords = records.filter(item => item.type === type);
+        if (!typeRecords.length) return '';
+        const months = [...new Set(typeRecords.map(item => String(item.date).slice(0, 7)))].sort().reverse();
+        return `<section class="archive-type"><div class="section-row"><h2>${reportTypeLabel(type)}</h2><span class="archive-total">${typeRecords.length} laporan</span></div><div class="archive-month-list">${months.map((month, index) => {
+          const monthRecords = typeRecords.filter(item => String(item.date).startsWith(month));
+          return `<details class="archive-month" ${index === 0 ? 'open' : ''}><summary><span class="archive-month-copy"><strong>${monthLabel(month)}</strong><small>${monthRecords.length} laporan</small></span><span class="archive-chevron" aria-hidden="true"></span></summary><div class="archive-month-content">${myReportsList(monthRecords)}</div></details>`;
+        }).join('')}</div></section>`;
+      }).join('');
+    }
+    function reportArchive() {
+      const years = [...new Set(staffReports().map(item => String(item.date).slice(0, 4)))].sort().reverse();
+      return `<div class="page-heading archive-page-heading"><div><p class="archive-kicker">Arsip pribadi</p><h1>Laporan</h1></div></div>
+        <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan berdasarkan keperluan, bulan, atau tahun</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" name="search" type="search" autocomplete="off" placeholder="Cari laporan (bulan, tahun)…" value="${escapeHTML(archiveSearchTerm)}"></label>
+          <div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${archiveTypeFilter === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="pettycash" aria-pressed="${archiveTypeFilter === 'pettycash'}">Petty cash</button><button class="filter-chip" type="button" data-report-filter="request" aria-pressed="${archiveTypeFilter === 'request'}">Request Finance</button></div>
+          <label class="archive-year"><span class="sr-only">Filter tahun</span><select id="archiveYear" name="year"><option value="all">Semua tahun</option>${years.map(year => `<option value="${year}" ${archiveYearFilter === year ? 'selected' : ''}>${year}</option>`).join('')}</select></label>
+        </div><div id="archiveResults">${archiveResultsMarkup()}</div>`;
+    }
+    function reportForm(preset = 'pettycash') {
+      const isCash = preset === 'pettycash';
       return `${pageHeading('Buat laporan')}
         <form id="reportForm" class="form-card surface"><div class="form-grid">
-          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash">Petty cash</option><option value="request">Request Finance</option></select><div class="field-help" id="typeHelp">Saldo berkurang setelah disetujui manager.</div></div>
+          <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="pettycash" ${isCash ? 'selected' : ''}>Petty cash</option><option value="request" ${isCash ? '' : 'selected'}>Request Finance</option></select><div class="field-help" id="typeHelp">${isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance setelah disetujui manager.'}</div></div>
           <div class="field"><label for="reportDivision">Divisi</label><select id="reportDivision" name="division" required>${state.divisions.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('')}</select></div>
           <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${todayISO}" required></div>
           <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" required maxlength="120" placeholder="Contoh: Transport kegiatan lapangan"></div>
@@ -515,7 +599,8 @@
       if (role === 'manager') {
         body = currentPage === 'approvals' ? managerApprovals() : currentPage === 'finance' ? financePage() : currentPage === 'users' ? usersPage() : managerOverview();
       } else {
-        body = currentPage === 'new-report' ? reportForm() : currentPage === 'my-reports' ? `${pageHeading('Laporan saya')}${myReportsList()}` : currentPage === 'cash-info' ? cashInfo() : staffOverview();
+        body = currentPage === 'new-report' ? reportForm(reportTypePreset || 'pettycash') : currentPage === 'my-reports' ? reportArchive() : currentPage === 'cash-info' ? cashInfo() : staffOverview();
+        reportTypePreset = null;
       }
       document.querySelector('#mainContent .main-inner').innerHTML = body;
       document.getElementById('accountName').textContent = currentUser.name;
@@ -523,15 +608,26 @@
       bindActions();
     }
     function bindActions() {
-      document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => { currentPage = button.dataset.page; renderApp(); }));
-      document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
+      document.querySelectorAll('#mainContent [data-page]').forEach(button => button.addEventListener('click', () => { currentPage = button.dataset.page; renderApp(); }));
+      document.querySelectorAll('#mainContent [data-action], #mobileNav [data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
+      const archiveSearch = document.getElementById('archiveSearch');
+      if (archiveSearch) archiveSearch.addEventListener('input', () => { archiveSearchTerm = archiveSearch.value; const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup(); });
+      const archiveYear = document.getElementById('archiveYear');
+      if (archiveYear) archiveYear.addEventListener('change', () => { archiveYearFilter = archiveYear.value; const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup(); });
+      document.querySelectorAll('[data-report-filter]').forEach(button => button.addEventListener('click', () => {
+        archiveTypeFilter = button.dataset.reportFilter;
+        document.querySelectorAll('[data-report-filter]').forEach(chip => chip.setAttribute('aria-pressed', String(chip === button)));
+        const results = document.getElementById('archiveResults'); if (results) results.innerHTML = archiveResultsMarkup();
+      }));
       const form = document.getElementById('reportForm');
       if (form) {
         const type = form.elements.type;
-        type.addEventListener('change', () => {
+        const updateTypeHelp = () => {
           const isCash = type.value === 'pettycash';
-          document.getElementById('typeHelp').textContent = isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance; saldo petty cash tidak berubah.';
-        });
+          document.getElementById('typeHelp').textContent = isCash ? 'Saldo berkurang setelah disetujui manager.' : 'Masuk ke Finance setelah disetujui manager.';
+        };
+        type.addEventListener('change', updateTypeHelp);
+        updateTypeHelp();
         form.addEventListener('submit', event => {
           event.preventDefault(); if (!form.reportValidity()) return;
           const data = new FormData(form);
@@ -539,6 +635,7 @@
           const item = { id: `local-${Date.now()}`, type: String(data.get('type')), status: 'pending', division, description: String(data.get('description')).trim(), amount: Number(data.get('amount')), date: String(data.get('date')) };
           state.submissions.unshift(item);
           const target = state.divisions.find(d => d.name === division); if (target) target.submitted = true;
+          archiveTypeFilter = 'all'; archiveYearFilter = 'all'; archiveSearchTerm = '';
           save(); currentPage = 'my-reports'; renderApp(); showToast('Laporan demo tersimpan di browser ini.');
         });
       }
@@ -552,6 +649,17 @@
     }
     function handleAction(button) {
       const action = button.dataset.action;
+      if (action === 'open-report-choice') {
+        if (role !== 'staff') { showToast('Pengajuan demo hanya tersedia untuk User.'); return; }
+        document.getElementById('reportChoice').showModal(); return;
+      }
+      if (action === 'close-report-choice') { document.getElementById('reportChoice').close(); return; }
+      if (action === 'choose-report-type') {
+        if (role !== 'staff') return;
+        reportTypePreset = button.dataset.type === 'request' ? 'request' : 'pettycash';
+        document.getElementById('reportChoice').close(); currentPage = 'new-report'; renderApp();
+        document.getElementById('reportType')?.focus(); return;
+      }
       if (['complete-division','approve','reject','send-finance','download-pdf','open-add-user','cancel-add-user','remove-user'].includes(action) && currentUser?.email !== MANAGER_EMAIL) {
         showToast('Fitur Manager demo hanya tersedia untuk Rahmat Saputro.'); return;
       }
@@ -619,6 +727,8 @@
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `pangsuma-laporan-demo-${todayISO}.pdf`; document.body.appendChild(anchor); anchor.click(); anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1500); showToast('PDF demo berhasil diunduh.');
     }
+    document.querySelectorAll('#reportChoice [data-action]').forEach(button => button.addEventListener('click', () => handleAction(button)));
+    document.getElementById('reportChoice').addEventListener('click', event => { if (event.target === event.currentTarget) event.currentTarget.close(); });
     const loginForm = document.getElementById('loginForm');
     const loginError = document.getElementById('loginError');
     loginForm.addEventListener('input', () => { loginError.hidden = true; });
