@@ -6,11 +6,13 @@ pages_build_output_dir = "./site"
 PASSKEY_AUTH_ENABLED = "false"
 WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
 WEBAUTHN_RP_ID = "app.pangsumafc.com"
+DROPBOX_RECEIPTS_ENABLED = "true"
 
 [env.production.vars]
 PASSKEY_AUTH_ENABLED = "false"
 WEBAUTHN_ORIGIN = "https://app.pangsumafc.com"
 WEBAUTHN_RP_ID = "app.pangsumafc.com"
+DROPBOX_RECEIPTS_ENABLED = "true"
 
 [[d1_databases]]
 binding = "DB"

@@ -159,3 +159,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+
+      - name: Verify Dropbox configuration survived deployment (read-only)
+        run: python3 scripts/check-dropbox-deploy.py
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9

@@ -4,6 +4,8 @@ import json
 import os
 import urllib.error
 import urllib.request
+import tomllib
+from pathlib import Path
 
 ACCOUNT = '37701bf94ab65e121e453b11a23077e9'
 DATABASE = 'be808421-88ce-4a48-9dcd-eb0f39ae0314'
@@ -14,6 +16,9 @@ EXPECTED = {
 }
 assert os.environ.get('CLOUDFLARE_ACCOUNT_ID') == ACCOUNT, 'Wrong Cloudflare account'
 
+config = tomllib.loads((Path(__file__).resolve().parents[1] / 'wrangler.toml').read_text())
+assert config.get('vars', {}).get('DROPBOX_RECEIPTS_ENABLED') == 'true', 'Missing default Wrangler Dropbox flag'
+assert config.get('env', {}).get('production', {}).get('vars', {}).get('DROPBOX_RECEIPTS_ENABLED') == 'true', 'Missing production Wrangler Dropbox flag'
 
 def api(path, body=None):
     request = urllib.request.Request(

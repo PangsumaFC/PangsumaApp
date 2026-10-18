@@ -6,14 +6,18 @@ import { mkdtemp, writeFile, rm, mkdir, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
+import { readFile } from 'node:fs/promises';
+import { decode as decodePng } from 'fast-png';
 import { PDFDocument, PDFDict, PDFName, PDFRawStream } from 'pdf-lib';
 import { buildFinancialReport } from '../functions/_lib/pdf-report.js';
-import { managerSignatureJpeg, managerStampJpeg } from '../functions/_lib/pdf-approval-assets.js';
+import { managerSignaturePng, managerStampPng } from '../functions/_lib/pdf-approval-assets.js';
 
 const execFileAsync = promisify(execFile);
 const ROOT = new URL('..', import.meta.url).pathname;
 const signatureFile = join(ROOT, 'site/pdf-assets/manager-signature.jpg');
 const stampFile = join(ROOT, 'site/pdf-assets/manager-stamp.jpg');
+const signaturePngFile = join(ROOT, 'site/pdf-assets/manager-signature.png');
+const stampPngFile = join(ROOT, 'site/pdf-assets/manager-stamp.png');
 const SNAPSHOT = '2026-10-18T12:00:00.000Z';
 const execOptions = { maxBuffer: 16 * 1024 * 1024 };
 
@@ -86,6 +90,7 @@ function imageDraws(pdf, page) {
   }
   return draws;
 }
+function pdfYFromBbox(word) { return 841.89 - word.bottom; }
 function ledgerRows(count, long = false) {
   let balance = 0n;
   return Array.from({ length: count }, (_, i) => {
@@ -116,19 +121,24 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   assert.match(pages[0], /PANGSUMA FC/);
   for (const continuation of pages.slice(1)) assert.doesNotMatch(continuation, /PANGSUMA FC|LAPORAN KEUANGAN|Tanggal cetak/);
   const imagePages = result.pdf.getPages().map((page, i) => ({ i, count: imageEntries(result.pdf, page).length })).filter(x => x.count);
-  assert.equal(imagePages.length, 1, 'approval JPEGs must be present on one page only');
-  assert.equal(imagePages[0].i, result.pdf.getPageCount() - 1, 'approval JPEGs must be on final page');
-  assert.equal(imagePages[0].count, 2, 'final page must have signature and stamp JPEG XObjects');
+  assert.equal(imagePages.length, 1, 'approval PNGs must be present on one page only');
+  assert.equal(imagePages[0].i, result.pdf.getPageCount() - 1, 'approval PNGs must be on final page');
+  assert.equal(imagePages[0].count, 2, 'final page must have signature and stamp PNG XObjects');
   const finalIndex = result.pdf.getPageCount() - 1;
   const finalDraws = imageDraws(result.pdf, result.pdf.getPages()[finalIndex]);
-  assert.equal(finalDraws.length, 2, 'both final-page JPEGs must have observable Do transforms');
-  for (const draw of finalDraws) {
-    assert.ok(draw.x > 300 && draw.y >= 40 && draw.y + draw.h <= 205, `approval image outside bottom-right block: ${JSON.stringify(draw)}`);
+  assert.equal(finalDraws.length, 2, 'both final-page PNGs must have observable Do transforms');
+  for (const draw of finalDraws) assert.ok(draw.x > 300 && draw.y >= 38 && draw.y + draw.h <= 820, `approval image outside right-side block: ${JSON.stringify(draw)}`);
+  const finalWords = bbox[finalIndex];
+  const approvalLabel = finalWords.find(w => w.word.includes('Yg'));
+  assert.ok(approvalLabel, 'approval label must have a final-page bbox');
+  assert.ok(finalWords.some(w => w.word.includes('Rahmat')), 'signature name must have a final-page bbox');
+  assert.ok(finalWords.some(w => w.word === 'Manager'), 'manager role must have a final-page bbox');
+  assert.ok(finalWords.some(w => w.word.includes('DATA')), 'demo marker must have a final-page bbox');
+  const total = finalWords.find(w => w.word === 'keseluruhan');
+  if (total) {
+    const gap = (pdfYFromBbox(total) - 8) - pdfYFromBbox(approvalLabel);
+    assert.ok(gap >= 8 && gap <= 24, `approval label must follow totals by 12–18pt (observed ${gap.toFixed(2)}pt)`);
   }
-  assert.ok(bbox[finalIndex].some(w => w.word.includes('Yg')), 'approval label must have a final-page bbox');
-  assert.ok(bbox[finalIndex].some(w => w.word.includes('Rahmat')), 'signature name must have a final-page bbox');
-  assert.ok(bbox[finalIndex].some(w => w.word === 'Manager'), 'manager role must have a final-page bbox');
-  assert.ok(bbox[finalIndex].some(w => w.word.includes('DATA')), 'demo marker must have a final-page bbox');
   if (result.text.includes('Keterangan')) {
     const grid = result.pdf.getPages().map(page => streamBytes(result.pdf, page)).join('\n');
     for (const x of [30, 54, 112, 260, 336, 412, 498, 565]) assert.match(grid, new RegExp(`(?:^|\\n| )${x}(?:\\.0+)? \\-?\\d+(?:\\.\\d+)? m`), `grid boundary x=${x}`);
@@ -156,17 +166,50 @@ test('empty report still has one final approval block and no table-grid requirem
   assert.doesNotMatch(result.text, /Subtotal halaman/);
 });
 
-test('embedded JPEG bytes are unchanged and original dimensions are preserved', async () => {
+test('embedded PNG bytes preserve source pixels, alpha masks, and dimensions', async () => {
   const result = await withPdf('assets', { ledger: twoRows });
-  const sourceSig = await (await import('node:fs/promises')).readFile(signatureFile);
-  const sourceStamp = await (await import('node:fs/promises')).readFile(stampFile);
-  assert.deepEqual(Buffer.from(managerSignatureJpeg), sourceSig);
-  assert.deepEqual(Buffer.from(managerStampJpeg), sourceStamp);
+  const sourceSig = await readFile(signatureFile);
+  const sourceStamp = await readFile(stampFile);
+  const sourceSigPng = await readFile(signaturePngFile);
+  const sourceStampPng = await readFile(stampPngFile);
+  assert.equal((await import('node:crypto')).createHash('sha256').update(sourceSig).digest('hex'), '263a07dca3073b5143674e2cd448288100b27178eebe61ec429b7902b4923f65');
+  assert.equal((await import('node:crypto')).createHash('sha256').update(sourceStamp).digest('hex'), '96e83ed1a1aa3bc38297d96822b78d93c1707100bb8b452e7868cb35e51a1c09');
+  assert.deepEqual(Buffer.from(managerSignaturePng), sourceSigPng);
+  assert.deepEqual(Buffer.from(managerStampPng), sourceStampPng);
+  const expected = [decodePng(sourceSigPng), decodePng(sourceStampPng)];
+  for (const image of expected) {
+    assert.equal(image.channels, 4);
+    assert.equal(image.depth, 8);
+    assert.ok(image.width > 0 && image.height > 0);
+  }
   const images = imageEntries(result.pdf, result.pdf.getPages()[0]);
   const dimensions = images.map(({ object }) => [object.dict.get(PDFName.of('Width')).numberValue, object.dict.get(PDFName.of('Height')).numberValue]).sort((a, b) => a[0] - b[0]);
   assert.deepEqual(dimensions, [[1024, 1024], [1200, 396]]);
-  for (const { object } of images) assert.equal(object.dict.get(PDFName.of('Filter')).toString(), '/DCTDecode');
-  assert.deepEqual(images.map(({ object }) => Buffer.from(object.getContents())).sort((a, b) => a.length - b.length), [sourceSig, sourceStamp].sort((a, b) => a.length - b.length));
+  assert.ok(images.every(({ object }) => object.dict.get(PDFName.of('Filter')).toString() === '/FlateDecode'));
+  for (const { object } of images) {
+    const width = object.dict.get(PDFName.of('Width')).numberValue;
+    const height = object.dict.get(PDFName.of('Height')).numberValue;
+    const smask = result.pdf.context.lookup(object.dict.get(PDFName.of('SMask')));
+    assert.ok(smask instanceof PDFRawStream, 'each approval PNG must have an alpha SMask');
+    assert.equal(smask.dict.get(PDFName.of('Width')).numberValue, width);
+    assert.equal(smask.dict.get(PDFName.of('Height')).numberValue, height);
+    const source = expected.find(image => image.width === width && image.height === height);
+    assert.ok(source);
+    const rgb = inflateSync(object.getContents());
+    const alpha = inflateSync(smask.getContents());
+    const expectedRgb = Buffer.alloc(width * height * 3);
+    const expectedAlpha = Buffer.alloc(width * height);
+    for (let i = 0; i < width * height; i++) {
+      expectedRgb[i * 3] = source.data[i * 4];
+      expectedRgb[i * 3 + 1] = source.data[i * 4 + 1];
+      expectedRgb[i * 3 + 2] = source.data[i * 4 + 2];
+      expectedAlpha[i] = source.data[i * 4 + 3];
+    }
+    assert.deepEqual(rgb, expectedRgb, 'PDF RGB pixels must exactly match source PNG RGB pixels');
+    assert.deepEqual(alpha, expectedAlpha, 'PDF SMask pixels must exactly match source PNG alpha pixels');
+    assert.equal(expectedAlpha[0], 0, 'transparent corner must remain transparent');
+    assert.ok(expectedAlpha.some(value => value === 255), 'opaque ink pixels must remain opaque');
+  }
 });
 
 test('multi-page 90-row ledger keeps header page one and approval on final page', async () => {
@@ -183,7 +226,7 @@ test('boundary row counts 15 through 22 keep final-only approval and valid page 
     assert.ok(result.pdf.getPageCount() >= 1);
     const final = result.pdf.getPages().at(-1);
     for (const word of bboxPages(result.bbox).at(-1)) assert.ok(word.x >= 29 && word.right <= 566 && word.y >= 8 && word.bottom <= 837, `boundary ${count}: text outside page bounds`);
-    assert.ok(imageDraws(result.pdf, final).every(draw => draw.x > 300 && draw.y >= 40), `boundary ${count}: final image not bottom-right`);
+    assert.ok(imageDraws(result.pdf, final).every(draw => draw.x > 300 && draw.y >= 38), `boundary ${count}: final image not right-side`);
   }
 });
 

@@ -1,7 +1,7 @@
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, BlendMode } from 'pdf-lib';
 import { ApiError } from './http.js';
 import { unifiedReportRows } from './pdf-cashflow.js';
-import { managerSignatureJpeg, managerStampJpeg } from './pdf-approval-assets.js';
+import { managerSignaturePng, managerStampPng } from './pdf-approval-assets.js';
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -119,8 +119,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const signatureImage = await pdf.embedJpg(managerSignatureJpeg);
-  const stampImage = await pdf.embedJpg(managerStampJpeg);
+  const signatureImage = await pdf.embedPng(managerSignaturePng);
+  const stampImage = await pdf.embedPng(managerStampPng);
   pdf.setTitle('Laporan Keuangan Pangsuma FC');
   pdf.setSubject('Buku kas ledger sesuai filter; bukan daftar pengajuan atau audit');
   pdf.setCreator('Pangsuma App');
@@ -136,6 +136,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const scopeLines = wrap(scope, regular, 8, CONTENT_W);
   const headerBottom = 103 + filterLines.length * 10 + scopeLines.length * 10;
   let page; let y; let unicodeReplaced = sanitize(filterDescription).replaced;
+  let approvalAnchor = null;
   const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
     if (pdf.getPageCount() >= pageLimit) {
@@ -266,16 +267,19 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     });
     drawGrid(y, height);
     y -= height + 13;
+    // The grid lower edge is 17pt above y (13pt post-table gap plus the
+    // grid's 4pt lower inset); approval follows that edge, not the page foot.
+    approvalAnchor = y + 17;
   }
 
   function drawFinalApproval() {
     const blockHeight = 142;
     const gap = 12;
-    const blockBottom = 48;
-    const blockTop = blockBottom + blockHeight;
-    // The approval block is anchored to the page bottom; reserve its full height
-    // plus the gap before drawing it, creating a continuation page when needed.
-    if (y < blockTop + gap) { footer(); newPage(); }
+    let blockTop = approvalAnchor ?? y;
+    // Keep the complete block above the footer. If it cannot fit, use one clean
+    // final page and place it near that page's content start.
+    if (blockTop - blockHeight < 38) { footer(); newPage(); blockTop = y; }
+    const blockBottom = blockTop - blockHeight;
     const blockX = MARGIN + 300;
     const blockW = CONTENT_W - 300;
     const centerX = blockX + blockW / 2;
