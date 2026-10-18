@@ -1,0 +1,43 @@
+.pwa-files-modal {
+  box-sizing: border-box;
+  width: min(34rem, calc(100vw - 2rem));
+  max-width: 34rem;
+  margin: auto;
+  padding: 1.25rem;
+  border: 0;
+  border-radius: 1rem;
+  color: #17212b;
+  background: #fff;
+  box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 28%);
+  font: inherit;
+}
+.pwa-files-modal::backdrop { background: rgb(10 25 38 / 58%); }
+.pwa-files-modal h2 { margin: 0 0 .6rem; font-size: 1.2rem; }
+.pwa-files-status { min-height: 2.8rem; margin: 0 0 .8rem; line-height: 1.45; }
+.pwa-files-status.is-error { color: #a51d2d; }
+.pwa-files-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.pwa-files-actions a, .pwa-files-actions button {
+  box-sizing: border-box;
+  min-height: 2.9rem;
+  padding: .7rem .8rem;
+  border: 1px solid #9aa9b7;
+  border-radius: .55rem;
+  color: #17212b;
+  background: #f5f8fa;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pwa-files-actions .pwa-files-download { color: #fff; border-color: #155e75; background: #155e75; }
+.pwa-files-actions .pwa-files-share { color: #fff; border-color: #176b4d; background: #176b4d; }
+.pwa-files-actions .pwa-files-close { background: transparent; }
+.pwa-files-actions a[aria-disabled="true"] { pointer-events: none; opacity: .55; }
+.pwa-files-instructions { margin: .9rem 0 0; color: #4e5f6d; font-size: .9rem; line-height: 1.45; }
+@media (max-width: 360px) {
+  .pwa-files-modal { width: calc(100vw - 1rem); padding: 1rem; }
+  .pwa-files-actions { grid-template-columns: 1fr; }
+}

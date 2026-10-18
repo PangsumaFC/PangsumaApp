@@ -5,10 +5,11 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8');
 const downloadSource = source.slice(source.indexOf('async function downloadPdf(button) {'), source.indexOf('\nfunction configureBoundedHistory()', source.indexOf('async function downloadPdf(button) {')));
-function downloadHarness({ standalone = false, iosStandalone = false, role = 'manager' } = {}) {
-  const calls = { fetch: 0, downloads: [], toasts: [] };
+function downloadHarness({ standalone = false, iosStandalone = false, role = 'manager', helper = false } = {}) {
+  const calls = { fetch: 0, downloads: [], toasts: [], prepared: [] };
   const context = vm.createContext({
     state: { user: { role } }, authEpoch: 1,
+    PwaFiles: helper ? { prepare: options => { calls.prepared.push(options); } } : undefined,
     ManagerReportFilters: { pdfUrl: () => '/api/export.pdf?q=Latihan&jenis=petty_cash' },
     navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', standalone: iosStandalone },
     window: { matchMedia: query => ({ matches: standalone && query === '(display-mode: standalone)' }), setTimeout: fn => fn() },
@@ -36,6 +37,14 @@ test('regular Chrome tab retains authenticated blob flow', async () => {
   const h = downloadHarness(); await h.run();
   assert.equal(h.calls.fetch, 1);
   assert.equal(h.calls.downloads[0].href, 'blob:temporary');
+});
+test('installed PWA uses the recoverable PDF dialog rather than the legacy silent handoff', async () => {
+  const h = downloadHarness({ standalone: true, helper: true }); await h.run();
+  assert.equal(h.calls.prepared.length, 1);
+  assert.equal(h.calls.prepared[0].url, '/api/export.pdf?q=Latihan&jenis=petty_cash');
+  assert.equal(h.calls.prepared[0].isCurrent(), true);
+  assert.deepEqual(h.calls.downloads, []);
+  assert.equal(h.calls.fetch, 0);
 });
 test('standalone User cannot request a Manager export', async () => {
   const h = downloadHarness({ standalone: true, role: 'user' }); await h.run();

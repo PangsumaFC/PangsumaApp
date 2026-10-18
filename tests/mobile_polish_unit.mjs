@@ -66,3 +66,11 @@ test('focus, touch, status, loading, and reduced-motion requirements are explici
   has(/\.pangsuma-loader-ring, \.pangsuma-loader-emblem, \.is-busy::before[\s\S]*animation:\s*none/);
   assert.ok((css.match(/!important/g) || []).length <= 6, 'important is reserved for motion reset');
 });
+
+test('users page controls wrap cleanly at phone widths', () => {
+  has(/main:has\(\.add-user-card\) \.page-heading/);
+  has(/@media\s*\(max-width:\s*760px\)[\s\S]*main:has\(\.add-user-card\) \.user-page-actions[\s\S]*width:\s*100%/);
+  has(/main:has\(\.add-user-card\) \.table-wrap:has\(\.user-actions\)\s*\{[^}]*overflow:\s*visible/);
+  has(/main:has\(\.add-user-card\) \.table-wrap:has\(\.user-actions\) td\s*\{[^}]*grid-template-columns/);
+  has(/@media\s*\(max-width:\s*390px\)[\s\S]*main:has\(\.add-user-card\) \.user-actions button[\s\S]*font-size:\s*13px/);
+});

@@ -6,8 +6,9 @@ const index = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'u
 const css = fs.readFileSync(new URL('../site/mobile-polish.css', import.meta.url), 'utf8');
 
 test('UI precision layer is versioned and loaded after product styles', () => {
-  assert.match(index, /app-build" content="2026\.10\.18\.5/);
-  assert.match(index, /mobile-polish\.css\?v=2026\.10\.18\.5/);
+  const build = JSON.parse(fs.readFileSync(new URL('../site/version.json', import.meta.url), 'utf8')).build;
+  assert.ok(index.includes(`app-build" content="${build}"`));
+  assert.ok(index.includes(`mobile-polish.css?v=${build}`));
   assert.ok(index.indexOf('mobile-polish.css') > index.indexOf('pangsuma-theme.css'));
 });
 
@@ -44,4 +45,12 @@ test('manager cash actions fill narrow cards without overflow', () => {
   assert.match(css, /\.balance-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
   assert.match(css, /@media\s*\(max-width:\s*359px\)[\s\S]*?\.balance-actions\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(css, /\.cash-health-threshold\s*\{\s*text-align:\s*left/);
+});
+
+test('users page keeps account actions and statuses in predictable columns', () => {
+  assert.match(css, /main:has\(\.add-user-card\) \.table-wrap:has\(\.user-actions\) table\s*\{[^}]*table-layout:\s*fixed/);
+  assert.match(css, /main:has\(\.add-user-card\) \.user-actions\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /main:has\(\.add-user-card\) \.user-actions button\s*\{[^}]*width:\s*100%/);
+  assert.match(css, /main:has\(\.add-user-card\) \.status\s*\{[^}]*display:\s*inline-flex/);
+  assert.match(css, /main:has\(\.add-user-card\) \.profile-nickname\s*\{[^}]*overflow-wrap:\s*anywhere/);
 });

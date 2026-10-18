@@ -77,7 +77,9 @@ def main() -> None:
         context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(BASE + "/") else route.abort())
         page = context.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
-        build = {"value": "2026.10.18.5"}
+        current_build = json.loads((Path(__file__).resolve().parents[1] / "site/version.json").read_text())["build"]
+        next_build = ".".join(current_build.split(".")[:-1] + [str(int(current_build.split(".")[-1]) + 1)])
+        build = {"value": current_build}
         page.route("**/version.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"build": build["value"]})))
         page.goto(BASE, wait_until="networkidle", timeout=30_000)
         login(page, MANAGER, password)
@@ -148,6 +150,7 @@ def main() -> None:
         download_context.add_cookies(context.cookies())
         download_context.add_init_script("""(() => { const original=window.matchMedia.bind(window); window.__pwaStandaloneSimulation=true; window.__pwaObjectUrls=0; const create=URL.createObjectURL.bind(URL); URL.createObjectURL=(...a)=>{window.__pwaObjectUrls++;return create(...a)}; window.matchMedia=q=>(q==='(display-mode: standalone)'||q==='(display-mode: fullscreen)')?{matches:true,media:q,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){},dispatchEvent(){return false}}:original(q); })();""")
         download_context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(BASE + "/") else route.abort())
+        download_context.add_init_script("""Object.defineProperty(navigator, 'canShare', {value: value => !!value.files?.length}); Object.defineProperty(navigator, 'share', {value: value => { window.__sharedPdf = {name:value.files[0].name,type:value.files[0].type,size:value.files[0].size}; return Promise.resolve(); }});""")
         page = download_context.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.route("**/version.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"build": build["value"]})))
@@ -179,41 +182,42 @@ def main() -> None:
                 delayed_attachment(route)
         page.route("**/*", dispatch)
         output = ARTIFACTS / "pwa-standalone-filtered.pdf"
-        with page.expect_download(timeout=20_000) as download:
-            page.locator('[data-action="download-pdf"]:visible').click()
-        dl = download.value; assert dl.failure() is None; dl.save_as(output)
-        # Chromium's download manager may bypass Playwright routing for the anchor navigation.
-        # Repeat the exact applied attachment URL as a same-origin fetch to exercise route.fetch
-        # plus the >5s response delay, while the preceding direct click remains the UX assertion.
-        direct_url = page.locator("#managerPdfFallbackLink").get_attribute("href")
-        assert direct_url
         started = time.monotonic()
-        fetched = page.evaluate("""async url => { const r=await fetch(url, {credentials:'same-origin', cache:'no-store'}); return {ok:r.ok, type:r.headers.get('content-type')||''}; }""", direct_url)
-        elapsed = time.monotonic() - started
-        assert fetched["ok"] and fetched["type"].lower().startswith("application/pdf"), fetched
-        assert export_urls, "no attachment route observed"
-        export_url = export_urls[-1]
-        assert elapsed >= 5.0, elapsed
-        query = parse_qs(urlparse(export_url).query)
-        assert query == expected, (query, export_url)
+        page.locator('[data-action="download-pdf"]:visible').click()
+        expect(page.locator("#pwaPdfDialog")).to_be_visible()
+        expect(page.locator("#pwaPdfDownload")).to_have_attribute("href", re.compile("^blob:"), timeout=20_000)
+        assert time.monotonic() - started >= 5.0
+        assert export_urls, "no authenticated fetch observed"
+        assert parse_qs(urlparse(export_urls[-1]).query) == expected, export_urls
+        assert page.evaluate("window.__sharedPdf || null") is None, "must not share without a fresh gesture"
+        page.locator("#pwaPdfShare").click()
+        shared = page.evaluate("window.__sharedPdf")
+        assert shared["type"] == "application/pdf" and shared["size"] > 0 and shared["name"].endswith(".pdf"), shared
+        with page.expect_download(timeout=10_000) as download:
+            page.locator("#pwaPdfDownload").click()
+        dl = download.value; assert dl.failure() is None; dl.save_as(output)
         text = assert_pdf_text(output)
         assert "PWA regression included" in text and "Excluded separate fixture" not in text, text
-        assert page.evaluate("window.__pwaObjectUrls") == 0
-        print("PWA_STANDALONE_PDF_PASS simulated_display_mode=1 delayed_route_ms=5200 direct_attachment=1 query_exact=1 included=1 excluded=0 headings=1 blob_urls=0", flush=True)
+        assert page.evaluate("window.__pwaObjectUrls") >= 1
+        page.screenshot(path=str(ARTIFACTS / "pwa-pdf-ready-dialog.png"), full_page=True)
+        page.locator("#pwaPdfDialog .pwa-files-close").click()
+        expect(page.locator("#pwaPdfDialog")).to_have_count(0)
+        assert api(page, "/api/session")["status"] == 200
+        print("PWA_STANDALONE_PDF_PASS simulated_display_mode=1 delayed_fetch_ms=5200 ready_dialog=1 query_exact=1 included=1 excluded=0 actual_blob_download=1 simulated_native_share=1 session_active=1", flush=True)
 
-        build["value"] = "2026.10.18.6"
+        build["value"] = next_build
         page.evaluate("checkForAppUpdate()")
         page.wait_for_function("() => document.querySelector('#appUpdateBanner')?.hidden === false")
         expect(page.locator("#appUpdateBanner")).to_be_visible(timeout=10_000)
-        expect(page.locator("#appUpdateVersion")).to_contain_text("2026.10.18.6")
+        expect(page.locator("#appUpdateVersion")).to_contain_text(next_build)
         page.locator("#logoutButton").click(); page.locator("body.logged-out").wait_for(timeout=10_000)
         expect(page.locator("#loginGate")).to_be_visible()
         assert page.locator("#appUpdateBanner").is_visible()
         page.screenshot(path=str(ARTIFACTS / "pwa-update-login-banner.png"), full_page=True)
-        print("PWA_UPDATE_BANNER_PASS manager=1 logged_out=1 version=2026.10.18.6", flush=True)
+        print("PWA_UPDATE_BANNER_PASS manager=1 logged_out=1 newer_build=1", flush=True)
         assert not errors, errors
         download_context.close(); context.close(); browser.close()
-    print("PWA_STANDALONE_E2E_PASS browser_chromium=1 standalone_simulation=1 service_worker=1 api_not_cached=1 fixtures=2 strict_filters=1 delayed_attachment_gt5s=1 cancel_event=1 responsive_screenshots=1 update_manager=1 update_logged_out=1 limitations=native_android_device=0_installed_pwa=0_user_login_e2e=0 screenshots=" + str(ARTIFACTS), flush=True)
+    print("PWA_STANDALONE_E2E_PASS browser_chromium=1 standalone_simulation=1 service_worker=1 api_not_cached=1 fixtures=2 strict_filters=1 delayed_fetch_gt5s=1 cancel_event=1 responsive_screenshots=1 update_manager=1 update_logged_out=1 limitations=native_android_device=0_installed_pwa=0_user_login_e2e=0 screenshots=" + str(ARTIFACTS), flush=True)
 
 
 if __name__ == "__main__":

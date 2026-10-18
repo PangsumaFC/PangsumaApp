@@ -109,7 +109,10 @@ mkdir -p "$PROFILE_REVIEW_DIR"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUNBUFFERED=1
 echo "PROFILE_REVIEW_DIR=$PROFILE_REVIEW_DIR"
-if [[ "${1:-}" == "--dashboard-design" ]]; then
+if [[ "${1:-}" == "--pwa-release" ]]; then
+  shift
+  timeout -k 5s 150s python3 -B tests/pwa_release_e2e.py "$@"
+elif [[ "${1:-}" == "--dashboard-design" ]]; then
   shift
   timeout -k 5s 150s python3 -B tests/dashboard_design_e2e.py "$@"
 elif [[ "${1:-}" == "--navigation-loader" ]]; then

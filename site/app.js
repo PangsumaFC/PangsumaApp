@@ -116,6 +116,7 @@ const managerSyncMinIntervalMs = 15_000;
 let updateCheckBusy = false;
 let availableBuild = '';
 const updateCheckIntervalMs = 60_000;
+let appUpdates = null;
 function draftKey(kind, type = '') { return `pangsuma:${kind}:${state.user?.id || 'anonymous'}:${type || 'default'}`; }
 function readDraft(kind, type = '') { try { const raw = sessionStorage.getItem(draftKey(kind, type)); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function writeDraft(kind, type, value) { try { sessionStorage.setItem(draftKey(kind, type), JSON.stringify(value)); } catch {} }
@@ -156,7 +157,8 @@ function setUpdateBanner(build = '') {
   if (visible) $('#appUpdateVersion').textContent = `Versi ${availableBuild} tersedia.`;
 }
 
-async function checkForAppUpdate() {
+async function checkForAppUpdate(options = {}) {
+  if (typeof appUpdates !== 'undefined' && appUpdates) return appUpdates.check(options);
   if (updateCheckBusy || document.hidden || navigator.onLine === false) return false;
   updateCheckBusy = true;
   try {
@@ -184,8 +186,17 @@ async function reloadToLatestBuild() {
   const button = $('#appUpdateReload');
   if (button) button.disabled = true;
   try {
-    navigator.serviceWorker?.getRegistration?.().then(registration => registration?.update?.()).catch(() => {});
-  } catch { /* Reload tetap aman walau service worker belum tersedia. */ }
+    if (typeof appUpdates !== 'undefined' && appUpdates) {
+      const reloaded = await appUpdates.reload();
+      if (!reloaded) {
+        if (button) button.disabled = false;
+        showToast('Pembaruan belum siap atau proses penyimpanan masih berjalan. Tunggu sebentar lalu coba lagi.');
+      }
+      return;
+    }
+    const registration = await navigator.serviceWorker?.getRegistration?.();
+    await registration?.update?.();
+  } catch { /* Navigasi network-first tetap tersedia ketika SW gagal diperiksa. */ }
   window.location.reload();
 }
 
@@ -582,6 +593,7 @@ function showLogin(message = '') {
   if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.clear();
   if (typeof FinancialControls !== 'undefined') FinancialControls.clear();
   if (typeof ReportEvidence !== 'undefined') ReportEvidence.clear();
+  if (typeof PwaFiles !== 'undefined') PwaFiles.cleanup();
   if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
   authEpoch += 1;
   closeDialogs();
@@ -838,10 +850,10 @@ function usersPage() {
     const statusClass = !user.active ? 'status-neutral' : passkeyCount || (user.passwordReady && !user.mustChangePassword) ? 'status-ok' : 'status-wait';
     const passkeyLabel = passkeyCount ? `Passkey terdaftar (${passkeyCount})` : 'Belum ada passkey';
     const accessActions = user.role === 'manager' || !user.active
-      ? '<span class="field-help">Tidak ada tindakan</span>'
+      ? ''
       : `<div class="user-actions"><button class="secondary-button" type="button" data-action="reset-user-password" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Atur password</button><button class="danger-button" type="button" data-action="deactivate-user" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Nonaktifkan akses</button></div>`;
     const actions = `<div class="user-actions"><button class="secondary-button" type="button" data-action="edit-user-profile" data-id="${escapeHTML(user.id)}">Atur profil</button>${accessActions}</div>`;
-    return `<tr><td data-label="Pengguna"><div class="profile-user-cell">${profileAvatar(user, 'user-initial')}<div>${escapeHTML(user.name)}${user.nickname ? `<small class="profile-nickname">${escapeHTML(user.nickname)}</small>` : ''}</div></div></td><td data-label="Posisi dashboard">${escapeHTML(user.dashboardPosition ?? user.position ?? 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></td><td data-label="Aksi">${actions}</td></tr>`;
+    return `<tr><td data-label="Pengguna"><div class="profile-user-cell">${profileAvatar(user, 'user-initial')}<div>${escapeHTML(user.name)}${user.nickname ? `<small class="profile-nickname">${escapeHTML(user.nickname)}</small>` : ''}</div></div></td><td data-label="Posisi dashboard">${escapeHTML(user.dashboardPosition ?? user.position ?? 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><div class="user-access-state"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></div></td><td data-label="Aksi">${actions}</td></tr>`;
   }).join('');
   const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
@@ -1372,6 +1384,16 @@ async function downloadPdf(button) {
     || window.matchMedia?.('(display-mode: fullscreen)')?.matches === true
     || navigator.standalone === true;
   const userAgent = navigator.userAgent || '';
+  if (isStandalone && typeof PwaFiles !== 'undefined') {
+    const requestEpoch = authEpoch;
+    return PwaFiles.prepare({
+      url: reportUrl, filename: `pangsuma-laporan-keuangan-${todayISO()}.pdf`,
+      isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager',
+      onUnauthorized: response => {
+        if (response.status === 401 && requestEpoch === authEpoch) showLogin('Sesi Anda berakhir. Silakan masuk kembali.');
+      }
+    });
+  }
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
   const isAndroidWebView = /Android/i.test(userAgent)
@@ -1502,6 +1524,14 @@ async function openReportActivity(id, trigger) {
 
 async function handleAction(button) {
   const action = button.dataset.action;
+  if (action === 'check-app-update') {
+    setButtonBusy(button, true, 'Memeriksa…');
+    try {
+      const found = await checkForAppUpdate({ force: true });
+      showToast(navigator.onLine === false ? 'Tidak ada koneksi. Sambungkan internet lalu cek kembali.' : appUpdates?.lastError ? 'Pembaruan belum dapat diperiksa. Coba lagi saat koneksi tersedia.' : found ? `Pembaruan ${availableBuild} tersedia. Tekan Muat ulang.` : `Aplikasi sudah terbaru. Versi terpasang ${APP_BUILD}.`);
+    } finally { if (button.isConnected) setButtonBusy(button, false); }
+    return;
+  }
   if (action === 'history-previous' || action === 'history-first') { await loadMoreHistory(button.dataset.collection, button, action === 'history-first' ? 'first' : 'previous'); return; }
   if (action === 'refresh-cash-insights') { await loadCashInsights(); return; }
   if (action === 'configure-cash-minimum') { configureCashMinimum(button); return; }
@@ -1874,6 +1904,16 @@ async function performLogin(event) {
 
 async function initialize() {
   bindEvents();
+  // Start before authentication: the login screen must see updates too.
+  checkForAppUpdate();
+  import(`/pwa-updates.js?v=${APP_BUILD}`).then(({ createPwaUpdateCoordinator }) => {
+    appUpdates = createPwaUpdateCoordinator({
+      currentBuild: APP_BUILD, setAvailable: setUpdateBanner,
+      isBlocked: () => transactionInFlight(),
+      onError: () => { const status = $('#appUpdateCheckStatus'); if (status) status.textContent = 'Pembaruan belum dapat diperiksa. Coba lagi saat koneksi tersedia.'; }
+    }).bind();
+    appUpdates.check();
+  }).catch(() => {});
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js')
       .then(registration => registration.update())

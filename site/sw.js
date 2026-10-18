@@ -1,24 +1,28 @@
-const CACHE_NAME = 'pangsuma-app-shell-v21-pwa-file-precision';
+const CACHE_NAME = 'pangsuma-app-shell-v22-pwa-recovery-icons';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.18.5',
-  '/password-crypto.js?v=2026.10.18.5',
-  '/app.js?v=2026.10.18.5',
-  '/report-filters.js?v=2026.10.18.5',
-  '/financial-controls.js?v=2026.10.18.5',
-  '/financial-controls.css?v=2026.10.18.5',
-  '/report-evidence.js?v=2026.10.18.5',
-  '/report-evidence.css?v=2026.10.18.5',
-  '/bounded-history.js?v=2026.10.18.5',
-  '/mobile-polish.css?v=2026.10.18.5',
-  '/mobile-viewport.js?v=2026.10.18.5',
+  '/pangsuma-theme.css?v=2026.10.18.6',
+  '/password-crypto.js?v=2026.10.18.6',
+  '/app.js?v=2026.10.18.6',
+  '/pwa-updates.js?v=2026.10.18.6',
+  '/pwa-files.js?v=2026.10.18.6',
+  '/pwa-files.css?v=2026.10.18.6',
+  '/report-filters.js?v=2026.10.18.6',
+  '/financial-controls.js?v=2026.10.18.6',
+  '/financial-controls.css?v=2026.10.18.6',
+  '/report-evidence.js?v=2026.10.18.6',
+  '/report-evidence.css?v=2026.10.18.6',
+  '/bounded-history.js?v=2026.10.18.6',
+  '/mobile-polish.css?v=2026.10.18.6',
+  '/mobile-viewport.js?v=2026.10.18.6',
   '/pangsuma-login-crest-384.png',
   '/manifest.webmanifest',
-  '/favicon-32.png',
-  '/apple-touch-icon.png',
-  '/pangsuma-icon-192.png',
-  '/pangsuma-icon-512.png',
-  '/pangsuma-icon-maskable-512.png'
+  '/favicon-32.png?v=2026.10.18.6',
+  '/apple-touch-icon.png?v=2026.10.18.6',
+  '/pangsuma-icon-192.png?v=2026.10.18.6',
+  '/pangsuma-icon-512.png?v=2026.10.18.6',
+  '/pangsuma-icon-maskable-192.png?v=2026.10.18.6',
+  '/pangsuma-icon-maskable-512.png?v=2026.10.18.6'
 ];
 const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/').map(path => path.split('?')[0]));
 
@@ -45,7 +49,9 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys()
     .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
-    .then(() => self.clients.claim()));
+    .then(() => self.clients.claim())
+    .then(() => self.clients.matchAll?.({ type: 'window', includeUncontrolled: true }))
+    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.18.6' }))));
 });
 
 self.addEventListener('fetch', event => {

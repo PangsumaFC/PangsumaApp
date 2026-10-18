@@ -36,3 +36,12 @@ test('nearby asset paths are not given shell revalidation', async () => {
   });
   assert.equal(response.headers.get('cache-control'), 'public, max-age=3600');
 });
+
+test('local photo previews allow blob images without remote image origins', async () => {
+  const response = await onRequest({ request: new Request('https://app.test/'), next: async () => new Response('ok') });
+  const csp = response.headers.get('content-security-policy');
+  assert.match(csp, /img-src 'self' data: blob:;/);
+  assert.match(csp, /object-src 'none'/);
+  assert.match(csp, /connect-src 'self';/);
+  assert.doesNotMatch(csp, /img-src[^;]*(?:https:|\*)/);
+});

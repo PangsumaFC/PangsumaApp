@@ -7,7 +7,7 @@ export async function onRequest(context) {
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; worker-src 'self'"
+    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'"
   );
   const pathname = new URL(context.request.url).pathname;
   if (pathname === '/' || [

@@ -42,6 +42,8 @@ def main():
         build = {"value": newer}
         page.route("**/version.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"build": build["value"]})))
         page.goto(BASE, wait_until="networkidle", timeout=30_000)
+        expect(page.locator("#appUpdateBanner")).to_be_visible(timeout=10_000)
+        expect(page.locator('[data-action="check-app-update"]:visible')).to_have_count(1)
         login(page, MANAGER, password)
         password = rotate_first_login(page, password)
         page.evaluate("checkForAppUpdate()")
