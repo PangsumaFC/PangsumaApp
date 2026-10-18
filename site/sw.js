@@ -1,33 +1,52 @@
-const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.18.12';
+const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.18.13';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.18.12',
-  '/password-crypto.js?v=2026.10.18.12',
-  '/app.js?v=2026.10.18.12',
-  '/pwa-install.js?v=2026.10.18.12',
-  '/pwa-updates.js?v=2026.10.18.12',
-  '/pwa-files.js?v=2026.10.18.12',
-  '/pwa-files.css?v=2026.10.18.12',
-  '/report-filters.js?v=2026.10.18.12',
-  '/financial-controls.js?v=2026.10.18.12',
-  '/financial-controls.css?v=2026.10.18.12',
-  '/report-evidence.js?v=2026.10.18.12',
-  '/report-evidence.css?v=2026.10.18.12',
-  '/bounded-history.js?v=2026.10.18.12',
-  '/mobile-polish.css?v=2026.10.18.12',
-  '/mobile-viewport.js?v=2026.10.18.12',
+  '/pangsuma-theme.css?v=2026.10.18.13',
+  '/password-crypto.js?v=2026.10.18.13',
+  '/app.js?v=2026.10.18.13',
+  '/pwa-install.js?v=2026.10.18.13',
+  '/pwa-updates.js?v=2026.10.18.13',
+  '/pwa-files.js?v=2026.10.18.13',
+  '/pwa-files.css?v=2026.10.18.13',
+  '/report-filters.js?v=2026.10.18.13',
+  '/financial-controls.js?v=2026.10.18.13',
+  '/financial-controls.css?v=2026.10.18.13',
+  '/report-evidence.js?v=2026.10.18.13',
+  '/report-evidence.css?v=2026.10.18.13',
+  '/bounded-history.js?v=2026.10.18.13',
+  '/mobile-polish.css?v=2026.10.18.13',
+  '/mobile-viewport.js?v=2026.10.18.13',
   '/pangsuma-login-crest-384.png',
   '/pangsuma-loading-logo.png',
   '/pangsuma-loading-emblem.png',
   '/manifest.webmanifest',
-  '/favicon-32.png?v=2026.10.18.12',
-  '/apple-touch-icon.png?v=2026.10.18.12',
-  '/pangsuma-icon-192.png?v=2026.10.18.12',
-  '/pangsuma-icon-512.png?v=2026.10.18.12',
-  '/pangsuma-icon-maskable-192.png?v=2026.10.18.12',
-  '/pangsuma-icon-maskable-512.png?v=2026.10.18.12'
+  '/favicon-32.png?v=2026.10.18.13',
+  '/apple-touch-icon.png?v=2026.10.18.13',
+  '/pangsuma-icon-192.png?v=2026.10.18.13',
+  '/pangsuma-icon-512.png?v=2026.10.18.13',
+  '/pangsuma-icon-maskable-192.png?v=2026.10.18.13',
+  '/pangsuma-icon-maskable-512.png?v=2026.10.18.13'
 ];
 const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/').map(path => path.split('?')[0]));
+// These assets are required for the core app and its report/authentication flows
+// to remain usable offline. Branding and cosmetic enhancements are optional.
+const MANDATORY_SHELL = [
+  '/',
+  '/pangsuma-theme.css?v=2026.10.18.13',
+  '/password-crypto.js?v=2026.10.18.13',
+  '/app.js?v=2026.10.18.13',
+  '/pwa-install.js?v=2026.10.18.13',
+  '/pwa-updates.js?v=2026.10.18.13',
+  '/pwa-files.js?v=2026.10.18.13',
+  '/pwa-files.css?v=2026.10.18.13',
+  '/report-filters.js?v=2026.10.18.13',
+  '/financial-controls.js?v=2026.10.18.13',
+  '/financial-controls.css?v=2026.10.18.13',
+  '/report-evidence.js?v=2026.10.18.13',
+  '/report-evidence.css?v=2026.10.18.13',
+  '/bounded-history.js?v=2026.10.18.13',
+];
+const OPTIONAL_SHELL = APP_SHELL.filter(path => !MANDATORY_SHELL.includes(path));
 
 function cacheable(response) {
   return response.ok && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '');
@@ -45,8 +64,34 @@ function networkRequest(request) {
   return new Request(request, { cache: 'no-cache' });
 }
 
+async function precacheAsset(cache, asset, mandatory) {
+  // APP_SHELL entries are root-relative, while Request requires an absolute URL
+  // in browsers and in the Node service-worker harness.
+  const request = networkRequest(new Request(new URL(asset, self.location.origin), { credentials: 'same-origin' }));
+  const response = await fetch(request);
+  if (!cacheable(response)) {
+    if (mandatory) throw new Error(`Mandatory shell asset unavailable: ${asset}`);
+    return false;
+  }
+  await cache.put(request, response.clone());
+  return true;
+}
+
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    try {
+      const mandatoryResults = await Promise.allSettled(MANDATORY_SHELL.map(asset => precacheAsset(cache, asset, true)));
+      const mandatoryFailure = mandatoryResults.find(result => result.status === 'rejected');
+      if (mandatoryFailure) throw mandatoryFailure.reason;
+      await Promise.allSettled(OPTIONAL_SHELL.map(asset => precacheAsset(cache, asset, false)));
+      await self.skipWaiting();
+    } catch (error) {
+      // A failed mandatory fetch must never leave a partial cache eligible for activation.
+      await caches.delete(CACHE_NAME);
+      throw error;
+    }
+  })());
 });
 
 self.addEventListener('activate', event => {
@@ -54,7 +99,7 @@ self.addEventListener('activate', event => {
     .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
     .then(() => self.clients.claim())
     .then(() => self.clients.matchAll?.({ type: 'window', includeUncontrolled: true }))
-    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.18.12' }))));
+    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.18.13' }))));
 });
 
 self.addEventListener('fetch', event => {

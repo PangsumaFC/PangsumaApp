@@ -1,3 +1,5 @@
+import { ApiError } from './http.js';
+
 const MAX_PAGE = 500;
 
 export function toBigIntAmount(value) {
@@ -87,7 +89,8 @@ export async function getCashInsights(db, env = {}, options = {}) {
            COALESCE((SELECT MAX(id) FROM cash_ledger), 0) AS ledger_high_water_id
     FROM cash_accounts ca WHERE ca.id = 'operational' LIMIT 1
   `).first();
-  const account = anchor || { balance_idr: '0', ledger_high_water_id: 0 };
+  if (!anchor) throw new ApiError(503, 'operational_cash_unavailable', 'Akun kas operasional belum tersedia. Coba lagi setelah konfigurasi kas selesai.');
+  const account = anchor;
   const ledger = await readAllLedger(db, Number(account.ledger_high_water_id || 0));
   const snapshotStable = true;
   const daily = new Map();

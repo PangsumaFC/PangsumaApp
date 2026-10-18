@@ -63,7 +63,10 @@ test('filtered workspace is the only Finance list, without duplicate totals or c
   const html = vm.runInContext('financePage()', context);
   assert.equal(html.split('<filtered-workspace/>').length - 1, 1);
   assert.doesNotMatch(html, /<card>|Ringkasan Finance|Belum dikirim=|Total request=|Terkirim=/);
-  assert.match(html, /\/api\/export\.pdf\?q=applied/);
+  assert.match(html, /id="managerPdfFallback" hidden/);
+  assert.equal(context.ManagerReportFilters.pdfUrl(), '/api/export.pdf?q=applied');
+  assert.match(html, /id="financeReportsTitle">Laporan/);
+  assert.match(html, /id="financeCashTitle">Pengelolaan kas/);
   assert.equal((html.match(/data-action="download-pdf"/g) || []).length, 1);
   assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 1);
 });

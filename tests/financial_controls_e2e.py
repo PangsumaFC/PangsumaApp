@@ -241,7 +241,10 @@ def main():
 
         # PDF fallback must preserve the active filter but export the full bounded
         # result set, not only the currently visible page.
-        href = page.locator("#managerPdfFallbackLink").get_attribute("href") or ""
+        fallback = page.locator("#managerPdfFallbackLink")
+        assert fallback.count() == 1
+        assert page.locator("#managerPdfFallback").get_attribute("hidden") is not None
+        href = page.evaluate("() => ManagerReportFilters.pdfUrl()")
         params = parse_qs(urlparse(href).query)
         assert params.get("q") == [query] and "cursor" not in params
         with page.expect_download() as download:

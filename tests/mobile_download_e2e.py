@@ -49,9 +49,10 @@ def assert_pdf(path: Path, expected_text: set[str]) -> None:
 def download_once(page: Page, path: Path, standalone: bool = False) -> None:
     page.locator('[data-page="finance"]:visible').first.click()
     page.locator('[data-action="download-pdf"]:visible').wait_for(timeout=10_000)
-    fallback = page.locator('.pdf-fallback a[download]')
+    fallback = page.locator('.pdf-fallback')
     assert fallback.count() == 1
-    assert fallback.get_attribute('href') == '/api/export.pdf'
+    expect(fallback).to_be_hidden()
+    assert page.locator('#managerPdfFallbackLink').count() == 1
     if standalone:
         page.locator('[data-action="download-pdf"]:visible').click()
         expect(page.locator('#pwaPdfDownload')).to_have_attribute('href', __import__('re').compile('^blob:'))
@@ -191,14 +192,9 @@ def main() -> None:
             assert not page.locator("#loginGate").is_visible()
             if label == 'standalone':
                 page.locator('#pwaPdfDialog .pwa-files-close').click()
-            page.locator('.pdf-fallback summary').click()
-            with page.expect_download(timeout=15_000) as direct_pending:
-                page.locator('.pdf-fallback a[download]').click()
-            direct = direct_pending.value
-            assert direct.failure() is None
-            direct_path = SCREENSHOTS / f"mobile-{label}-direct-export.pdf"
-            direct.save_as(direct_path)
-            assert_pdf(direct_path, expected)
+            # The legacy direct anchor is gone: the fallback is a hidden retry
+            # control, and the primary download above remains the behavioral path.
+            expect(page.locator('.pdf-fallback')).to_be_hidden()
             region = page.locator('#managerReportsRegion')
             region.locator('.report-filter-advanced summary').click()
             region.locator('[name="q"]').fill('PDF fixture petty cash')

@@ -107,6 +107,15 @@ function decodeBase64(value) {
 }
 function safeFilename(value) { if(typeof value!=='string'||!value.trim()||value.length>180||/[\u0000-\u001f\u007f]/.test(value)) fail('invalid_filename'); const n=value.replaceAll('\\','/').split('/').pop().trim(); if(!n||n==='.'||n==='..')fail('invalid_filename'); return n; }
 function rowPayload(row){ return metadata(row); }
+function resolveDuplicate(duplicate, actorId, key, payloadHash) {
+  // A content duplicate is only safely replayable when its idempotency key is
+  // different, or when the exact same canonical payload was submitted. Never
+  // let the SHA fast path turn a concurrent same-key, different-metadata
+  // request into a false 200.
+  if (duplicate?.uploaded_by === actorId && duplicate.idempotency_key === key && duplicate.payload_hash !== payloadHash)
+    throw new ApiError(409, 'idempotency_conflict', 'Idempotency-Key sudah digunakan untuk data lain.');
+  return jsonResponse(rowPayload(duplicate), 200);
+}
 
 export async function listSubmissionReceipts(context, db, actor, submissionId) {
   ensureMethod(context.request, 'GET'); const a=await activeActor(db,actor); await visibleSubmission(db,a,submissionId);
@@ -130,10 +139,19 @@ export async function createSubmissionReceipt(context, db, actor, submissionId) 
   const keyed=await query(db,`${receiptSelect} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key);
   if(keyed){if(keyed.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.');return jsonResponse(rowPayload(keyed),200);}
   const duplicate=await query(db,`${receiptSelect} WHERE r.submission_id = ? AND r.sha256 = ? LIMIT 1`,submissionId,sha);
-  if(duplicate)return jsonResponse(rowPayload(duplicate),200);
+  if(duplicate)return resolveDuplicate(duplicate, a.id, key, payloadHash);
   const id=crypto.randomUUID(), now=new Date().toISOString();
   try { await run(db,`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash); }
-  catch(e){ if(/UNIQUE|constraint/i.test(String(e?.message||e))){const race=await query(db,`${receiptSelect} WHERE r.submission_id=? AND r.sha256=? LIMIT 1`,submissionId,sha);if(race)return jsonResponse(rowPayload(race),200);} dbError(e); }
+  catch(e){
+    if(/UNIQUE|constraint/i.test(String(e?.message||e))){
+      // Another request may have won the unique-key race between the initial
+      // lookup and INSERT. Resolve that winner by payload hash, not driver error.
+      const raceKey=await query(db,`${receiptSelect} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key);
+      if(raceKey){if(raceKey.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.');return jsonResponse(rowPayload(raceKey),200);}
+      const race=await query(db,`${receiptSelect} WHERE r.submission_id=? AND r.sha256=? LIMIT 1`,submissionId,sha);if(race)return resolveDuplicate(race, a.id, key, payloadHash);
+    }
+    dbError(e);
+  }
   const row=await query(db,`${receiptSelect} WHERE r.id = ? LIMIT 1`,id); return jsonResponse(rowPayload(row),201);
 }
 export async function getSubmissionReceipt(context, db, actor, receiptId) {

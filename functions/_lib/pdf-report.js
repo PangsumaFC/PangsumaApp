@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { ApiError } from './http.js';
 
 const PAGE_W = 841.89;
 const PAGE_H = 595.28;
@@ -11,6 +12,7 @@ const INK = rgb(0.12, 0.16, 0.20);
 const MUTED = rgb(0.38, 0.44, 0.48);
 const LINE = rgb(0.80, 0.85, 0.86);
 const WHITE = rgb(1, 1, 1);
+const MAX_PDF_PAGES = 150;
 
 function sanitize(value) {
   let replaced = false;
@@ -108,6 +110,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
   let page; let y; let pendingHeading = ''; let unicodeReplaced = sanitize(filterDescription).replaced;
   const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
+    if (pdf.getPageCount() >= MAX_PDF_PAGES) {
+      throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_PAGES} halaman). Persempit filter lalu coba lagi.`);
+    }
     page = pdf.addPage([PAGE_W, PAGE_H]);
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });

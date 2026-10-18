@@ -120,7 +120,9 @@ def main():
         row = region.locator(".manager-filtered-results .item-row").filter(has_text="Workspace dana latihan")
         expect(row).to_have_count(1, timeout=15000)
         fallback = page.locator("#managerPdfFallbackLink")
-        href = fallback.get_attribute("href") or ""
+        assert fallback.count() == 1
+        assert page.locator("#managerPdfFallback").get_attribute("hidden") is not None
+        href = page.evaluate("() => ManagerReportFilters.pdfUrl()")
         query = parse_qs(urlparse(href).query)
         for key, value in {"q":"Workspace dana latihan", "jenis":"petty_cash", "status":"approved", "periode":"customWIB", "start":today, "end":today}.items():
             assert query.get(key) == [value], (key, query, href)

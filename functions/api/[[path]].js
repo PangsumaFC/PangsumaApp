@@ -51,6 +51,13 @@ const LOGIN_ATTEMPT_MAX_ROWS = 20000;
 const HISTORY_PAGE_SIZE = 100;
 const EXPORT_PAGE_SIZE = 500;
 const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
+// PDF generation sorts each section in memory; reject oversized reports before
+// any rows are collected so the caller can narrow filters and retry.
+// pdf-lib retains every drawn object until serialization. A conservative,
+// measured section cap avoids Worker memory exhaustion; callers get a
+// recoverable 413 and can narrow filters rather than receiving a truncated PDF.
+const MAX_PDF_ROWS_PER_SECTION = 600;
+const MAX_PDF_RENDERED_TEXT_CHARS = 80_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function nowIso() {
@@ -1286,7 +1293,68 @@ async function exportCsv(context, db) {
 async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilters()) {
   const submissions = [], ledger = [], audits = [];
   const submissionFilter = buildSubmissionFilterSql(filters);
+  // Ledger/audit preflight joins submissions as `s` and creator as `c`; do not
+  // reuse the report query's creator alias here or valid applicant/search filters
+  // fail before collection. Actual submission SQL below intentionally keeps its
+  // existing `creator` join alias.
+  const joinedSubmissionFilter = buildSubmissionFilterSql(filters, { alias: 's', creatorAlias: 'c' });
   const hasSpecific = hasSubmissionSpecificFilter(filters);
+  let renderedTextChars = 0;
+  const accountRenderedText = (rows, kind) => {
+    const fields = kind === 'submission'
+      ? ['description', 'note', 'decision_reason', 'created_by_name', 'created_by_position']
+      : kind === 'ledger'
+        ? ['description', 'note', 'created_by_name', 'actor_name']
+        : ['details_json', 'action', 'actor_name', 'entity_type', 'entity_id'];
+    for (const row of rows) {
+      for (const field of fields) renderedTextChars += String(row?.[field] ?? '').length;
+      if (renderedTextChars > MAX_PDF_RENDERED_TEXT_CHARS) {
+        throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_RENDERED_TEXT_CHARS.toLocaleString('id-ID')} karakter teks). Persempit filter lalu coba lagi.`);
+      }
+    }
+  };
+  // Probe only cap+1 rows: this answers the guard while bounding preflight
+  // work, instead of COUNT(*) scanning/materializing an unbounded export.
+  const countResult = async (sql, params) => {
+    const rows = (await db.prepare(sql.replace(/SELECT COUNT\(\*\) AS count/i, 'SELECT 1 AS present') + ` LIMIT ${MAX_PDF_ROWS_PER_SECTION + 1}`).bind(...params).all()).results || [];
+    return rows.length;
+  };
+  const submissionCount = await countResult(`
+    SELECT COUNT(*) AS count
+    FROM submissions AS r JOIN users AS c ON c.id = r.created_by
+    WHERE r.created_at <= ? AND ${buildSubmissionFilterSql(filters, { alias: 'r', creatorAlias: 'c' }).where}
+  `, [snapshotAt, ...buildSubmissionFilterSql(filters, { alias: 'r', creatorAlias: 'c' }).params]);
+  const countLedgerWhere = ['l.created_at <= ?'];
+  const countLedgerParams = [snapshotAt];
+  if (filters.startDate) { countLedgerWhere.push('l.created_at >= ?'); countLedgerParams.push(wibBoundary(filters.startDate)); }
+  if (filters.endDate) { countLedgerWhere.push('l.created_at < ?'); countLedgerParams.push(wibBoundary(filters.endDate, true)); }
+  if (hasSpecific) {
+    countLedgerWhere.push('l.submission_id IS NOT NULL AND s.id IS NOT NULL', joinedSubmissionFilter.where);
+    countLedgerParams.push(...joinedSubmissionFilter.params);
+  }
+  const ledgerCount = await countResult(`
+    SELECT COUNT(*) AS count FROM cash_ledger AS l
+    LEFT JOIN submissions AS s ON s.id = l.submission_id
+    LEFT JOIN users AS c ON c.id = s.created_by
+    WHERE ${countLedgerWhere.join(' AND ')}
+  `, countLedgerParams);
+  const countAuditWhere = ['a.created_at <= ?'];
+  const countAuditParams = [snapshotAt];
+  if (filters.startDate) { countAuditWhere.push('a.created_at >= ?'); countAuditParams.push(wibBoundary(filters.startDate)); }
+  if (filters.endDate) { countAuditWhere.push('a.created_at < ?'); countAuditParams.push(wibBoundary(filters.endDate, true)); }
+  if (hasSpecific) {
+    countAuditWhere.push("a.entity_type = 'submission' AND s.id IS NOT NULL", joinedSubmissionFilter.where);
+    countAuditParams.push(...joinedSubmissionFilter.params);
+  }
+  const auditCount = await countResult(`
+    SELECT COUNT(*) AS count FROM audit_events AS a
+    LEFT JOIN submissions AS s ON a.entity_type = 'submission' AND s.id = a.entity_id
+    LEFT JOIN users AS c ON c.id = s.created_by
+    WHERE ${countAuditWhere.join(' AND ')}
+  `, countAuditParams);
+  if (Math.max(submissionCount, ledgerCount, auditCount) > MAX_PDF_ROWS_PER_SECTION) {
+    throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_ROWS_PER_SECTION.toLocaleString('id-ID')} baris per bagian). Persempit filter lalu coba lagi.`);
+  }
   let cursor = null;
   while (true) {
     const rows = (await db.prepare(`
@@ -1299,6 +1367,8 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
       ORDER BY s.created_at DESC, s.id DESC LIMIT ${EXPORT_PAGE_SIZE}
     `).bind(...(cursor ? [snapshotAt, ...submissionFilter.params, cursor.created_at, cursor.created_at, cursor.id] : [snapshotAt, ...submissionFilter.params])).all()).results || [];
     submissions.push(...rows);
+    accountRenderedText(rows, 'submission');
+    if (submissions.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
     if (rows.length < EXPORT_PAGE_SIZE) break;
     cursor = rows[rows.length - 1];
   }
@@ -1323,6 +1393,8 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
       ORDER BY l.id DESC LIMIT ${EXPORT_PAGE_SIZE}
     `).bind(...(cursor ? [...ledgerParams, cursor.id] : ledgerParams)).all()).results || [];
     ledger.push(...rows);
+    accountRenderedText(rows, 'ledger');
+    if (ledger.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
     if (rows.length < EXPORT_PAGE_SIZE) break;
     cursor = rows[rows.length - 1];
   }
@@ -1357,6 +1429,8 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
       ORDER BY a.id DESC LIMIT ${EXPORT_PAGE_SIZE}
     `).bind(...(cursor ? [...auditParams, cursor.id] : auditParams)).all()).results || [];
     audits.push(...rows);
+    accountRenderedText(rows, 'audit');
+    if (audits.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
     if (rows.length < EXPORT_PAGE_SIZE) break;
     cursor = rows[rows.length - 1];
   }

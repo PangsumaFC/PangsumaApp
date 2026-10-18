@@ -762,7 +762,7 @@ button:disabled { box-shadow: none; }
 .manager-report-filters fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .report-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .report-filter-grid label { display: grid; gap: 6px; min-width: 0; color: var(--ink); font-size: 13px; font-weight: 600; }
-.report-filter-grid input, .report-filter-grid select { width: 100%; min-width: 0; min-height: 46px; padding: 10px 12px; color: var(--ink); border: 1px solid #8998a6; border-radius: var(--radius-sm); background: var(--paper); font: inherit; }
+.report-filter-search input, .report-filter-grid input, .report-filter-grid select { width: 100%; min-width: 0; min-height: 46px; padding: 10px 12px; color: var(--ink); border: 1px solid #8998a6; border-radius: var(--radius-sm); background: var(--paper); font: inherit; }
 .report-filter-search { grid-column: span 2; }
 .report-filter-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .manager-filtered-results { margin-top: 14px; }
@@ -798,3 +798,16 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 
 .pwa-install-feedback { margin: 0; padding: 10px 16px; flex: none; background: var(--paper); }
 body.logged-out > .pwa-install-feedback { display: none; }
+
+/* Finance groups retain one action per task and wrap safely on mobile. */
+.finance-section { min-width: 0; margin-top: 24px; }
+.finance-section > .section-row { flex-wrap: wrap; gap: 12px; }
+.finance-section .heading-actions { min-width: 0; flex-wrap: wrap; }
+.report-filter-search input { min-height: 44px; width: 100%; box-sizing: border-box; }
+.report-filter-search input:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
+.report-filter-actions button, .report-pagination button { min-height: 44px; }
+@media (max-width: 620px) {
+  .finance-section > .section-row { align-items: stretch; }
+  .finance-section .heading-actions { width: 100%; }
+  .finance-section .heading-actions > button { flex: 1 1 180px; white-space: normal; }
+}

@@ -112,6 +112,12 @@ echo "PROFILE_REVIEW_DIR=$PROFILE_REVIEW_DIR"
 if [[ "${1:-}" == "--audit-regressions" ]]; then
   shift
   timeout -k 5s 240s python3 -B tests/audit_regressions_e2e.py "$@"
+elif [[ "${1:-}" == "--audit-edge" ]]; then
+  shift
+  timeout -k 5s 240s python3 -B tests/audit_edge_e2e.py "$@"
+elif [[ "${1:-}" == "--password-flow" ]]; then
+  shift
+  timeout -k 5s 240s python3 -B tests/password_flow_e2e.py "$@"
 elif [[ "${1:-}" == "--pwa-standalone" ]]; then
   shift
   timeout -k 5s 180s python3 -B tests/pwa_standalone_e2e.py "$@"

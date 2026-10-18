@@ -111,7 +111,8 @@ def main():
         region.locator('[name="status"]').select_option("approved")
         region.locator('[type="submit"]').click()
         expect(region.locator(".manager-filtered-results, .empty-state")).to_be_visible(timeout=15000)
-        assert "approved" in (page.locator("#managerPdfFallbackLink").get_attribute("href") or "")
+        pdf_url = page.evaluate("() => ManagerReportFilters.pdfUrl()")
+        assert pdf_url.startswith("/api/export.pdf?") and "q=approved" in pdf_url and "status=approved" in pdf_url, pdf_url
         for width, height in ((320, 700), (390, 844), (844, 390), (1280, 900)):
             page.set_viewport_size({"width": width, "height": height})
             page.reload(wait_until="networkidle")

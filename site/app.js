@@ -642,6 +642,9 @@ function showLogin(message = '') {
   if (typeof PwaFiles !== 'undefined') PwaFiles.cleanup();
   if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
   authEpoch += 1;
+  usersPageLifecycle.cancel();
+  historyPageLifecycles.forEach(lifecycle => lifecycle.cancel());
+  historyPageLifecycles.clear();
   closeDialogs();
   $$('form').forEach(form => form.reset());
   $$('input[type="password"], textarea, input[type="number"]').forEach(input => { input.value = ''; });
@@ -743,6 +746,9 @@ function renderNav() {
   if (headerPassword) headerPassword.classList.toggle('is-manager', role === 'manager');
   const mobile = $('#mobileNav');
   if (role === 'manager') {
+    // Keep mobile navigation identical to the desktop hierarchy. Finance itself
+    // owns the Laporan and Pengelolaan kas sections; nav labels must not imply
+    // that Ringkasan or Persetujuan are cash-management pages.
     mobile.className = 'mobile-nav is-manager';
     mobile.innerHTML = items.map(navButton).join('');
     return;
@@ -867,13 +873,16 @@ function financePage() {
   const openingConfigured = Boolean(state.cashFlow?.openingConfigured);
   const pdfFallback = isPangsumaApkWrapper()
     ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
-    : `<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details>`;
-  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}${pdfFallback}</div>`;
-  return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.', headingActions)}
-    <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div>
+    : `<details class="pdf-fallback" id="managerPdfFallback" hidden><summary>Unduh ulang PDF</summary><p class="field-help">Unduhan utama gagal. Coba unduh ulang dari aplikasi.</p><button type="button" class="secondary-button" id="managerPdfFallbackLink">Coba lagi</button></details>`;
+  const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button>${pdfFallback}</div>`;
+  const cashActions = `<div class="heading-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
+  return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.')}
+    <section class="finance-section" aria-labelledby="financeReportsTitle"><div class="section-row"><h2 id="financeReportsTitle">Laporan</h2>${reportActions}</div>
+    <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div></section>
+    <section class="finance-section" aria-labelledby="financeCashTitle"><div class="section-row"><h2 id="financeCashTitle">Pengelolaan kas</h2>${cashActions}</div>
     <details class="audit-panel" data-panel="cash-insights"><summary>Rincian saldo dan tren petty cash</summary>${cashInsightsRegion()}</details>
     <div id="financialControlsFinance">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderFinance() : ''}</div>
-    <details class="audit-panel" data-panel="cash-ledger"><summary>Ledger petty cash (${state.history.cashLedger.loaded} dari ${state.history.cashLedger.total})</summary>${ledgers.length ? `<ol class="audit-list">${ledgers.map(ledgerRow).join('')}</ol>` : `<p class="field-help">Belum ada transaksi saldo.</p>`}${historyControls('cashLedger', 'transaksi ledger')}</details>`;
+    <details class="audit-panel" data-panel="cash-ledger"><summary>Ledger petty cash (${state.history.cashLedger.loaded} dari ${state.history.cashLedger.total})</summary>${ledgers.length ? `<ol class="audit-list">${ledgers.map(ledgerRow).join('')}</ol>` : `<p class="field-help">Belum ada transaksi saldo.</p>`}${historyControls('cashLedger', 'transaksi ledger')}</details></section>`;
 }
 
 function auditRow(event) {
@@ -901,13 +910,33 @@ function ledgerRow(event) {
   return `<li><div class="audit-main"><strong>${topup ? 'Petty cash ditambah' : debit ? 'Pengeluaran petty cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
 }
 
+function asyncLifecycle() {
+  let token = 0, busy = false, error = null;
+  return {
+    begin() { const current = ++token; busy = true; error = null; return current; },
+    current(current) { return current === token; },
+    finish(current) { if (current === token) busy = false; },
+    cancel() { token++; busy = false; error = null; },
+    fail(current, value) { if (current === token) error = value; },
+    get busy() { return busy; }, get error() { return error; }
+  };
+}
+const usersPageLifecycle = asyncLifecycle();
+const historyPageLifecycles = new Map();
 async function refreshUsersPage(page = 1, append = false) {
   if (!state.user || state.user.role !== 'manager') return false;
-  const result = await api(`/users?page=${page}&limit=100`);
-  const rows = Array.isArray(result.users) ? result.users : [];
-  state.users = rows;
-  state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore) };
-  return true;
+  const request = usersPageLifecycle.begin();
+  try {
+    const result = await api(`/users?page=${page}&limit=100`);
+    if (!usersPageLifecycle.current(request)) return false;
+    const rows = Array.isArray(result.users) ? result.users : [];
+    state.users = rows;
+    state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore) };
+    return true;
+  } catch (error) {
+    usersPageLifecycle.fail(request, error);
+    throw error;
+  } finally { usersPageLifecycle.finish(request); }
 }
 
 function usersPage() {
@@ -1489,7 +1518,7 @@ async function downloadPdf(button) {
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-    showToast('Permintaan PDF diteruskan ke perangkat. Periksa notifikasi atau folder Unduhan; jika belum muncul, gunakan tautan unduh langsung.');
+    showToast('Permintaan PDF diteruskan ke perangkat. Periksa notifikasi atau folder Unduhan; jika belum muncul, coba unduh kembali dari aplikasi.');
     return;
   }
   const requestEpoch = authEpoch;
@@ -1519,9 +1548,11 @@ async function downloadPdf(button) {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    const fallback = document.querySelector?.('#managerPdfFallback');
+    if (fallback) fallback.hidden = true;
     showToast('Rekap siap; periksa unduhan browser untuk file PDF.');
   } catch (error) {
-    if (error.code !== 'session_changed') showToast(friendlyError(error));
+    if (error.code !== 'session_changed') { showToast(friendlyError(error)); const fallback = typeof document?.querySelector === 'function' ? document.querySelector('#managerPdfFallback') : null; if (fallback) { fallback.hidden = false; fallback.open = true; } }
   } finally {
     if (button.isConnected) setButtonBusy(button, false);
   }
@@ -1576,9 +1607,14 @@ function configureBoundedHistory() {
 }
 async function loadMoreHistory(collection, button, direction = 'next') {
   if (typeof BoundedHistory === 'undefined' || !state.user) return;
+  const historyPageLifecycle = historyPageLifecycles.get(collection) || asyncLifecycle();
+  historyPageLifecycles.set(collection, historyPageLifecycle);
+  if (historyPageLifecycle.busy) return;
+  const request = historyPageLifecycle.begin();
   setButtonBusy(button, true, 'Memuat halaman…');
   try { await BoundedHistory.load(collection, direction); }
-  finally { if (button?.isConnected) setButtonBusy(button, false); }
+  catch (error) { historyPageLifecycle.fail(request, error); throw error; }
+  finally { if (historyPageLifecycle.current(request) && button?.isConnected) setButtonBusy(button, false); historyPageLifecycle.finish(request); }
 }
 
 function canCloseReportActivity(dialog) {
@@ -1794,7 +1830,7 @@ function bindEvents() {
   });
   document.addEventListener('click', async event => {
     const pdfFallback = event.target.closest('#managerPdfFallbackLink');
-    if (pdfFallback && isPangsumaApkWrapper()) {
+    if (pdfFallback) {
       event.preventDefault();
       await downloadPdf(pdfFallback);
       return;
