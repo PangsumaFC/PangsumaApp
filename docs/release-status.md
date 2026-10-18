@@ -6,7 +6,7 @@ Tidak ada perubahan APK, unggah foto, backend, database, transaksi, atau data pr
 
 Pengujian rilis: `npm test`, kedua suite SQLite offline, dan `bash tests/run-profile-local.sh --mobile-download` dengan database lokal sementara. Keberhasilan live harus diverifikasi dari workflow commit yang sama dan `/version.json` build `2026.10.18.9`.
 
-Hasil lokal: 269 tes unit lulus, 13 tes profil/skema dan 7 tes skema pengajuan Manager lulus; E2E bridge UA WebView dan bridge UA Chrome menampilkan status saja (0 export PDF, 0 pemanggilan CSV, 0 popup, 0 clipboard). Chrome dan simulasi PWA standalone mengunduh PDF valid, unduhan langsung tetap bekerja, filter tepat, dan sesi bertahan. Tidak ada pengujian Android fisik.
+Hasil lokal: 269 tes unit lulus, 9 tes profil/skema dan 7 tes skema pengajuan Manager lulus; E2E bridge UA WebView dan bridge UA Chrome menampilkan status saja (0 export PDF, 0 pemanggilan CSV, 0 popup, 0 clipboard). Chrome dan simulasi PWA standalone mengunduh PDF valid, unduhan langsung tetap bekerja, filter tepat, dan sesi bertahan. Tidak ada pengujian Android fisik.
 
 ## Arsip rilis 2026.10.18.5
 
