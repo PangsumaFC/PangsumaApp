@@ -14,13 +14,15 @@ PWA standalone Chrome memiliki user-agent yang sama dengan tab biasa. `downloadP
 
 Jalur tab Chrome tetap memakai fetch autentikasi dan Blob dengan penanganan error. Tautan unduh langsung tetap tersedia sebagai fallback. Respons PDF tetap `application/pdf`, `Content-Disposition: attachment`, dan tidak dicache. Pesan UI hanya mengonfirmasi permintaan diteruskan, bukan mengklaim file sudah tersimpan pada perangkat.
 
-## APK dengan bridge CSV saja — versi 2026.10.18.8
+## APK dengan bridge CSV saja — versi 2026.10.18.9
 
-WebView dikenali lewat bridge bernama `PangsumaFileBridge` atau UA Android WebView, sebelum pemeriksaan standalone. Tombol PDF dan tautan fallback membuka dialog **Unduh PDF melalui Chrome**, bukan memanggil `saveCsv`, membuat Blob, atau mengklaim native download didukung. Tombol **Buka Chrome** mencoba intent Chrome dengan fallback URL same-origin; bila host APK tidak membuka browser, pengguna dapat **Salin tautan** atau memilih URL lengkap secara manual lalu menempelkannya di browser lain. Dukungan intent pada APK fisik belum dibuktikan.
+APK dikenali hanya lewat interface `PangsumaFileBridge` yang sudah terbukti tertanam, sebelum pemeriksaan standalone. Tidak ada tebakan user-agent; PWA terpasang di browser tanpa bridge tetap memakai jalur PWA. Wrapper lain tanpa interface ini tidak dapat diidentifikasi dengan bukti yang tersedia.
 
-Halaman `/pdf-browser.html` membawa hanya tujuh filter aktif (`q`, `periode`, `jenis`, `status`, `pengaju`, `start`, `end`), tanpa cookie/token sesi, kunci, atau parameter redirect. Login browser terpisah: pengguna membuka login Manager di tab browser lain, kembali ke halaman handoff, lalu memeriksa sesi. Link PDF baru diaktifkan sesudah `/api/session` mengonfirmasi Manager dan password tidak wajib diganti. Server tetap memeriksa otorisasi pada unduhan. Jika halaman handoff masih berada di WebView, link PDF tetap disembunyikan dan instruksi salin URL ditampilkan.
+Tombol PDF menampilkan status ringkas **Unduh PDF langsung memerlukan APK yang diperbarui.** Hanya tersedia tombol Tutup. Fallback Chrome/intent, clipboard, URL salin manual, dan link PDF langsung tidak ditawarkan pada APK. `prepare` juga memiliki guard APK agar tidak fetch PDF, membuat Blob, memanggil bagikan OS atau bridge CSV. Browser biasa tetap memakai unduhan PDF normal dengan filter aktif dan sesi sendiri.
 
-Halaman handoff memakai `no-store`, `no-referrer`, tidak dicegat service worker, dan tidak menjadi cache shell `/`. Tidak ada dekompilasi, perubahan, penandatanganan ulang, atau build APK. Menyimpan PDF langsung melalui native bridge tetap memerlukan pembaruan APK dari sumber Android.
+Halaman lama `/pdf-browser.html` tetap dapat dipakai browser, membawa hanya tujuh filter aktif (`q`, `periode`, `jenis`, `status`, `pengaju`, `start`, `end`) dan memverifikasi sesi Manager sebelum mengaktifkan PDF. Di APK, halaman ini menyembunyikan instruksi login browser dan seluruh kontrol download, tidak meminta sesi, dan menampilkan status pembaruan APK yang sama. Kontrol salin URL telah dihapus.
+
+Halaman PDF memakai `no-store`, `no-referrer`, tidak dicegat service worker, dan tidak menjadi cache shell `/`. Perubahan ini hanya pada situs, bukan modifikasi, build atau penandatanganan ulang APK. Menyimpan PDF langsung tetap memerlukan handler native di APK yang diperbarui.
 
 ## Versi dan cache
 
@@ -30,6 +32,6 @@ Seluruh script/style, meta build, teks versi dan `version.json` harus memiliki b
 
 Uji unit dan browser lokal memverifikasi alur kode, API, decoding, pemilih native Chromium, draf, PDF aktual, filter, sesi, cache, dan ukuran viewport. Simulasi `display-mode` atau user-agent bukan bukti PWA Android terpasang. Hasil aktual dan perintah uji rilis dicatat di `release-status.md`.
 
-`bash tests/run-profile-local.sh --mobile-download` menguji WebView UA, bridge CSV dengan UA Chrome biasa, dan Chrome tab. Fixture hanya di database lokal sementara. Uji memeriksa bridge tidak dipanggil, tidak ada permintaan PDF dari WebView, filter tepat, halaman yang terperangkap tetap menolak simpan native, login browser terpisah, isi PDF aktual, clipboard gagal/manual, dan viewport 320/390/844/1280 px. Ini bukan pengujian perangkat Android fisik.
+`bash tests/run-profile-local.sh --mobile-download` menguji bridge CSV dengan UA WebView maupun Chrome biasa, Chrome tab, dan simulasi standalone. Fixture hanya di database lokal sementara. Regresi memeriksa tidak ada export PDF, intent, popup, clipboard atau panggilan CSV pada APK; status tanpa fallback keluar; halaman PDF lama terblokir; filter dan isi PDF browser aktual; serta sesi tetap aktif. Ini bukan pengujian APK/perangkat Android fisik.
 
 Penerimaan minimum di HP Android: buka dari ikon PWA; pastikan build terbaru terlihat; pilih JPG/PNG dari galeri lalu simpan dan buka ulang; batalkan pemilih lalu pilih lagi; tinggalkan aplikasi dan kembali sebelum menyimpan; unduh PDF hasil filter dan buka file dari Unduhan; periksa nama/isi laporan serta sesi masih aktif; ulangi pada layar kecil dengan keyboard terbuka. Jika masih gagal, catat model/versi Android dan browser pemasang, build yang terlihat, serta titik gagal (pemilih tidak terbuka, foto tidak terbaca, simpan gagal, atau PDF tidak tersimpan). Jangan menghapus data aplikasi atau menginstal ulang sebagai langkah pertama karena dapat menghilangkan draf.

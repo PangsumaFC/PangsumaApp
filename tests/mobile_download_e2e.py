@@ -46,14 +46,17 @@ def assert_pdf(path: Path, expected_text: set[str]) -> None:
         assert fixture in text, (fixture, text[:1000])
 
 
-def download_once(page: Page, path: Path) -> None:
+def download_once(page: Page, path: Path, standalone: bool = False) -> None:
     page.locator('[data-page="finance"]:visible').first.click()
     page.locator('[data-action="download-pdf"]:visible').wait_for(timeout=10_000)
     fallback = page.locator('.pdf-fallback a[download]')
     assert fallback.count() == 1
     assert fallback.get_attribute('href') == '/api/export.pdf'
-    with page.expect_download(timeout=15_000) as pending:
+    if standalone:
         page.locator('[data-action="download-pdf"]:visible').click()
+        expect(page.locator('#pwaPdfDownload')).to_have_attribute('href', __import__('re').compile('^blob:'))
+    with page.expect_download(timeout=15_000) as pending:
+        page.locator('#pwaPdfDownload' if standalone else '[data-action="download-pdf"]:visible').click()
     download = pending.value
     assert download.failure() is None
     download.save_as(path)
@@ -70,74 +73,36 @@ def webview_browser_fallback(page: Page, browser: Browser, password: str, label:
     exports: list[str] = []
     page.on('request', lambda request: exports.append(request.url) if '/api/export.pdf' in request.url else None)
     page.locator('[data-action="download-pdf"]:visible').click()
-    dialog = page.locator('#pwaPdfBrowserDialog')
+    dialog = page.locator('#pwaPdfApkDialog')
     expect(dialog).to_be_visible()
-    expect(dialog.locator('#pwaPdfBrowserStatus')).to_contain_text('belum didukung')
-    handoff = dialog.locator('#pwaPdfBrowserLink').input_value()
-    parsed = urlparse(handoff)
-    filters = parse_qs(parsed.query)
-    assert parsed.netloc == urlparse(BASE).netloc and parsed.path == '/pdf-browser.html'
-    assert filters == {'q': ['PDF fixture petty cash'], 'jenis': ['petty_cash'], 'status': ['approved']}, filters
-    intent = dialog.locator('#pwaPdfOpenChrome').get_attribute('href') or ''
-    assert intent.startswith('intent://') and 'package=com.android.chrome' in intent
-    assert 'api/export.pdf' not in intent and 'blob:' not in intent
-    dialog.locator('#pwaPdfCopyBrowserLink').click()
-    expect(dialog.locator('#pwaPdfBrowserStatus')).to_contain_text('secara manual')
-    assert dialog.locator('#pwaPdfBrowserLink').evaluate('(el) => el.selectionEnd - el.selectionStart === el.value.length')
+    expect(dialog.locator('#pwaPdfApkStatus')).to_have_text('Unduh PDF langsung memerlukan APK yang diperbarui.')
+    expect(dialog.locator('.pwa-files-close')).to_have_count(1)
+    assert dialog.locator('a').count() == 0
+    assert page.evaluate('window.__csvBridgeCalls') == 0
+    assert page.evaluate('window.__openCalls') == 0
+    assert not exports, exports
+    dialog.locator('.pwa-files-close').click()
+    # The manager fallback remains visible as a message, but has no browser/direct link in the APK.
+    assert page.locator('#managerPdfFallbackLink').count() == 0
+    expect(page.locator('.pdf-apk-status')).to_have_text('Unduh PDF langsung memerlukan APK yang diperbarui.')
+    assert page.locator('.pdf-fallback, a[href^="intent:"], #pwaPdfCopyBrowserLink, #pwaPdfBrowserLink').count() == 0
+    assert page.evaluate('window.__clipboardCalls') == 0
+    assert len(page.context.pages) == 1
+    # Direct navigation to the legacy browser page is blocked by the confirmed bridge too.
+    trapped = page.context.new_page()
+    trapped.goto(f'{BASE}/pdf-browser.html?q=PDF+fixture+petty+cash&jenis=petty_cash&status=approved', wait_until='networkidle')
+    expect(trapped.locator('#downloadPdf')).to_be_hidden()
+    expect(trapped.locator('#checkSession')).to_be_hidden()
+    expect(trapped.locator('#loginLink')).to_be_hidden()
+    expect(trapped.locator('#browserInstructions')).to_be_hidden()
+    expect(trapped.locator('#sessionStatus')).to_have_text('Unduh PDF langsung memerlukan APK yang diperbarui.')
+    trapped.close()
     for width, height in ((320, 700), (390, 844), (844, 390), (1280, 900)):
         page.set_viewport_size({'width': width, 'height': height})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        box = dialog.bounding_box()
-        assert box and box['x'] >= 0 and box['x'] + box['width'] <= width + 1
     page.set_viewport_size({'width': 390, 'height': 844})
-    page.screenshot(path=str(SCREENSHOTS / f'{label}-browser-fallback.png'), full_page=True)
-    dialog.locator('.pwa-files-close').click()
-    page.locator('.pdf-fallback summary').click()
-    page.locator('#managerPdfFallbackLink').click()
-    expect(page.locator('#pwaPdfBrowserDialog')).to_be_visible()
-    assert not exports, exports
-    assert page.evaluate('window.__csvBridgeCalls') == 0
-    page.locator('#pwaPdfBrowserDialog .pwa-files-close').click()
-    # Even if a native host keeps the fallback page inside its WebView, it must
-    # not advertise direct PDF saving there.
-    trapped = page.context.new_page()
-    trapped.goto(handoff, wait_until='networkidle')
-    expect(trapped.locator('#sessionStatus')).to_contain_text('masih di APK')
-    expect(trapped.locator('#downloadPdf')).to_be_hidden()
-    trapped.close()
-
-    # A genuinely separate browser starts without the APK cookies. Login is a
-    # normal browser action; no credential/session token is carried in the link.
-    external = browser.new_context(viewport={'width': 390, 'height': 844}, timezone_id='Asia/Jakarta')
-    external.route('**/*', lambda route: route.continue_() if route.request.url.startswith(BASE + '/') else route.abort())
-    handoff_page = external.new_page()
-    handoff_page.goto(handoff, wait_until='networkidle')
-    expect(handoff_page.locator('#sessionStatus')).to_contain_text('Belum login')
-    expect(handoff_page.locator('#downloadPdf')).to_be_hidden()
-    login_page = external.new_page()
-    login_page.goto(BASE, wait_until='networkidle')
-    login(login_page, MANAGER, password)
-    login_page.close()
-    handoff_page.bring_to_front()
-    handoff_page.locator('#checkSession').click()
-    export_link = handoff_page.locator('#downloadPdf')
-    expect(export_link).to_be_visible()
-    target = urlparse(export_link.get_attribute('href') or '')
-    assert target.path == '/api/export.pdf' and parse_qs(target.query) == filters
-    with handoff_page.expect_download(timeout=15_000) as pending:
-        export_link.click()
-    destination = SCREENSHOTS / f'{label}-external-filtered.pdf'
-    pending.value.save_as(destination)
-    assert_pdf(destination, {'PDF fixture petty cash'})
-    content = subprocess.run(['pdftotext', str(destination), '-'], check=True, capture_output=True, text=True).stdout
-    assert 'Mobile PDF fixture finance' not in content
-    for width, height in ((320, 700), (390, 844), (844, 390), (1280, 900)):
-        handoff_page.set_viewport_size({'width': width, 'height': height})
-        assert handoff_page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    handoff_page.set_viewport_size({'width': 390, 'height': 844})
-    handoff_page.screenshot(path=str(SCREENSHOTS / f'{label}-external-browser-final.png'), full_page=True)
-    external.close()
-    print(f'WEBVIEW_BROWSER_FALLBACK_PASS case={label} native_pdf_claim=0 csv_bridge_calls=0 apk_export_requests=0 separate_login=1 strict_filters=1 pdf_content=1 widths=4 native_android=0', flush=True)
+    page.screenshot(path=str(SCREENSHOTS / f'{label}-apk-status.png'), full_page=True)
+    print(f'WEBVIEW_APK_STATUS_PASS case={label} native_pdf_claim=0 csv_bridge_calls=0 apk_export_requests=0 popup_calls=0 clipboard_calls=0 legacy_browser_blocked=1', flush=True)
 
 
 def main() -> None:
@@ -192,7 +157,7 @@ def main() -> None:
         assert unauthenticated[1].get("error", {}).get("code") == "authentication_required"
 
         chrome_ua = playwright.devices['Pixel 7']['user_agent']
-        cases = (("webview", ANDROID_WEBVIEW_UA), ("masked-bridge", chrome_ua), ("chrome", chrome_ua))
+        cases = (("webview", ANDROID_WEBVIEW_UA), ("masked-bridge", chrome_ua), ("chrome", chrome_ua), ("standalone", chrome_ua))
         for label, user_agent in cases:
             context: BrowserContext = browser.new_context(
                 viewport={"width": 390, "height": 844},
@@ -201,8 +166,10 @@ def main() -> None:
                 user_agent=user_agent,
                 timezone_id="Asia/Jakarta",
             )
-            if label != 'chrome':
-                context.add_init_script('window.__csvBridgeCalls = 0; window.PangsumaFileBridge = {saveCsv: function() { window.__csvBridgeCalls++; }}; Object.defineProperty(navigator, "clipboard", {configurable: true, get: () => undefined});')
+            if label in ('webview', 'masked-bridge'):
+                context.add_init_script('window.__csvBridgeCalls = 0; window.__openCalls = 0; window.__clipboardCalls = 0; window.open = function() { window.__openCalls++; }; window.PangsumaFileBridge = {saveCsv: function() { window.__csvBridgeCalls++; }}; Object.defineProperty(navigator, "clipboard", {configurable: true, get: () => ({writeText: () => { window.__clipboardCalls++; return Promise.resolve(); }})});')
+            if label == 'standalone':
+                context.add_init_script('const originalMatchMedia = window.matchMedia.bind(window); window.matchMedia = query => query === "(display-mode: standalone)" ? {matches: true, media: query, addEventListener() {}, removeEventListener() {}} : originalMatchMedia(query);')
             context.set_default_timeout(10_000)
             context.route("**/*", lambda route: route.continue_()
                           if route.request.url.startswith(BASE + "/") else route.abort())
@@ -210,17 +177,19 @@ def main() -> None:
             page.on("pageerror", lambda error: errors.append(f"{label}: {error}"))
             page.goto(BASE, wait_until="networkidle", timeout=30_000)
             login(page, MANAGER, password)
-            if label != 'chrome':
+            if label in ('webview', 'masked-bridge'):
                 webview_browser_fallback(page, browser, password, label)
                 assert api(page, '/api/session')['status'] == 200
                 context.close()
                 continue
             destination = SCREENSHOTS / f"mobile-{label}-export.pdf"
-            download_once(page, destination)
+            download_once(page, destination, label == 'standalone')
             assert_pdf(destination, expected)
             session = api(page, "/api/session")
             assert session["status"] == 200 and session["data"].get("user", {}).get("role") == "manager", session
             assert not page.locator("#loginGate").is_visible()
+            if label == 'standalone':
+                page.locator('#pwaPdfDialog .pwa-files-close').click()
             page.locator('.pdf-fallback summary').click()
             with page.expect_download(timeout=15_000) as direct_pending:
                 page.locator('.pdf-fallback a[download]').click()
@@ -229,12 +198,27 @@ def main() -> None:
             direct_path = SCREENSHOTS / f"mobile-{label}-direct-export.pdf"
             direct.save_as(direct_path)
             assert_pdf(direct_path, expected)
+            region = page.locator('#managerReportsRegion')
+            region.locator('[name="q"]').fill('PDF fixture petty cash')
+            region.locator('[name="jenis"]').select_option('petty_cash')
+            region.locator('[type="submit"]').click()
+            expect(region.locator('.manager-filtered-results .item-row')).to_have_count(1)
+            if label == 'standalone':
+                page.locator('[data-action="download-pdf"]:visible').click()
+                expect(page.locator('#pwaPdfDownload')).to_have_attribute('href', __import__('re').compile('^blob:'))
+            with page.expect_download(timeout=15_000) as filtered_pending:
+                page.locator('#pwaPdfDownload' if label == 'standalone' else '[data-action="download-pdf"]:visible').click()
+            filtered_path = SCREENSHOTS / f'mobile-{label}-filtered.pdf'
+            filtered_pending.value.save_as(filtered_path)
+            filtered_text = subprocess.run(['pdftotext', str(filtered_path), '-'], check=True, capture_output=True, text=True).stdout
+            assert 'PDF fixture petty cash' in ' '.join(filtered_text.split())
+            assert 'Mobile PDF fixture finance' not in ' '.join(filtered_text.split())
             print(f"MOBILE_PDF_DOWNLOAD_PASS ua={label} saved=1 direct_saved=1 magic=1 headings=1 content=1 session_preserved=1", flush=True)
             context.close()
 
         assert not errors, errors
         browser.close()
-    print("MOBILE_DOWNLOAD_E2E_PASS browsers=android-webview,masked-csv-bridge,android-chrome native_android_device=0 external_browser_fallback=1 auth_server_401=1 browser_errors=0 screenshots=" + str(SCREENSHOTS), flush=True)
+    print("MOBILE_DOWNLOAD_E2E_PASS browsers=android-webview,masked-csv-bridge,android-chrome,standalone native_android_device=0 apk_status_only=1 auth_server_401=1 browser_errors=0 screenshots=" + str(SCREENSHOTS), flush=True)
 
 
 if __name__ == "__main__":

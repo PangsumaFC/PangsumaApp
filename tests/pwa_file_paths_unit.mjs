@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8');
-const downloadSource = source.slice(source.indexOf('async function downloadPdf(button) {'), source.indexOf('\nfunction configureBoundedHistory()', source.indexOf('async function downloadPdf(button) {')));
+const downloadSource = source.slice(source.indexOf('function isPangsumaApkWrapper() {'), source.indexOf('\nfunction configureBoundedHistory()', source.indexOf('async function downloadPdf(button) {')));
 function downloadHarness({ standalone = false, iosStandalone = false, role = 'manager', helper = false } = {}) {
   const calls = { fetch: 0, downloads: [], toasts: [], prepared: [] };
   const context = vm.createContext({

@@ -810,7 +810,10 @@ function managerApprovals() {
 function financePage() {
   const ledgers = state.cashLedger;
   const openingConfigured = Boolean(state.cashFlow?.openingConfigured);
-  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details></div>`;
+  const pdfFallback = isPangsumaApkWrapper()
+    ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
+    : `<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details>`;
+  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}${pdfFallback}</div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.', headingActions)}
     <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div>
     <details class="audit-panel" data-panel="cash-insights"><summary>Rincian saldo dan tren petty cash</summary>${cashInsightsRegion()}</details>
@@ -1374,23 +1377,22 @@ async function performNewSubmission(event) {
   }
 }
 
+function isPangsumaApkWrapper() {
+  return (typeof PwaFiles !== 'undefined' && typeof PwaFiles.isAndroidWebView === 'function')
+    ? PwaFiles.isAndroidWebView() : !!window.PangsumaFileBridge;
+}
 async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
-  // A CSV-only APK bridge cannot save a PDF. Browser handoff deliberately does
-  // not transfer authentication; the browser verifies its own Manager session.
+  // The confirmed APK bridge supports CSV only, not native PDF downloads.
   const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
   const userAgent = navigator.userAgent || '';
-  const isAndroidWebView = (typeof PwaFiles !== 'undefined' && typeof PwaFiles.isAndroidWebView === 'function')
-    ? PwaFiles.isAndroidWebView()
-    : !!window.PangsumaFileBridge || (/Android/i.test(userAgent) && (/\bwv\b/i.test(userAgent) || /Version\/4\.0.*Chrome\//i.test(userAgent)));
-  if (isAndroidWebView) {
-    if (typeof PwaFiles !== 'undefined' && typeof PwaFiles.openBrowserExport === 'function') {
+  if (isPangsumaApkWrapper()) {
+    if (typeof PwaFiles !== 'undefined' && typeof PwaFiles.showApkDownloadStatus === 'function') {
       const requestEpoch = authEpoch;
-      return PwaFiles.openBrowserExport({ url: reportUrl,
-        isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager',
-        onError: error => showToast(friendlyError(error)) });
+      return PwaFiles.showApkDownloadStatus({
+        isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager' });
     }
-    showToast('PDF native belum didukung APK ini. Buka situs aplikasi di Chrome, masuk sebagai Manager, lalu unduh laporan.');
+    showToast('Unduh PDF langsung memerlukan APK yang diperbarui.');
     return;
   }
   // Installed PWAs use the same Chrome UA as tabs. Detect display mode, not UA.
@@ -1682,7 +1684,7 @@ function bindEvents() {
   });
   document.addEventListener('click', async event => {
     const pdfFallback = event.target.closest('#managerPdfFallbackLink');
-    if (pdfFallback && typeof PwaFiles !== 'undefined' && PwaFiles.isAndroidWebView?.()) {
+    if (pdfFallback && isPangsumaApkWrapper()) {
       event.preventDefault();
       await downloadPdf(pdfFallback);
       return;

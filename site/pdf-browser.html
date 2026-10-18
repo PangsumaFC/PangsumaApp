@@ -6,39 +6,30 @@
   <meta name="theme-color" content="#17334e">
   <meta name="description" content="Unduh laporan PDF di browser untuk Manager Pangsuma.">
   <title>Unduh PDF di browser</title>
-  <link rel="stylesheet" href="/pdf-browser.css?v=2026.10.18.8">
-  <script src="/pdf-browser.js?v=2026.10.18.8" defer></script>
+  <link rel="stylesheet" href="/pdf-browser.css?v=2026.10.18.9">
+  <script src="/pdf-browser.js?v=2026.10.18.9" defer></script>
 </head>
 <body>
   <main class="handoff-shell" id="mainContent">
     <section class="handoff-card" aria-labelledby="pageTitle">
       <p class="eyebrow">Pangsuma App</p>
       <h1 id="pageTitle">Unduh PDF di browser</h1>
-      <p class="intro">Sesi APK tidak berpindah ke browser ini. Buka dan login sebagai Manager di browser, lalu kembali ke halaman ini untuk memeriksa sesi dan mengunduh PDF.</p>
-
-      <ol class="steps">
-        <li><span>Buka/login Manager dari <a id="loginLink" href="/" target="_blank" rel="noopener noreferrer">link ini</a>.</span></li>
-        <li>Kembali ke halaman ini lalu pilih <strong>Periksa sesi</strong>.</li>
-        <li>Pilih <strong>Unduh PDF</strong> setelah sesi Manager terverifikasi.</li>
-      </ol>
-
+      <div id="browserInstructions">
+        <p class="intro">Masuk sebagai Manager di browser ini, lalu periksa sesi dan unduh PDF.</p>
+        <ol class="steps">
+          <li><span>Buka/login Manager dari <a id="loginLink" href="/" target="_blank" rel="noopener noreferrer">link ini</a>.</span></li>
+          <li>Kembali ke halaman ini lalu pilih <strong>Periksa sesi</strong>.</li>
+          <li>Pilih <strong>Unduh PDF</strong> setelah sesi Manager terverifikasi.</li>
+        </ol>
+      </div>
       <section class="filter-summary" aria-labelledby="filterTitle">
         <h2 id="filterTitle">Filter yang diterapkan</h2>
         <ul id="filterList" class="filter-list"></ul>
       </section>
-
       <div class="actions">
         <button class="secondary-button" id="checkSession" type="button">Periksa sesi</button>
         <a class="primary-button download-link" id="downloadPdf" href="" hidden aria-disabled="true">Unduh PDF</a>
       </div>
-      <section class="wrapper-handoff" id="wrapperHandoff" hidden aria-labelledby="wrapperHandoffTitle">
-        <h2 id="wrapperHandoffTitle">Buka di browser</h2>
-        <p>APK belum membuka browser luar. Salin tautan ini lalu tempel di Chrome atau browser lain.</p>
-        <div class="copy-row">
-          <input id="canonicalUrl" type="text" readonly aria-label="Tautan halaman browser">
-          <button class="secondary-button" id="copyCanonicalUrl" type="button">Salin tautan</button>
-        </div>
-      </section>
       <p class="session-status" id="sessionStatus" role="status" aria-live="polite">Periksa sesi Manager di browser ini sebelum mengunduh.</p>
       <p class="security-note">Unduhan dijaga oleh server. Halaman ini tidak memindahkan sesi APK, menyimpan token, atau menjalankan unduhan otomatis.</p>
     </section>

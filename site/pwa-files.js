@@ -25,61 +25,30 @@
   }
 
   function isAndroidWebView() {
-    var ua = root.navigator && root.navigator.userAgent || '';
-    return !!root.PangsumaFileBridge || (/Android/i.test(ua) && (/\bwv\b/i.test(ua) || /Version\/4\.0.*Chrome\//i.test(ua)));
+    // Confirmed interface in the supplied Pangsuma APK, including masked Chrome UAs.
+    // Do not infer an APK from a browser's user-agent or installed PWA display mode.
+    return !!root.PangsumaFileBridge;
   }
-  function browserExportUrl(value) {
-    var direct = sameOriginUrl(value);
-    if (!direct) return null;
-    var source = new URL(direct);
-    if (source.pathname !== '/api/export.pdf') return null;
-    var url = new URL('/pdf-browser.html', source.origin);
-    ['q', 'periode', 'jenis', 'status', 'pengaju', 'start', 'end'].forEach(function (key) {
-      if (source.searchParams.has(key)) url.searchParams.set(key, source.searchParams.get(key));
-    });
-    return url.href;
-  }
-  function openBrowserExport(options) {
+  function showApkDownloadStatus(options) {
     options = options || {};
     if (!hasDocument || (typeof options.isCurrent === 'function' && !options.isCurrent())) return null;
-    var browserUrl = browserExportUrl(options.url);
-    if (!browserUrl) {
-      if (typeof options.onError === 'function') options.onError(new Error('Tautan laporan tidak valid.'));
-      return null;
-    }
     if (active && typeof active.close === 'function') active.close();
     ++serial;
     var previousFocus = document.activeElement;
     var dialog = document.createElement('dialog');
-    dialog.id = 'pwaPdfBrowserDialog'; dialog.className = 'pwa-files-modal';
-    dialog.setAttribute('aria-labelledby', 'pwaPdfBrowserTitle');
-    dialog.setAttribute('aria-describedby', 'pwaPdfBrowserStatus');
+    dialog.id = 'pwaPdfApkDialog'; dialog.className = 'pwa-files-modal';
+    dialog.setAttribute('aria-labelledby', 'pwaPdfApkTitle');
+    dialog.setAttribute('aria-describedby', 'pwaPdfApkStatus');
     var title = document.createElement('h2');
-    title.id = 'pwaPdfBrowserTitle'; title.textContent = 'Unduh PDF melalui Chrome';
+    title.id = 'pwaPdfApkTitle'; title.textContent = 'Unduh PDF';
     var status = document.createElement('p');
-    status.id = 'pwaPdfBrowserStatus'; status.className = 'pwa-files-status'; status.setAttribute('role', 'status');
-    status.textContent = 'Penyimpanan PDF native belum didukung oleh APK ini. Gunakan browser untuk mengunduh laporan.';
-    var actions = document.createElement('div'); actions.className = 'pwa-files-actions';
-    var chrome = document.createElement('a');
-    chrome.id = 'pwaPdfOpenChrome'; chrome.className = 'pwa-files-download'; chrome.textContent = 'Buka Chrome';
-    var url = new URL(browserUrl);
-    chrome.href = 'intent://' + url.host + url.pathname + url.search + '#Intent;scheme=' + url.protocol.slice(0, -1) + ';package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(browserUrl) + ';end';
-    chrome.rel = 'noopener noreferrer';
-    var copy = document.createElement('button');
-    copy.id = 'pwaPdfCopyBrowserLink'; copy.type = 'button'; copy.textContent = 'Salin tautan';
+    status.id = 'pwaPdfApkStatus'; status.className = 'pwa-files-status'; status.setAttribute('role', 'status');
+    status.textContent = 'Unduh PDF langsung memerlukan APK yang diperbarui.';
     var closeButton = document.createElement('button');
     closeButton.type = 'button'; closeButton.className = 'pwa-files-close'; closeButton.textContent = 'Tutup';
-    actions.append(chrome, copy, closeButton);
-    var instructions = document.createElement('p'); instructions.className = 'pwa-files-instructions';
-    instructions.textContent = 'Jika Chrome tidak terbuka, salin tautan di bawah lalu tempel di Chrome atau browser lain. Masuk sebagai Manager di browser bila diminta; sesi APK tidak dipindahkan. Filter laporan tetap dibawa.';
-    var label = document.createElement('label'); label.className = 'pwa-files-link-label'; label.textContent = 'Tautan laporan untuk browser';
-    var link = document.createElement('textarea');
-    link.id = 'pwaPdfBrowserLink'; link.className = 'pwa-files-link'; link.value = browserUrl; link.readOnly = true; link.rows = 3;
-    label.append(link);
-    dialog.append(title, status, actions, instructions, label);
+    dialog.append(title, status, closeButton);
     document.body.appendChild(dialog);
     var closed = false;
-    function current() { return !closed && (typeof options.isCurrent !== 'function' || options.isCurrent()); }
     function closeDialog() {
       if (closed) return;
       closed = true;
@@ -89,24 +58,6 @@
       if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
     }
     active = { dialog: dialog, close: closeDialog };
-    chrome.addEventListener('click', function (event) {
-      if (!current()) { event.preventDefault(); closeDialog(); return; }
-      status.textContent = 'Mencoba membuka Chrome. Jika tetap di aplikasi, salin tautan lalu buka sendiri di browser. File belum dianggap tersimpan.';
-    });
-    copy.addEventListener('click', function () {
-      if (!current()) { closeDialog(); return; }
-      function manual() {
-        if (!current()) return;
-        link.focus(); if (typeof link.select === 'function') link.select();
-        status.textContent = 'Salin tautan yang dipilih secara manual, lalu tempel di browser.';
-      }
-      if (!root.navigator || !root.navigator.clipboard || typeof root.navigator.clipboard.writeText !== 'function') { manual(); return; }
-      try {
-        Promise.resolve(root.navigator.clipboard.writeText(browserUrl)).then(function () {
-          if (current()) status.textContent = 'Tautan disalin. Tempel di Chrome, lalu masuk sebagai Manager bila diminta.';
-        }).catch(manual);
-      } catch (_) { manual(); }
-    });
     closeButton.addEventListener('click', closeDialog);
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); closeDialog(); });
     dialog.showModal();
@@ -115,6 +66,7 @@
 
   function prepare(options) {
     options = options || {};
+    if (isAndroidWebView()) return Promise.resolve(showApkDownloadStatus(options));
     if (!hasDocument || typeof root.fetch !== 'function') {
       if (typeof options.onError === 'function') options.onError(new Error('Peramban tidak mendukung unduhan PDF.'));
       return Promise.resolve(null);
@@ -267,5 +219,5 @@
   }
   function cleanup() { close(); }
   function close() { if (active && typeof active.close === 'function') active.close(); }
-  root.PwaFiles = { prepare: prepare, cleanup: cleanup, isAndroidWebView: isAndroidWebView, openBrowserExport: openBrowserExport, browserExportUrl: browserExportUrl };
+  root.PwaFiles = { prepare: prepare, cleanup: cleanup, isAndroidWebView: isAndroidWebView, showApkDownloadStatus: showApkDownloadStatus };
 })(typeof window !== 'undefined' ? window : globalThis);

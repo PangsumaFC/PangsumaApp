@@ -1,4 +1,16 @@
-# Rilis 2026.10.18.5 — PWA dan antarmuka ringkas
+# Rilis 2026.10.18.9 — hapus fallback PDF keluar APK
+
+Perubahan terbatas pada situs: APK yang memiliki bridge `PangsumaFileBridge` tidak lagi ditawari Chrome, intent, salin tautan, atau unduh langsung palsu. Tombol PDF hanya menampilkan “Unduh PDF langsung memerlukan APK yang diperbarui.” Jalur PDF browser/PWA biasa tetap dipertahankan. Deteksi APK memakai bridge yang diketahui, bukan user-agent. Wrapper tanpa bridge itu tidak dapat dipastikan sebagai APK.
+
+Tidak ada perubahan APK, unggah foto, backend, database, transaksi, atau data produksi. Deployment menggunakan workflow yang ada dengan probe skema read-only; tidak menjalankan migrasi. Rilis ini tidak membuktikan direct PDF maupun photo upload telah berfungsi di APK. Handler native dan pengujian perangkat fisik masih diperlukan.
+
+Pengujian rilis: `npm test`, kedua suite SQLite offline, dan `bash tests/run-profile-local.sh --mobile-download` dengan database lokal sementara. Keberhasilan live harus diverifikasi dari workflow commit yang sama dan `/version.json` build `2026.10.18.9`.
+
+Hasil lokal: 269 tes unit lulus, 13 tes profil/skema dan 7 tes skema pengajuan Manager lulus; E2E bridge UA WebView dan bridge UA Chrome menampilkan status saja (0 export PDF, 0 pemanggilan CSV, 0 popup, 0 clipboard). Chrome dan simulasi PWA standalone mengunduh PDF valid, unduhan langsung tetap bekerja, filter tepat, dan sesi bertahan. Tidak ada pengujian Android fisik.
+
+## Arsip rilis 2026.10.18.5
+
+### PWA dan antarmuka ringkas
 
 Basis rilis ini adalah produksi `2026.10.18.4` pada commit `5b59991`. Ini pembaruan web/PWA pada origin yang sama, bukan APK atau wrapper Android baru. Tidak ada migrasi, perubahan saldo, transaksi contoh, perubahan akun, atau perubahan database produksi dalam pekerjaan ini. Push biasa ke `main` memakai workflow yang sudah ada; gate D1 tetap read-only dan tidak boleh dilewati.
 

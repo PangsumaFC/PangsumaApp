@@ -1,4 +1,4 @@
-/* Secure PDF browser handoff; no session or token is persisted here. */
+/* Authenticated browser PDF page; the CSV-only APK cannot download PDF here. */
 (() => {
   'use strict';
   const ALLOWED = ['q', 'periode', 'jenis', 'status', 'pengaju', 'start', 'end'];
@@ -11,8 +11,7 @@
     return {
       list: document.getElementById('filterList'), button: document.getElementById('checkSession'),
       link: document.getElementById('downloadPdf'), status: document.getElementById('sessionStatus'),
-      wrapper: document.getElementById('wrapperHandoff'), canonical: document.getElementById('canonicalUrl'),
-      copy: document.getElementById('copyCanonicalUrl')
+      instructions: document.getElementById('browserInstructions')
     };
   }
   function appliedFilters() {
@@ -25,13 +24,9 @@
     const query = appliedFilters().toString();
     return `/api/export.pdf${query ? `?${query}` : ''}`;
   }
-  function canonicalUrl() {
-    const query = appliedFilters().toString();
-    return `${window.location.origin}/pdf-browser.html${query ? `?${query}` : ''}`;
-  }
   function isApkWrapper() {
-    const ua = typeof navigator === 'object' && navigator ? navigator.userAgent || '' : '';
-    return Boolean(window.PangsumaFileBridge) || (/Android/i.test(ua) && /(\bwv\b|Version\/4(?:\.0)?\s+Chrome)/i.test(ua));
+    // The named CSV interface is confirmed in the supplied APK; UA is not proof.
+    return Boolean(window.PangsumaFileBridge);
   }
   function renderFilters() {
     const { list } = elements();
@@ -56,32 +51,22 @@
     status.textContent = message;
     if (state) status.dataset.state = state; else status.removeAttribute('data-state');
   }
-  function showWrapperHandoff() {
-    const { wrapper, canonical } = elements();
-    if (wrapper) wrapper.hidden = false;
-    if (canonical) canonical.value = canonicalUrl();
+  function blockApkDownload() {
+    const { button, instructions } = elements();
+    disableDownload();
+    if (button) button.hidden = true;
+    if (instructions) instructions.hidden = true;
+    setStatus('Unduh PDF langsung memerlukan APK yang diperbarui.');
   }
   function enableDownload() {
-    if (isApkWrapper()) { disableDownload(); showWrapperHandoff(); return; }
+    if (isApkWrapper()) { blockApkDownload(); return; }
     const { link } = elements();
     if (!link) return;
     link.href = exportUrl(); link.setAttribute('href', link.href); link.hidden = false; link.setAttribute('aria-disabled', 'false');
   }
-  async function copyCanonicalUrl() {
-    const { canonical } = elements();
-    const value = canonicalUrl();
-    if (canonical) { canonical.value = value; canonical.focus?.(); canonical.select?.(); }
-    try {
-      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('unsupported');
-      await navigator.clipboard.writeText(value);
-      setStatus('Tautan berhasil disalin. Tempel di Chrome atau browser lain.', 'success');
-    } catch (_) {
-      if (canonical) { canonical.focus?.(); canonical.select?.(); }
-      setStatus('Tidak dapat menyalin otomatis. Pilih tautan di atas, salin manual, lalu tempel di Chrome atau browser lain.', 'error');
-    }
-  }
   async function checkSession() {
     const requestGeneration = ++generation;
+    if (isApkWrapper()) { checking = false; blockApkDownload(); return; }
     const { button } = elements();
     checking = true; disableDownload(); if (button) button.disabled = true;
     setStatus('Memeriksa sesi Manager…');
@@ -90,11 +75,11 @@
       let payload = null; try { payload = await response.json(); } catch (_) { payload = null; }
       if (requestGeneration !== generation) return;
       const user = payload?.user;
-      if (response.status === 401) setStatus('Belum login di browser ini. Buka link login, lalu periksa sesi lagi.', 'error');
+      if (isApkWrapper()) blockApkDownload();
+      else if (response.status === 401) setStatus('Belum login di browser ini. Buka link login, lalu periksa sesi lagi.', 'error');
       else if (response.status === 403 || !response.ok) setStatus(response.status === 403 ? 'Sesi ini tidak memiliki akses Manager.' : 'Sesi belum dapat diverifikasi. Coba lagi.', 'error');
       else if (!user || user.role !== 'manager') setStatus('Sesi terdeteksi, tetapi akun ini bukan Manager.', 'error');
       else if (user.mustChangePassword === true) setStatus('Selesaikan ganti password dari halaman utama sebelum mengunduh PDF.', 'error');
-      else if (isApkWrapper()) { showWrapperHandoff(); setStatus('Halaman masih di APK. Salin tautan lalu tempel di Chrome atau browser lain.', 'error'); }
       else { enableDownload(); setStatus('Sesi Manager terverifikasi. Pilih Unduh PDF untuk membuat laporan.', 'success'); }
     } catch (_) { if (requestGeneration === generation) setStatus('Sesi belum dapat diperiksa karena jaringan. Coba lagi.', 'error'); }
     finally { if (requestGeneration === generation) { checking = false; if (button) button.disabled = false; } }
@@ -102,9 +87,8 @@
   function lifecycleCheck() { const now = Date.now(); if (!checking && now - lastLifecycleCheck > 250) { lastLifecycleCheck = now; checkSession(); } }
   function init() {
     renderFilters();
-    const { button, copy, wrapper, canonical } = elements();
-    if (isApkWrapper() && wrapper) { wrapper.hidden = false; if (canonical) canonical.value = canonicalUrl(); }
-    button?.addEventListener('click', checkSession); copy?.addEventListener('click', copyCanonicalUrl);
+    const { button } = elements();
+    button?.addEventListener('click', checkSession);
     window.addEventListener('pageshow', lifecycleCheck); window.addEventListener('focus', lifecycleCheck);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lifecycleCheck(); });
     checkSession();
@@ -112,5 +96,5 @@
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true }); else init();
   }
-  if (typeof window !== 'undefined') window.PdfBrowser = { appliedFilters, exportUrl, canonicalUrl, isApkWrapper, checkSession, copyCanonicalUrl };
+  if (typeof window !== 'undefined') window.PdfBrowser = { appliedFilters, exportUrl, isApkWrapper, checkSession };
 })();

@@ -35,6 +35,8 @@ function harness() {
     submissionMeta: () => '', historyControls: () => '', emptyState: title => title,
     cashInsightsRegion: () => '<cash-insights/>', ledgerRow: () => '', userOverview: () => 'user-only'
   });
+  context.window = {};
+  vm.runInContext(source.slice(source.indexOf('function isPangsumaApkWrapper() {'), source.indexOf('async function downloadPdf(button) {')), context);
   vm.runInContext(`${functionSource('financePage')}\n${functionSource('cashInfo')}`, context);
   return context;
 }
@@ -64,4 +66,12 @@ test('filtered workspace is the only Finance list, without duplicate totals or c
   assert.match(html, /\/api\/export\.pdf\?q=applied/);
   assert.equal((html.match(/data-action="download-pdf"/g) || []).length, 1);
   assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 1);
+});
+
+test('Finance APK fallback is status only, even without PwaFiles helper', () => {
+  const context = harness();
+  context.window.PangsumaFileBridge = { saveCsv() { throw new Error('must not call CSV bridge'); } };
+  const html = vm.runInContext('financePage()', context);
+  assert.match(html, /Unduh PDF langsung memerlukan APK yang diperbarui\./);
+  assert.doesNotMatch(html, /managerPdfFallbackLink|Chrome|Safari|intent:|Salin tautan|\/api\/export\.pdf/);
 });
