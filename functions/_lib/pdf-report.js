@@ -121,7 +121,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const signatureImage = await pdf.embedPng(managerSignaturePng);
   const stampImage = await pdf.embedPng(managerStampPng);
-  pdf.setTitle('Laporan Keuangan Pangsuma FC');
+  pdf.setTitle('Laporan Petty Cash');
   pdf.setSubject('Buku kas ledger sesuai filter; bukan daftar pengajuan atau audit');
   pdf.setCreator('Pangsuma App');
   const snapshot = snapshotAt || new Date().toISOString();
@@ -148,7 +148,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     if (pdf.getPageCount() > 1) return;
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
-    page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
+    page.drawText('Laporan Petty Cash', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
     page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });

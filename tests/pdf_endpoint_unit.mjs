@@ -32,7 +32,7 @@ function ledger(db, { submissionId = null, amount = 10, note = 'Kas', at = '2025
   const response = await onRequest({ request: request('/export.pdf', managerToken), env: { DB: db } });
   assert.equal(response.status, 200);
   const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
-  assert.match(text, /LAPORAN KEUANGAN/);
+  assert.match(text, /Laporan Petty Cash/);
   assert.match(text, /Eligible 0/); assert.match(text, /Eligible 500/);
   assert.doesNotMatch(text, /Ineligible pending/); assert.doesNotMatch(text, /AUDIT MUST NOT APPEAR/);
   assert.equal((text.match(/Eligible \d+/g) || []).length, 501); assert.match(text, /Total kas keseluruhan/); assert.match(text, /Lampiran/); assert.doesNotMatch(text, /Baris laporan|Total pengajuan|Subtotal halaman/);

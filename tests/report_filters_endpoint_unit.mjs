@@ -36,7 +36,7 @@ test('filtered PDF uses final single financial table and filter metadata without
   insertSubmission(db, { id: '50000000-0000-4000-8000-000000000002', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-03-01', description: 'Petty excluded by type', amount: 700 });
   const response = await onRequest({ request: request('/export.pdf?start=2025-03-01&end=2025-03-01&type=finance_request&status=approved&applicant=Alpha', managerToken), env: { DB: db } });
   assert.equal(response.status, 200); const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
-  assert.match(text, /LAPORAN KEUANGAN/); assert.match(text, /Finance selected/); assert.doesNotMatch(text, /Petty excluded by type/);
+  assert.match(text, /Laporan Petty Cash/); assert.match(text, /Finance selected/); assert.doesNotMatch(text, /Petty excluded by type/);
   assert.equal((text.match(/Finance selected/g) || []).length, 1); assert.match(text, /Finance Disetujui Rp400/); assert.match(text, /Total kas keseluruhan/); assert.match(text, /Lampiran/); assert.doesNotMatch(text, /Baris laporan|Total pengajuan|Subtotal halaman/);
   assert.doesNotMatch(text, /Petty Cash:|Request Finance:|Audit/);
   assert.match(text, /Keterangan/); assert.doesNotMatch(text, /Tanggal.*Keterangan.*Masuk.*Keluar.*Saldo/);

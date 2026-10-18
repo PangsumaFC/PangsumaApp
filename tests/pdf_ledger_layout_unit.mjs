@@ -53,15 +53,15 @@ test('multipage cashflow ledger has headers only on page one, no page subtotals,
   for (const label of ['No.', 'Tanggal', 'Keterangan', 'Masuk', 'Keluar', 'Saldo']) assert.ok(text.includes(label), `missing ${label}`);
   const pageTexts = text.split('\f').slice(0, pages);
   assert.match(pageTexts[0], /PANGSUMA FC/);
-  assert.match(pageTexts[0], /LAPORAN KEUANGAN/);
+  assert.match(pageTexts[0], /Laporan Petty Cash/);
   assert.match(pageTexts[0], /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo/);
   assert.match(pageTexts[0], /Filter: Semua transaksi uji/);
-  assert.equal((text.match(/LAPORAN KEUANGAN/g) || []).length, 1);
+  assert.equal((text.match(/Laporan Petty Cash/g) || []).length, 1);
   assert.equal((text.match(/No\./g) || []).length, 1);
   for (const [index, pageText] of pageTexts.entries()) {
     assert.match(pageText, new RegExp(`Halaman ${index + 1} dari ${pages}`));
     if (index === 0) continue;
-    assert.doesNotMatch(pageText, /PANGSUMA FC|LAPORAN KEUANGAN|Tanggal cetak:|Manager:|Memuat data contoh|Periode |Filter:|Saldo hanya kas tercatat/);
+    assert.doesNotMatch(pageText, /PANGSUMA FC|Laporan Petty Cash|Tanggal cetak:|Manager:|Memuat data contoh|Periode |Filter:|Saldo hanya kas tercatat/);
     assert.doesNotMatch(pageText, /No\.|Tanggal\s+Keterangan|Masuk\s+Keluar\s+Saldo/);
   }
   assert.doesNotMatch(text, /Subtotal halaman/, 'per-page subtotals are intentionally omitted');

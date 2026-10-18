@@ -77,7 +77,7 @@ test('direct renderer merges eligible submissions with 48 ledger rows and preser
   const text = await pdftotext(bytes, 'unified-50.pdf');
   const pages = await assertPortraitA4(bytes);
   assert.ok(pages >= 1 && pages <= 150);
-  assert.match(text, /LAPORAN KEUANGAN/);
+  assert.match(text, /Laporan Petty Cash/);
   assert.match(text, /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo\s+Lampiran/);
   assert.match(text, /Total kas keseluruhan\s+Rp[\d.]+\s+Rp[\d.]+/);
   assert.doesNotMatch(text, /Saldo akun awal|Saldo akun akhir|Masuk terpilih|Keluar terpilih|Total pengajuan|Baris laporan/);
@@ -132,7 +132,7 @@ test('PDF endpoint merges eligible submissions with ledger and ignores excluded 
   const response = await onRequest({ request: request('/export.pdf?opening=0&fullhistory=0', managerToken), env: { DB: db } });
   assert.equal(response.status, 200, await response.clone().text());
   const text = await pdftotext(new Uint8Array(await response.arrayBuffer()), 'endpoint-unified.pdf');
-  assert.match(text, /LAPORAN KEUANGAN/);
+  assert.match(text, /Laporan Petty Cash/);
   const incoming = ledger.filter(row => row.direction === 'credit').reduce((sum, row) => sum + row.amount_idr, 0);
   const outgoing = ledger.filter(row => row.direction === 'debit').reduce((sum, row) => sum + row.amount_idr, 0);
   assert.equal(incoming - outgoing, ledger.at(-1).balance_after_idr);

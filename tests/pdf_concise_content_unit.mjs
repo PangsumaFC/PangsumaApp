@@ -67,7 +67,7 @@ test('cashflow report keeps filters, totals and ledger notes but excludes submis
 
 test('does not print headings for empty irrelevant sections', async () => {
   const { text } = await render({ ledger, submissions: [], audits: [] });
-  assert.match(text, /LAPORAN KEUANGAN/);
+  assert.match(text, /Laporan Petty Cash/);
   assert.doesNotMatch(text, /Pengajuan Petty Cash/);
   assert.doesNotMatch(text, /Request Finance\s+No\./);
   assert.doesNotMatch(text, /Lampiran Audit/);

@@ -119,7 +119,7 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   const order = [approvalStart, nameStart, result.text.indexOf('Manager', nameStart), result.text.indexOf('DATA DEMO', nameStart)];
   assert.ok(order.every(i => i >= 0) && order.every((v, i) => i === 0 || v > order[i - 1]), `approval text order: ${order}`);
   assert.match(pages[0], /PANGSUMA FC/);
-  for (const continuation of pages.slice(1)) assert.doesNotMatch(continuation, /PANGSUMA FC|LAPORAN KEUANGAN|Tanggal cetak/);
+  for (const continuation of pages.slice(1)) assert.doesNotMatch(continuation, /PANGSUMA FC|Laporan Petty Cash|Tanggal cetak/);
   const imagePages = result.pdf.getPages().map((page, i) => ({ i, count: imageEntries(result.pdf, page).length })).filter(x => x.count);
   assert.equal(imagePages.length, 1, 'approval PNGs must be present on one page only');
   assert.equal(imagePages[0].i, result.pdf.getPageCount() - 1, 'approval PNGs must be on final page');
@@ -151,6 +151,8 @@ const twoRows = ledgerRows(2);
 test('one-page approval has exact text, final-only assets, and thin grid', async () => {
   const result = await withPdf('one-page', { ledger: twoRows, submissions: [] });
   assertApprovalContract(result, { expectPages: 1 });
+  assert.equal(result.pdf.getTitle(), 'Laporan Petty Cash');
+  assert.equal((result.text.match(/Laporan Petty Cash/g) || []).length, 1);
   assert.match(result.text, /Masuk/);
   assert.match(result.text, /Keluar/);
   assert.match(result.text, /Total kas keseluruhan/);
