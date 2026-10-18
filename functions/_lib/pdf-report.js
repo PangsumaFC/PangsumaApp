@@ -115,6 +115,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${pageLimit} halaman). Pilih rentang tanggal lebih pendek atau persempit pemohon, jenis, atau status lalu coba lagi.`);
     }
     page = pdf.addPage([PAGE_W, PAGE_H]);
+    // Continuation pages start with table content, not repeated report headers.
+    y = PAGE_H - MARGIN;
+    if (pdf.getPageCount() > 1) return;
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
     page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
@@ -159,8 +162,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     const total = columns.reduce((sum, column) => sum + column.width, 0);
     const headerH = 24; const fontSize = 8.5; const pad = 4; const lineH = 11;
     const pageSubtotal = { in: 0n, out: 0n, hasRows: false };
-    const drawHeader = () => {
+    const drawFirstPageHeader = () => {
       ensure(headerH + 26);
+      if (pdf.getPageCount() !== 1) return;
       page.drawRectangle({ x: MARGIN, y: y - headerH + 4, width: total, height: headerH, color: NAVY });
       let x = MARGIN;
       columns.forEach(column => { text(column.label, x + pad, y - 11, 8, bold, WHITE, { maxWidth: column.width - pad * 2 }); x += column.width; });
@@ -169,7 +173,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     const drawPageSubtotal = () => {
       if (!pageSubtotal.hasRows) return;
       const height = 24;
-      if (y - height < 38) { footer(); newPage(); drawHeader(); }
+      if (y - height < 38) { footer(); newPage(); }
       page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
       let x = MARGIN;
       columns.forEach(column => {
@@ -180,7 +184,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       y -= height;
       pageSubtotal.in = 0n; pageSubtotal.out = 0n; pageSubtotal.hasRows = false;
     };
-    drawHeader();
+    drawFirstPageHeader();
     rows.forEach((row, rowIndex) => {
       const cells = columns.map(column => wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
       const lineCount = Math.max(...cells.map(cell => cell.length));
@@ -193,8 +197,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
         const height = Math.max(22, count * lineH + 8);
         // Keep 24pt reserved for this page's subtotal; continuation chunks never
         // repeat monetary cells, but the subtotal must remain on the same page.
-        if (reserveSubtotal && y - height < 38 + 24) { drawPageSubtotal(); footer(); newPage(); drawHeader(); continue; }
-        if (y - height < 38) { footer(); newPage(); drawHeader(); continue; }
+        if (reserveSubtotal && y - height < 38 + 24) { drawPageSubtotal(); footer(); newPage(); continue; }
+        if (y - height < 38) { footer(); newPage(); continue; }
         if (rowIndex % 2 === 0) page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: rgb(0.975, 0.985, 0.985) });
         let x = MARGIN;
         cells.forEach((cell, cellIndex) => {
@@ -215,7 +219,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     });
     drawPageSubtotal();
     const height = 24;
-    if (y - height < 38) { footer(); newPage(); drawHeader(); }
+    if (y - height < 38) { footer(); newPage(); }
     page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
     let x = MARGIN;
     columns.forEach(column => {
