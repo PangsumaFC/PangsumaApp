@@ -16,6 +16,7 @@ class Element {
   addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
   dispatch(name) { for (const fn of this.listeners[name] || []) fn({ preventDefault() {} }); }
   focus() { this.focused = true; }
+  select() { this.selected = true; }
   showModal() { this.open = true; }
   close() { this.open = false; }
   query(selector) {
@@ -43,6 +44,7 @@ function harness(response, extras = {}) {
     fetch: async (url, init) => { context.fetchArgs = [url, init]; return response; },
     setTimeout, clearTimeout
   };
+  Object.assign(context, extras);
   context.window = context;
   vm.runInNewContext(source, context, { filename: 'pwa-files.js' });
   return { context, document, revoked, shared };
@@ -103,4 +105,70 @@ test('rejects non-PDF and empty responses, rejects cross-origin URLs, and cleanu
   assert.equal(pending.document.body.children.length, 0);
   assert.deepEqual(pending.revoked, []);
   assert.equal(typeof task.close, 'function');
+});
+
+function byId(node, id) {
+  if (node.id === id) return node;
+  for (const child of node.children || []) { const found = byId(child, id); if (found) return found; }
+}
+
+test('CSV-only APK bridge gets a browser URL without sending any PDF to native saveCsv', async () => {
+  let bridgeCalls = 0;
+  const h = harness(response(), { PangsumaFileBridge: { saveCsv() { bridgeCalls++; throw new Error('CSV only'); } } });
+  assert.equal(h.context.PwaFiles.isAndroidWebView(), true);
+  const result = h.context.PwaFiles.openBrowserExport({ url: '/api/export.pdf?q=Latihan%20pagi&jenis=petty_cash&token=private&redirect=https://evil.test&cursor=old' });
+  assert.ok(result.dialog.open);
+  assert.equal(bridgeCalls, 0);
+  assert.equal(h.context.fetchArgs, undefined);
+  const link = byId(result.dialog, 'pwaPdfBrowserLink');
+  assert.equal(link.value, 'https://app.example.test/pdf-browser.html?q=Latihan+pagi&jenis=petty_cash');
+  const chrome = byId(result.dialog, 'pwaPdfOpenChrome');
+  assert.match(chrome.href, /^intent:\/\/app\.example\.test\/pdf-browser\.html\?/);
+  assert.match(chrome.href, /package=com\.android\.chrome/);
+  assert.ok(chrome.href.includes('S.browser_fallback_url=' + encodeURIComponent(link.value)));
+  assert.doesNotMatch(chrome.href, /private|evil\.test|cursor|blob:/);
+  assert.match(byId(result.dialog, 'pwaPdfBrowserStatus').textContent, /belum didukung/);
+  h.context.PwaFiles.cleanup();
+  assert.equal(h.document.body.children.length, 0);
+});
+
+test('browser handoff rejects foreign origins and non-report paths', () => {
+  const h = harness(response());
+  for (const url of ['https://evil.test/api/export.pdf', '/api/users', 'javascript:alert(1)']) {
+    assert.equal(h.context.PwaFiles.browserExportUrl(url), null);
+    assert.equal(h.context.PwaFiles.openBrowserExport({ url }), null);
+  }
+  assert.equal(h.document.body.children.length, 0);
+});
+
+test('ordinary Android browsers are not incorrectly detected as WebView', () => {
+  for (const userAgent of ['Mozilla Android 14 Chrome/130 Mobile Safari', 'Mozilla Android 14 Firefox/130', 'Mozilla iPhone AppleWebKit']) {
+    const h = harness(response(), { navigator: { userAgent } });
+    assert.equal(h.context.PwaFiles.isAndroidWebView(), false, userAgent);
+  }
+});
+
+test('clipboard success is reported only after actual copy, failure selects the manual URL', async () => {
+  let resolveCopy;
+  const copied = [];
+  const h = harness(response(), { navigator: { clipboard: { writeText(value) { copied.push(value); return new Promise(resolve => { resolveCopy = resolve; }); } } } });
+  const { dialog } = h.context.PwaFiles.openBrowserExport({ url: '/api/export.pdf?status=approved' });
+  byId(dialog, 'pwaPdfCopyBrowserLink').dispatch('click');
+  assert.equal(copied[0], 'https://app.example.test/pdf-browser.html?status=approved');
+  assert.doesNotMatch(byId(dialog, 'pwaPdfBrowserStatus').textContent, /Tautan disalin/);
+  resolveCopy(); await tick();
+  assert.match(byId(dialog, 'pwaPdfBrowserStatus').textContent, /Tautan disalin/);
+  h.context.navigator.clipboard.writeText = async () => { throw new Error('denied'); };
+  byId(dialog, 'pwaPdfCopyBrowserLink').dispatch('click'); await tick();
+  assert.match(byId(dialog, 'pwaPdfBrowserStatus').textContent, /secara manual/);
+  assert.equal(byId(dialog, 'pwaPdfBrowserLink').selected, true);
+});
+
+test('browser handoff cancels a stale Manager session before opening Chrome or copying', () => {
+  const h = harness(response()); let current = true;
+  const { dialog } = h.context.PwaFiles.openBrowserExport({ url: '/api/export.pdf', isCurrent: () => current });
+  current = false; let prevented = false;
+  byId(dialog, 'pwaPdfOpenChrome').listeners.click[0]({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(h.document.body.children.length, 0);
 });

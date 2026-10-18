@@ -10,7 +10,10 @@ export async function onRequest(context) {
     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'"
   );
   const pathname = new URL(context.request.url).pathname;
-  if (pathname === '/' || [
+  if (pathname === '/pdf-browser.html' || pathname === '/pdf-browser') {
+    headers.set('Cache-Control', 'no-store, max-age=0');
+    headers.set('Referrer-Policy', 'no-referrer');
+  } else if (pathname === '/' || [
     '/index.html',
     '/app.js',
     '/password-crypto.js',

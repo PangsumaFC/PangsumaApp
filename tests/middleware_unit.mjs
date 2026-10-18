@@ -45,3 +45,12 @@ test('local photo previews allow blob images without remote image origins', asyn
   assert.match(csp, /connect-src 'self';/);
   assert.doesNotMatch(csp, /img-src[^;]*(?:https:|\*)/);
 });
+
+test('PDF browser handoff is no-store and never sends its filters as a referrer', async () => {
+  for (const path of ['/pdf-browser.html?q=Latihan', '/pdf-browser?status=approved']) {
+    const response = await onRequest({ request: new Request(`https://app.test${path}`), next: async () => new Response('handoff') });
+    assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('content-security-policy'), /script-src 'self';/);
+  }
+});

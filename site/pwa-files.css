@@ -2,6 +2,8 @@
   box-sizing: border-box;
   width: min(34rem, calc(100vw - 2rem));
   max-width: 34rem;
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
   margin: auto;
   padding: 1.25rem;
   border: 0;
@@ -37,6 +39,8 @@
 .pwa-files-actions .pwa-files-close { background: transparent; }
 .pwa-files-actions a[aria-disabled="true"] { pointer-events: none; opacity: .55; }
 .pwa-files-instructions { margin: .9rem 0 0; color: #4e5f6d; font-size: .9rem; line-height: 1.45; }
+.pwa-files-link-label { display: block; margin-top: .9rem; font-size: .9rem; }
+.pwa-files-link { box-sizing: border-box; display: block; width: 100%; min-height: 5.5rem; margin-top: .4rem; padding: .6rem; border: 1px solid #9aa9b7; border-radius: .5rem; color: #17212b; background: #f5f8fa; font: inherit; overflow-wrap: anywhere; resize: vertical; }
 @media (max-width: 360px) {
   .pwa-files-modal { width: calc(100vw - 1rem); padding: 1rem; }
   .pwa-files-actions { grid-template-columns: 1fr; }

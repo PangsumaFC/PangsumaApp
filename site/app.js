@@ -1376,14 +1376,27 @@ async function performNewSubmission(event) {
 
 async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
-  // Installed PWAs use the same Chrome UA as tabs. Detect display mode, not UA
-  // alone, and dispatch the authenticated attachment during the original gesture.
-  // Do not create a short-lived Blob URL or open an unauthenticated external tab.
+  // A CSV-only APK bridge cannot save a PDF. Browser handoff deliberately does
+  // not transfer authentication; the browser verifies its own Manager session.
   const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
+  const userAgent = navigator.userAgent || '';
+  const isAndroidWebView = (typeof PwaFiles !== 'undefined' && typeof PwaFiles.isAndroidWebView === 'function')
+    ? PwaFiles.isAndroidWebView()
+    : !!window.PangsumaFileBridge || (/Android/i.test(userAgent) && (/\bwv\b/i.test(userAgent) || /Version\/4\.0.*Chrome\//i.test(userAgent)));
+  if (isAndroidWebView) {
+    if (typeof PwaFiles !== 'undefined' && typeof PwaFiles.openBrowserExport === 'function') {
+      const requestEpoch = authEpoch;
+      return PwaFiles.openBrowserExport({ url: reportUrl,
+        isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager',
+        onError: error => showToast(friendlyError(error)) });
+    }
+    showToast('PDF native belum didukung APK ini. Buka situs aplikasi di Chrome, masuk sebagai Manager, lalu unduh laporan.');
+    return;
+  }
+  // Installed PWAs use the same Chrome UA as tabs. Detect display mode, not UA.
   const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
     || window.matchMedia?.('(display-mode: fullscreen)')?.matches === true
     || navigator.standalone === true;
-  const userAgent = navigator.userAgent || '';
   if (isStandalone && typeof PwaFiles !== 'undefined') {
     const requestEpoch = authEpoch;
     return PwaFiles.prepare({
@@ -1396,10 +1409,7 @@ async function downloadPdf(button) {
   }
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
-  const isAndroidWebView = /Android/i.test(userAgent)
-    && (/;\s*wv\)/i.test(userAgent) || /\bwv\b/i.test(userAgent)
-      || !/Chrome\/\d+/i.test(userAgent));
-  if (isStandalone || isMobileAppleBrowser || isAndroidWebView) {
+  if (isStandalone || isMobileAppleBrowser) {
     const anchor = document.createElement('a');
     anchor.href = reportUrl;
     anchor.download = `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
@@ -1671,6 +1681,12 @@ function bindEvents() {
     }
   });
   document.addEventListener('click', async event => {
+    const pdfFallback = event.target.closest('#managerPdfFallbackLink');
+    if (pdfFallback && typeof PwaFiles !== 'undefined' && PwaFiles.isAndroidWebView?.()) {
+      event.preventDefault();
+      await downloadPdf(pdfFallback);
+      return;
+    }
     const pageButton = event.target.closest('[data-page]');
     if (pageButton && state.user) {
       const page = pageButton.dataset.page;

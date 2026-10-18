@@ -8,9 +8,10 @@ const start = source.indexOf('async function downloadPdf(button) {');
 const end = source.indexOf('\nasync function loadMoreHistory', start);
 assert.ok(start >= 0 && end > start);
 function harness(userAgent, { role = 'manager', status = 200, pdfUrl = null } = {}) {
-  const calls = { fetch: 0, fetchUrls: [], downloads: [], toasts: [], revoked: [] };
+  const calls = { fetch: 0, fetchUrls: [], downloads: [], toasts: [], revoked: [], browserHandoffs: [] };
   const context = vm.createContext({
     state: { user: { role } }, authEpoch: 1,
+    PwaFiles: { openBrowserExport: options => calls.browserHandoffs.push(options) },
     ManagerReportFilters: pdfUrl ? { pdfUrl: () => pdfUrl } : undefined,
     navigator: { userAgent, maxTouchPoints: 5 },
     todayISO: () => '2026-10-18',
@@ -43,10 +44,13 @@ for (const [name, ua] of [
     await pending;
   });
 }
-test('Android WebView uses native attachment navigation instead of a blob URL', async () => {
+test('Android WebView offers browser handoff without claiming native PDF support', async () => {
   const h = harness('Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UP1A.231005.007; wv) AppleWebKit/537.36 Version/4.0 Chrome/130.0.6723.58 Mobile Safari/537.36');
   const pending = h.download();
-  assert.deepEqual(h.calls.downloads, [{ href: '/api/export.pdf', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
+  assert.equal(h.calls.browserHandoffs[0].url, '/api/export.pdf');
+  assert.equal(h.calls.browserHandoffs[0].isCurrent(), true);
+  assert.deepEqual(h.calls.downloads, []);
+  assert.deepEqual(h.calls.toasts, []);
   assert.equal(h.calls.fetch, 0);
   await pending;
 });
@@ -72,14 +76,15 @@ test('failed desktop exports remain errors, not false download successes', async
 
 for (const [name, userAgent, native] of [
   ['iPhone', 'iPhone AppleWebKit', true],
-  ['Android WebView', 'Android 14; wv) Chrome/130', true],
+  ['Android WebView', 'Android 14; wv) Chrome/130', 'browser'],
   ['Android Chrome', 'Android 14 Chrome/130', false]
 ]) {
   test(`${name} downloads exactly the applied server-side filters`, async () => {
     const pdfUrl = '/api/export.pdf?periode=customWIB&start=2026-10-01&end=2026-10-18&jenis=petty_cash&status=approved&q=Latihan';
     const h = harness(userAgent, { pdfUrl });
     await h.download();
-    if (native) assert.equal(h.calls.downloads[0].href, pdfUrl);
+    if (native === 'browser') assert.equal(h.calls.browserHandoffs[0].url, pdfUrl);
+    else if (native) assert.equal(h.calls.downloads[0].href, pdfUrl);
     else assert.deepEqual(h.calls.fetchUrls, [pdfUrl]);
   });
 }

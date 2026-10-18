@@ -118,3 +118,14 @@ test('registration checks for updates without an automatic reload that could era
   assert.match(app, /register\('\/sw\.js'\)[\s\S]*?\.then\(registration => registration\.update\(\)\)/);
   assert.doesNotMatch(app, /registration\.update\(\)[\s\S]{0,120}(?:location\.reload|window\.location)/);
 });
+
+test('browser PDF handoff is never intercepted or substituted with cached app shell', () => {
+  const worker = makeWorker({ offline: true, cached: { '/': new Response('offline-app-shell') } });
+  for (const path of ['/pdf-browser.html?q=Latihan', '/pdf-browser?jenis=petty_cash']) {
+    let intercepted = false;
+    worker.listeners.fetch({ request: { method: 'GET', mode: 'navigate', url: `https://app.test${path}` }, respondWith() { intercepted = true; } });
+    assert.equal(intercepted, false);
+  }
+  assert.deepEqual(worker.fetches, []);
+  assert.deepEqual(worker.puts, []);
+});
