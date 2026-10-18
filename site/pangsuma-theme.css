@@ -479,21 +479,29 @@ button:disabled { cursor: not-allowed; opacity: .52; transform: none !important;
 
 
 /* Design Read: mobile-first operations ledger for Pangsuma staff and Manager, using the club's navy-and-gold identity and the owner's reference hierarchy. Dials: ENERGY 2 / RHYTHM 2 / MOTION 2. Navy marks primary actions, gold marks the club's financial accent, and the calm paper surface keeps amounts and approval decisions readable. The owner's supplied crest preloader is transient, then yields to the operational UI. */
-.pangsuma-preloader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: #0A0D14; opacity: 1; visibility: visible; }
+.pangsuma-preloader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 44%, #143252 0%, #0b2039 30%, #07182c 68%); opacity: 1; visibility: visible; }
 .pangsuma-preloader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 .pangsuma-preloader[hidden] { display: none; }
-.pangsuma-loader-art { width: min(170px, 48vw); height: min(170px, 48vw); }
-.pangsuma-loader-art svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.pangsuma-loader-ring, .pangsuma-loader-emblem { transform-box: view-box; transform-origin: center; }
-.pangsuma-loader-ring { animation: spinOuter 4s linear infinite; }
-.pangsuma-loader-emblem { animation: subtleFloat 3s ease-in-out infinite; }
-@keyframes spinOuter { to { transform: rotate(360deg); } }
-@keyframes subtleFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.pangsuma-loader-art { position: relative; width: clamp(206px, 62vw, 300px); aspect-ratio: 1; }
+.pangsuma-loader-logo, .pangsuma-loader-emblem { position: absolute; inset: 6%; width: 88%; height: 88%; object-fit: contain; }
+.pangsuma-loader-logo { filter: drop-shadow(0 8px 22px #0003); }
+.pangsuma-loader-emblem { animation: pangsumaBreathe 4.6s ease-in-out infinite; transform-origin: 50% 56%; }
+.pangsuma-loader-halo { position: absolute; inset: 6%; border-radius: 50%; box-shadow: 0 0 50px 6px #174b8133; }
+.pangsuma-loader-orbit { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.pangsuma-loader-track { fill: none; stroke: #b3913b35; stroke-width: .7; }
+.pangsuma-loader-sweep { transform-origin: 160px 160px; animation: pangsumaSweep 3.4s linear infinite; }
+.pangsuma-loader-arc, .pangsuma-loader-bloom { fill: none; stroke: url(#pangsumaGold); stroke-width: 1.8; stroke-dasharray: 230 719; stroke-dashoffset: 230; stroke-linecap: round; }
+.pangsuma-loader-bloom { stroke-width: 5; filter: url(#pangsumaGlow); opacity: .7; }
+.pangsuma-loader-tip { fill: #fff1bc; filter: drop-shadow(0 0 4px #efd36e); }
+@keyframes pangsumaSweep { to { transform: rotate(360deg); } }
+@keyframes pangsumaBreathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-.45px) scale(1.003); } }
+@media (max-height: 640px) { .pangsuma-loader-art { width: 190px; } }
 .primary-button.is-busy, .secondary-button.is-busy, .quiet-button.is-busy, .danger-button.is-busy { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .is-busy::before { content: ''; width: 15px; height: 15px; flex: 0 0 15px; border: 2px solid rgba(229,193,88,.42); border-top-color: #E5C158; border-radius: 50%; background: url('/pangsuma-icon-192.png') center / 10px 10px no-repeat; animation: buttonBusySpin .8s linear infinite; }
 @keyframes buttonBusySpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .pangsuma-loader-ring, .pangsuma-loader-emblem { animation: none; }
+  .pangsuma-loader-sweep, .pangsuma-loader-emblem { animation: none !important; }
+  .pangsuma-loader-sweep { transform: rotate(-45deg); }
   .is-busy::before { animation: none; }
 }
 .account-password-button { min-height: 44px; }

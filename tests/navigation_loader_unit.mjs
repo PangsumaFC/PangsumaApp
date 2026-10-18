@@ -39,3 +39,25 @@ test('explicit API buttons expose a compact crest busy affordance', () => {
   assert.match(busy, /classList\.add\('is-busy'\)/);
   assert.match(css, /is-busy::before[\s\S]*pangsuma-icon-192\.png/);
 });
+
+const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8');
+const sw = fs.readFileSync(new URL('../site/sw.js', import.meta.url), 'utf8');
+
+test('loading displays only approved logo art without captions or controls', () => {
+  const loader = html.slice(html.indexOf('  <div class="pangsuma-preloader"'), html.indexOf('  <a class="skip-link"'));
+  assert.match(loader, /pangsuma-loading-logo\.png/);
+  assert.match(loader, /pangsuma-loading-emblem\.png/);
+  assert.doesNotMatch(loader, /<(?:button|p|h[1-6]|span|text)(?:\s|>)/);
+  assert.match(loader, /aria-label="Memuat Pangsuma App"/);
+  assert.doesNotMatch(css, /spinOuter|subtleFloat/);
+  const logoRule = css.match(/\.pangsuma-loader-logo \{([^}]+)\}/)[1];
+  assert.doesNotMatch(logoRule, /animation|transform/);
+});
+
+test('only light sweep rotates and emblem motion is subpixel with reduced-motion off switch', () => {
+  assert.match(css, /loader-sweep[^\n]*animation: pangsumaSweep/);
+  assert.match(css, /translateY\(-\.45px\) scale\(1\.003\)/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*loader-sweep, \.pangsuma-loader-emblem \{ animation: none !important/);
+  assert.match(sw, /'\/pangsuma-loading-logo\.png'/);
+  assert.match(sw, /'\/pangsuma-loading-emblem\.png'/);
+});

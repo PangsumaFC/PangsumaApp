@@ -5,64 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
   <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
-  <meta name="app-build" content="2026.10.18.9">
+  <meta name="app-build" content="2026.10.18.10">
   <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2026.10.18.9">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2026.10.18.9">
-  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.9">
-  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.18.9">
-  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.18.9">
-  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.18.9">
-  <script src="/password-crypto.js?v=2026.10.18.9" defer></script>
-  <script src="/report-filters.js?v=2026.10.18.9" defer></script>
-  <script src="/financial-controls.js?v=2026.10.18.9" defer></script>
-  <script src="/report-evidence.js?v=2026.10.18.9" defer></script>
-  <script src="/bounded-history.js?v=2026.10.18.9" defer></script>
-  <script src="/mobile-viewport.js?v=2026.10.18.9" defer></script>
-  <link rel="stylesheet" href="/pwa-files.css?v=2026.10.18.9">
-  <script src="/pwa-files.js?v=2026.10.18.9" defer></script>
-  <script src="/app.js?v=2026.10.18.9" defer></script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2026.10.18.10">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2026.10.18.10">
+  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.10">
+  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.18.10">
+  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.18.10">
+  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.18.10">
+  <script src="/password-crypto.js?v=2026.10.18.10" defer></script>
+  <script src="/report-filters.js?v=2026.10.18.10" defer></script>
+  <script src="/financial-controls.js?v=2026.10.18.10" defer></script>
+  <script src="/report-evidence.js?v=2026.10.18.10" defer></script>
+  <script src="/bounded-history.js?v=2026.10.18.10" defer></script>
+  <script src="/mobile-viewport.js?v=2026.10.18.10" defer></script>
+  <link rel="stylesheet" href="/pwa-files.css?v=2026.10.18.10">
+  <script src="/pwa-files.js?v=2026.10.18.10" defer></script>
+  <script src="/app.js?v=2026.10.18.10" defer></script>
 </head>
 <body class="logged-out" aria-busy="true">
   <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
-    <span class="sr-only">Memuat Pangsuma App. Mohon tunggu.</span>
     <div class="pangsuma-loader-art" aria-hidden="true">
-      <svg viewBox="0 0 400 400" focusable="false">
+      <div class="pangsuma-loader-halo"></div>
+      <img class="pangsuma-loader-logo" src="/pangsuma-loading-logo.png" alt="" width="648" height="648" fetchpriority="high">
+      <img class="pangsuma-loader-emblem" src="/pangsuma-loading-emblem.png" alt="" width="648" height="648" fetchpriority="high">
+      <svg class="pangsuma-loader-orbit" viewBox="0 0 320 320" focusable="false">
         <defs>
-          <path id="pangsumaTopArcPath" d="M 68,200 A 132,132 0 0,1 332,200" />
-          <path id="pangsumaBottomArcPath" d="M 332,200 A 132,132 0 0,1 68,200" />
-          <clipPath id="pangsumaInnerCircleClip"><circle cx="200" cy="200" r="114" /></clipPath>
+          <linearGradient id="pangsumaGold"><stop stop-color="#d5ab3c" stop-opacity="0"/><stop offset=".55" stop-color="#e8c967" stop-opacity=".7"/><stop offset="1" stop-color="#fff2bd"/></linearGradient>
+          <filter id="pangsumaGlow"><feGaussianBlur stdDeviation="2"/></filter>
         </defs>
-        <g class="pangsuma-loader-ring">
-          <circle cx="200" cy="200" r="185" fill="#155AAB" stroke="#E5C158" stroke-width="4" />
-          <circle cx="200" cy="200" r="120" fill="#E5C158" stroke="#155AAB" stroke-width="3" />
-          <text fill="#FFFFFF" font-family="sans-serif" font-weight="900" font-size="31" letter-spacing="4"><textPath href="#pangsumaTopArcPath" startOffset="50%" text-anchor="middle">PANGSUMA</textPath></text>
-          <text fill="#FFFFFF" font-family="sans-serif" font-weight="900" font-size="28" letter-spacing="3"><textPath href="#pangsumaBottomArcPath" startOffset="50%" text-anchor="middle">FUTSAL CLUB</textPath></text>
-          <g transform="translate(48, 200) scale(0.85)"><path d="M 0,-12 L 3,-3 L 12,-3 L 5,3 L 8,11 L 0,6 L -8,11 L -5,3 L -12,-3 L -3,-3 Z" fill="#FFFFFF" /></g>
-          <g transform="translate(352, 200) scale(0.85)"><path d="M 0,-12 L 3,-3 L 12,-3 L 5,3 L 8,11 L 0,6 L -8,11 L -5,3 L -12,-3 L -3,-3 Z" fill="#FFFFFF" /></g>
-        </g>
-        <g class="pangsuma-loader-emblem">
-          <g clip-path="url(#pangsumaInnerCircleClip)">
-            <rect x="80" y="80" width="240" height="240" fill="#DCA327" />
-            <rect x="80" y="94" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="118" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="142" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="166" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="190" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="214" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="238" width="240" height="11" fill="#FFFFFF" />
-            <rect x="80" y="262" width="240" height="11" fill="#FFFFFF" />
-          </g>
-          <polygon points="200,72 208,135 192,135" fill="#155AAB" stroke="#FFFFFF" stroke-width="2" />
-          <polygon points="200,135 244,162 244,242 200,285 156,242 156,162" fill="#155AAB" stroke="#FFFFFF" stroke-width="3" />
-          <polygon points="200,135 244,162 244,242 200,285" fill="#0E4282" />
-          <path d="M 166,192 C 166,174 234,174 234,192 L 234,212 C 234,212 200,200 166,212 Z" fill="none" stroke="#FFFFFF" stroke-width="5" />
-          <polyline points="175,208 186,216 193,208" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
-          <polyline points="225,208 214,216 207,208" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
-          <line x1="200" y1="212" x2="200" y2="238" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
-          <line x1="188" y1="242" x2="212" y2="242" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
-        </g>
+        <circle class="pangsuma-loader-track" cx="160" cy="160" r="151"/>
+        <g class="pangsuma-loader-sweep"><circle class="pangsuma-loader-bloom" cx="160" cy="160" r="151"/><circle class="pangsuma-loader-arc" cx="160" cy="160" r="151"/><circle class="pangsuma-loader-tip" cx="311" cy="160" r="2.3"/></g>
       </svg>
     </div>
   </div>
@@ -91,7 +65,7 @@
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
-          <div class="app-version-controls"><span class="field-help">Versi 2026.10.18.9</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
+          <div class="app-version-controls"><span class="field-help">Versi 2026.10.18.10</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
           <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
             <p class="passkey-divider">Atau masuk tanpa password</p>
             <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
@@ -113,7 +87,7 @@
 
   <header class="topbar">
     <div class="brand">
-      <img src="/pangsuma-icon-192.png?v=2026.10.18.9" alt="" width="192" height="192">
+      <img src="/pangsuma-icon-192.png?v=2026.10.18.10" alt="" width="192" height="192">
       <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
@@ -150,7 +124,7 @@
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
         <div id="appContent" aria-live="off"></div>
-        <div class="app-version-controls"><span class="field-help">Versi 2026.10.18.9</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
+        <div class="app-version-controls"><span class="field-help">Versi 2026.10.18.10</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
       </div>
     </main>
   </div>
