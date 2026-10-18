@@ -358,7 +358,9 @@ tr:last-child td { border-bottom: 0; }
   .brand { gap: 8px; }
   .brand img { width: 38px; height: 38px; }
   .brand-name { font-size: 17px; }
-  .brand-sub, .account-meta, .install-button { display: none; }
+  .brand-sub, .account-meta { display: none; }
+  .install-button { min-width: 44px; min-height: 44px; padding: 10px; }
+  .install-button .install-label { display: none; }
   .top-actions { flex: none; gap: 0; }
   .logout-button { min-height: 44px; padding: 7px 12px; border-radius: 12px; font-size: 13px; }
   .app-shell { display: block; min-height: 0; flex: 1; overflow: hidden; }
@@ -820,3 +822,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .cash-health-equation > span { color: var(--muted); font-weight: 700; }
 .cash-minimum-status { margin: 3px 0 6px; color: var(--ink); font-size: 12px; font-weight: 650; }
 @media (max-width: 420px) { .cash-health-equation { column-gap: 8px; } .cash-health-equation > div { flex: 1 1 38%; } .cash-health-equation > span { display: none; } }
+
+.pwa-install-help { margin-top: 16px; }
+.pwa-install-help > button { width: 100%; min-height: 44px; }
+
+.pwa-install-feedback { margin: 0; padding: 10px 16px; flex: none; background: var(--paper); }
+body.logged-out > .pwa-install-feedback { display: none; }

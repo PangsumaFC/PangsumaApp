@@ -100,7 +100,6 @@ let cashTopupIdempotencyKey = '';
 let cashTopupFingerprint = '';
 let cashTopupBusy = false;
 let toastTimer = 0;
-let installPrompt = null;
 let confirmAction = null;
 let resetTargetId = '';
 let profileDraft = null;
@@ -1796,24 +1795,12 @@ function bindEvents() {
 
   $('#logoutButton').addEventListener('click', logout);
   $('#passkeyLoginButton').addEventListener('click', () => performPasskeyLogin());
-  $('#installButton').addEventListener('click', async () => {
-    if (installPrompt) {
-      installPrompt.prompt();
-      const result = await installPrompt.userChoice;
-      installPrompt = null;
-      showToast(result.outcome === 'accepted' ? 'Pangsuma App dipasang.' : 'Pemasangan belum dilakukan.');
-    } else showToast('Gunakan menu browser lalu pilih Tambahkan ke layar utama.');
-  });
   $('#appUpdateReload').addEventListener('click', reloadToLatestBuild);
   const offlineNotice = $('#offlineNotice');
   const updateConnectivity = () => { if (offlineNotice) offlineNotice.hidden = navigator.onLine !== false; };
   window.addEventListener('online', updateConnectivity);
   window.addEventListener('offline', updateConnectivity);
   updateConnectivity();
-  window.addEventListener('beforeinstallprompt', event => {
-    event.preventDefault();
-    installPrompt = event;
-  });
   $('#confirmDialog').addEventListener('click', event => {
     if (event.target === event.currentTarget) event.currentTarget.close();
   });
