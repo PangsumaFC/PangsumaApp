@@ -218,7 +218,7 @@ function rememberReportType(type) {
 function persistReportDraft(type = reportTypePreset) {
   const form = $('#reportForm');
   if (!state.user || !form || !validReportType(type)) return;
-  writeDraft('report', type, { type, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(type).submittedFingerprint || '' });
+  writeDraft('report', type, { type, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || reportDraft(type).idempotencyKey || '', submittedFingerprint: reportDraft(type).submittedFingerprint || '' });
   rememberReportType(type);
 }
 function persistCashTopupDraft() { if (!state.user || !$('#cashTopupForm')) return; writeDraft('cash-topup', '', { amountIdr: String($('#cashTopupAmount')?.value || '').slice(0, 20), note: String($('#cashTopupNote')?.value || '').slice(0, 500), idempotencyKey: cashTopupIdempotencyKey || '', fingerprint: cashTopupFingerprint || '' }); }
