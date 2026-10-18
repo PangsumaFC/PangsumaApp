@@ -114,3 +114,11 @@ test('both password/passkey login and restored sessions initialize their own sel
   const change = source.slice(source.indexOf("document.addEventListener('change', event => {"));
   assert.ok(change.indexOf('persistReportDraft(reportTypePreset)') < change.indexOf('reportTypePreset = String(event.target.value)'));
 });
+test('saving outgoing fields preserves a retry key stored after the current render', () => {
+  const { context: c } = harness();
+  c.submissionIdempotencyKey = '';
+  c.writeDraft('report', 'finance_request', { idempotencyKey: 'stored-after-render', submittedFingerprint: 'stable' });
+  c.persistReportDraft('finance_request');
+  assert.equal(c.reportDraft('finance_request').idempotencyKey, 'stored-after-render');
+  assert.equal(c.reportDraft('finance_request').submittedFingerprint, 'stable');
+});

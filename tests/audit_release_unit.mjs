@@ -20,12 +20,15 @@ test('release synchronizer detects drift without writing, then updates all gener
     fs.mkdirSync(path.join(temp, 'site')); fs.mkdirSync(path.join(temp, 'scripts'));
     fs.copyFileSync(new URL('scripts/sync-release.mjs', root), path.join(temp, 'scripts/sync-release.mjs'));
     for (const file of ['index.html', 'pdf-browser.html', 'sw.js', 'manifest.webmanifest', 'version.json']) fs.copyFileSync(new URL(`site/${file}`, root), path.join(temp, 'site', file));
-    fs.writeFileSync(path.join(temp, 'site/version.json'), JSON.stringify({ build: '2026.10.19.1' }));
+    const parts = JSON.parse(fs.readFileSync(path.join(temp, 'site/version.json'))).build.split('.');
+    parts[3] = String(Number(parts[3]) + 1);
+    const nextBuild = parts.join('.');
+    fs.writeFileSync(path.join(temp, 'site/version.json'), JSON.stringify({ build: nextBuild }));
     const before = fs.readFileSync(path.join(temp, 'site/manifest.webmanifest'), 'utf8');
     assert.equal(spawnSync(process.execPath, ['scripts/sync-release.mjs', '--check'], { cwd: temp }).status, 1);
     assert.equal(fs.readFileSync(path.join(temp, 'site/manifest.webmanifest'), 'utf8'), before);
     execFileSync(process.execPath, ['scripts/sync-release.mjs'], { cwd: temp });
     assert.equal(spawnSync(process.execPath, ['scripts/sync-release.mjs', '--check'], { cwd: temp }).status, 0);
-    assert.ok(fs.readFileSync(path.join(temp, 'site/manifest.webmanifest'), 'utf8').includes('?v=2026.10.19.1'));
+    assert.ok(fs.readFileSync(path.join(temp, 'site/manifest.webmanifest'), 'utf8').includes(`?v=${nextBuild}`));
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

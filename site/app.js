@@ -127,7 +127,7 @@ function navigateToPage(page, { replace = false, fromPop = false } = {}) {
   if (changed && profileDialog?.id === 'userProfileDialog' && !canCloseAppDialog(profileDialog)) return false;
   if (changed && profileDialog?.id === 'userProfileDialog') profileDialog.close();
   currentPage = page;
-  if (changed) usersPageLifecycle.cancel();
+  if (changed && typeof usersPageLifecycle !== 'undefined') usersPageLifecycle.cancel();
   if (changed && page === 'users' && state.user?.role === 'manager') {
     state.usersPage = { ...state.usersPage, loading: true, error: '' };
   }
@@ -138,6 +138,7 @@ function navigateToPage(page, { replace = false, fromPop = false } = {}) {
     } catch {}
   }
   renderApp();
+  if (page === 'users' && state.user?.role === 'manager' && typeof loadUsersPageView === 'function') void loadUsersPageView();
   return true;
 }
 function handleNavigationPop(event) {
@@ -238,6 +239,20 @@ function profileDraftDirty() {
     || value('#profileQuote') !== String(baseline.quote || '')
     || profileDraft.photoDataUrl !== undefined;
 }
+function formDraftIsStored(form) {
+  if (!state.user || !form?.elements) return false;
+  const value = name => String(form.elements.namedItem(name)?.value || '');
+  if (form.id === 'reportForm') {
+    const type = value('type'), draft = readDraft('report', type);
+    return validReportType(type) && draft?.type === type
+      && ['amountIdr', 'date', 'description', 'note'].every(name => value(name) === String(draft[name] ?? ''));
+  }
+  if (form.id === 'userForm' && state.user.role === 'manager') {
+    const draft = readAccountDraft();
+    return Boolean(draft && ['name', 'email', 'position'].every(name => value(name) === String(draft[name] ?? '')));
+  }
+  return false;
+}
 function hasUnsavedDraft() {
   if (typeof ReportEvidence !== 'undefined' && ReportEvidence.hasPending?.()) return true;
   if (profileDraft?.photoDataUrl !== undefined) return true;
@@ -247,6 +262,7 @@ function hasUnsavedDraft() {
     const dialog = form.closest('dialog');
     if ((dialog && !dialog.open) || form.closest('[hidden]')) return false;
     if (dialog?.id === 'userProfileDialog' && typeof profileDraftDirty === 'function') return false;
+    if (typeof formDraftIsStored === 'function' && formDraftIsStored(form)) return false;
     return [...form.elements].some(field => {
       if (field.disabled || ['submit', 'button', 'hidden'].includes(field.type)) return false;
       if (field.type === 'file') return Boolean(field.files?.length);
@@ -1059,12 +1075,43 @@ async function refreshUsersPage(page = 1, append = false, query = state.usersPag
     state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore), query: search, loading: false, error: '' };
     return true;
   } catch (error) {
+    if (!usersPageLifecycle.current(request) || requestEpoch !== authEpoch || state.user?.id !== requestUserId) return false;
     usersPageLifecycle.fail(request, error);
-    if (usersPageLifecycle.current(request)) state.usersPage = { ...state.usersPage, loading: false, error: friendlyError(error) };
+    state.usersPage = { ...state.usersPage, loading: false, error: friendlyError(error) };
     throw error;
   } finally { usersPageLifecycle.finish(request); }
 }
 
+function renderUsersPageView() {
+  if (currentPage !== 'users' || state.user?.role !== 'manager') return;
+  const active = document.activeElement;
+  const focused = active?.id === 'usersSearch';
+  const start = focused ? active.selectionStart : null;
+  const end = focused ? active.selectionEnd : null;
+  renderApp();
+  if (focused) {
+    const search = $('#usersSearch');
+    search?.focus({ preventScroll: true });
+    if (start !== null && end !== null) search?.setSelectionRange(start, end);
+  }
+}
+async function loadUsersPageView(page = state.usersPage.page || 1, query = state.usersPage.query || '') {
+  if (currentPage !== 'users' || state.user?.role !== 'manager') return false;
+  const requestEpoch = authEpoch, owner = state.user.id;
+  const pending = refreshUsersPage(page, false, query);
+  renderUsersPageView();
+  try {
+    const applied = await pending;
+    if (applied && requestEpoch === authEpoch && state.user?.id === owner) renderUsersPageView();
+    return applied;
+  } catch (error) {
+    if (requestEpoch === authEpoch && state.user?.id === owner && currentPage === 'users') {
+      renderUsersPageView();
+      showToast(friendlyError(error));
+    }
+    return false;
+  }
+}
 function accountDraftKey() { return 'manager-account-form'; }
 function readAccountDraft() { return state.user?.role === 'manager' ? readDraft(accountDraftKey()) : null; }
 function persistAccountDraft() { const form = $('#userForm'); if (!state.user || state.user.role !== 'manager' || !form) return; const fields = form.elements; const values = { name: String(fields.namedItem('name')?.value || '').slice(0, 80), email: String(fields.namedItem('email')?.value || '').slice(0, 180), position: String(fields.namedItem('position')?.value || '').slice(0, 80) }; if (Object.values(values).some(Boolean)) writeDraft(accountDraftKey(), '', values); else clearDraft(accountDraftKey()); }
@@ -1086,8 +1133,8 @@ function usersPage() {
   const query = String(state.usersPage.query || '');
   const listStatus = state.usersPage.loading ? '<p class="field-help" role="status" aria-live="polite">Memuat daftar akun…</p>' : state.usersPage.error ? `<p class="field-error" role="alert">${escapeHTML(state.usersPage.error)} <button class="secondary-button" type="button" data-action="retry-users">Coba lagi</button></p>` : '';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
-    <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
-    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="100" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
+    <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" maxlength="100" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
+    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
     ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
@@ -1142,6 +1189,7 @@ function changePasswordPage() {
 
 function renderApp() {
   if (!state.user) return;
+  const addUserWasOpen = currentPage === 'users' && $('#addUserCard')?.hidden === false;
   const openPanels = new Set($$('#appContent details[data-panel][open]').map(panel => panel.dataset.panel));
   if (state.user.mustChangePassword) currentPage = 'change-password';
   const role = state.user.role;
@@ -1165,6 +1213,7 @@ function renderApp() {
   }
   $('#appContent').innerHTML = body;
   if (currentPage === 'users') restoreAccountDraft();
+  if (currentPage === 'users' && addUserWasOpen && $('#addUserCard')) $('#addUserCard').hidden = false;
   if (currentPage === 'new-report' && typeof ReportEvidence !== 'undefined') ReportEvidence.mountDuplicateCheck($('#reportForm'));
   $$('#appContent details[data-panel]').forEach(panel => { panel.open = openPanels.has(panel.dataset.panel); });
   if (pageChanged) $('#mainContent').scrollTo(0, 0);
@@ -1197,6 +1246,8 @@ async function openUserProfile(id) {
   if (state.user?.role !== 'manager' || state.user.mustChangePassword) return;
   const target = state.users.find(user => user.id === id);
   if (!target) return;
+  const existing = $('#userProfileDialog');
+  if (existing?.open && !canCloseAppDialog(existing)) return;
   profileSelection += 1;
   const draft = { id, processing: false, saving: false, loading: true };
   profileDraft = draft;
@@ -1827,9 +1878,9 @@ async function handleAction(button) {
   if (action === 'report-detail') { await openReportActivity(id, button);
   } else if (action === 'load-more-users' || action === 'previous-users') {
     const next = Math.max(1, Number(state.usersPage.page || 1) + (action === 'previous-users' ? -1 : 1));
-    try { await refreshUsersPage(next, false, state.usersPage.query); renderApp(); } catch (error) { showToast(friendlyError(error)); }
+    await loadUsersPageView(next);
   } else if (action === 'retry-users') {
-    await refreshUsersPage(state.usersPage.page || 1, false, state.usersPage.query || ''); renderApp();
+    await loadUsersPageView();
   } else if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
@@ -1932,6 +1983,14 @@ async function logout() {
 
 function bindEvents() {
   if (navigationHistoryAvailable()) window.addEventListener('popstate', handleNavigationPop);
+  window.addEventListener('beforeunload', event => {
+    // Text account/report drafts already survive reload in this tab; only
+    // unsaved profile edits or in-memory attachments need a native warning.
+    if (!state.user || (!profileDraftDirty() && !profileDraft?.processing && !profileDraft?.saving
+      && !(typeof ReportEvidence !== 'undefined' && ReportEvidence.hasPending?.()))) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
   if (typeof FinancialControls !== 'undefined') FinancialControls.configure({
     getUser: () => state.user, api, notify: showToast, newKey: newSubmissionKey,
     onRefresh: async () => { await refreshOverview(); renderApp(); },
@@ -1968,12 +2027,9 @@ function bindEvents() {
       if (state.user.mustChangePassword && page !== 'change-password') return;
       // Keep the legacy capability fallback for VM/test hosts that do not
       // provide History API; real browsers use the pushState path.
-      navigateToPage(page);
+      if (!navigateToPage(page)) return;
       $('#mainContent').focus({ preventScroll: true });
-      if (page === 'users' && state.user?.role === 'manager') {
-        void refreshUsersPage(1, false, state.usersPage.query).then(() => { if (currentPage === page) renderApp(); })
-          .catch(error => { if (error.code !== 'session_changed') showToast(friendlyError(error)); });
-      } else if (page === 'my-reports' && state.user?.role === 'user' && typeof BoundedHistory !== 'undefined') {
+      if (page === 'my-reports' && state.user?.role === 'user' && typeof BoundedHistory !== 'undefined') {
         configureBoundedHistory();
         void BoundedHistory.load('submissions', 'refresh');
       }
@@ -2008,7 +2064,16 @@ function bindEvents() {
 
   document.addEventListener('input', event => {
     if (event.target.closest?.('#userForm')) persistAccountDraft();
-    if (event.target.id === 'usersSearch') { usersPageLifecycle.cancel(); state.usersPage.query = event.target.value.slice(0, 100); state.usersPage.loading = true; state.usersPage.error = ''; clearTimeout(usersSearchTimer); renderApp(); usersSearchTimer = setTimeout(() => { if (currentPage !== 'users') return; void refreshUsersPage(1, false, state.usersPage.query).then(ok => { if (ok && currentPage === 'users') renderApp(); }).catch(error => { if (error.code !== 'session_changed') { renderApp(); showToast(friendlyError(error)); } }); }, 300); }
+    if (event.target.id === 'usersSearch') {
+      usersPageLifecycle.cancel();
+      state.usersPage = { ...state.usersPage, query: event.target.value.slice(0, 100), page: 1, loading: true, error: '' };
+      window.clearTimeout(usersSearchTimer);
+      const requestEpoch = authEpoch, owner = state.user?.id;
+      renderUsersPageView();
+      usersSearchTimer = window.setTimeout(() => {
+        if (requestEpoch === authEpoch && state.user?.id === owner && currentPage === 'users') void loadUsersPageView(1);
+      }, 300);
+    }
     if (event.target.closest?.('#reportForm') && event.target.id !== 'reportType') persistReportDraft();
     if (event.target.closest?.('#cashTopupForm')) persistCashTopupDraft();
     if (event.target.id === 'loginIdentifier' || event.target.id === 'loginPassword') {

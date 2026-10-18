@@ -14,7 +14,8 @@ async function call(db, path, token) {
 test('account search is server-backed, parameterized, and retains query across pagination', () => {
   assert.match(app, /usersSearch/);
   assert.match(app, /setTimeout\(\(\) =>/);
-  assert.match(app, /refreshUsersPage\(next, false, state\.usersPage\.query\)/);
+  assert.match(app, /await loadUsersPageView\(next\)/);
+  assert.match(app, /async function loadUsersPageView\(page = state\.usersPage\.page \|\| 1, query = state\.usersPage\.query \|\| ''\)/);
   assert.match(api, /users\.name LIKE \? ESCAPE/);
   assert.match(api, /users\.email LIKE \? ESCAPE/);
   assert.match(api, /SELECT COUNT\(\*\) AS count FROM users/);
