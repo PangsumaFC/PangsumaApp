@@ -49,10 +49,14 @@ test('same-key receipt races reject different metadata or bytes, preserve one ro
   ]);
   assert.ok([first.response.status, second.response.status].includes(201));
   assert.ok([first.response.status, second.response.status].includes(409));
+  const winner = first.response.status === 201 ? first : second;
+  const winnerFilename = first.response.status === 201 ? 'first.png' : 'second.png';
+  assert.equal(winner.body.filename, winnerFilename);
   const byteConflict = await call(f.db, path, f.userAToken, { method: 'POST', body: receiptBody(bytesB, 'different-bytes.png'), headers: { 'Idempotency-Key': key } });
   assert.equal(byteConflict.response.status, 409);
-  const identical = await call(f.db, path, f.userAToken, { method: 'POST', body: receiptBody(bytesA, 'first.png'), headers: { 'Idempotency-Key': key } });
+  const identical = await call(f.db, path, f.userAToken, { method: 'POST', body: receiptBody(bytesA, winnerFilename), headers: { 'Idempotency-Key': key } });
   assert.equal(identical.response.status, 200);
+  assert.deepEqual(identical.body, winner.body);
   assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM submission_receipts').get().n, 1);
   assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM cash_ledger').get().n, 1);
   assert.equal(f.db.db.prepare("SELECT balance_idr FROM cash_accounts WHERE id='operational'").get().balance_idr, 0);
