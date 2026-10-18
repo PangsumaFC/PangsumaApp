@@ -61,18 +61,24 @@ def main():
         page.locator("#appUpdateReload").click()
         expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
         page.locator("#reportForm button[type=submit]").evaluate("button => button.removeAttribute('aria-busy')")
-        page.evaluate("window.confirm = () => false")
+        # Simulate storage loss: this genuinely transient draft still needs
+        # confirmation, unlike the ordinary safely stored report draft.
+        page.evaluate("clearDraft('report', 'petty_cash'); window.__confirmCalls = 0; window.confirm = () => { window.__confirmCalls++; return false; }")
         page.locator("#appUpdateReload").click()
         expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
+        assert page.evaluate("window.__confirmCalls") == 1
 
-        page.evaluate("window.confirm = () => true")
+        page.evaluate("persistReportDraft(); sessionStorage.setItem('qa-unexpected-confirm', '0'); window.confirm = () => { sessionStorage.setItem('qa-unexpected-confirm', '1'); return false; }")
         build["value"] = current
-        page.locator("#appUpdateReload").click()
-        page.wait_for_load_state("networkidle", timeout=20_000)
+        with page.expect_navigation(wait_until="networkidle", timeout=20_000):
+            page.evaluate("void reloadToLatestBuild()")
         page.wait_for_timeout(500)
         expect(page.locator("#appUpdateBanner")).to_be_hidden()
+        assert page.evaluate("sessionStorage.getItem('qa-unexpected-confirm')") == '0'
+        page.locator("[data-action='open-report-choice']:visible").first.click()
+        expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
         page.screenshot(path=str(SCREENSHOTS / "app-update-manager.png"), full_page=True)
-        print("APP_UPDATE_E2E_PASS banner=1 draft_preserved=1 busy_blocked=1 cancel_preserved=1 reload_confirmed=1", flush=True)
+        print("APP_UPDATE_E2E_PASS banner=1 draft_preserved=1 busy_blocked=1 transient_cancel_preserved=1 stored_draft_reload_preserved=1 unnecessary_confirm=0", flush=True)
         browser.close()
 
 
