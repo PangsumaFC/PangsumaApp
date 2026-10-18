@@ -50,6 +50,7 @@ const LOGIN_IP_FAILURE_LIMIT = 20;
 const LOGIN_ATTEMPT_MAX_ROWS = 20000;
 const HISTORY_PAGE_SIZE = 100;
 const EXPORT_PAGE_SIZE = 500;
+const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function nowIso() {
@@ -336,7 +337,8 @@ async function login(context, db) {
     throw new ApiError(401, 'invalid_credentials', 'ID masuk atau password tidak sesuai.');
   }
   await db.prepare('DELETE FROM login_attempts WHERE rate_key = ?').bind(accountKey).run();
-  const session = await createSession(db, user.id);
+  const session = await createSession(db, user.id, { expectedPasswordHash: user.password_hash });
+  if (!session) throw new ApiError(401, 'invalid_credentials', 'ID masuk atau password tidak sesuai.');
   return jsonResponse({
     ok: true,
     user: safeUser({ ...user, mustChangePassword: Boolean(user.must_change_password) }),
@@ -444,18 +446,23 @@ function parseIdCursor(raw) {
   return id;
 }
 
-async function submissionsPage(db, user, cursor = null) {
-  const filters = [];
+async function submissionsPage(db, user, cursor = null, filters = {}) {
+  const conditions = [];
   const params = [];
   if (user.role !== 'manager') {
-    filters.push('s.created_by = ?');
+    conditions.push('s.created_by = ?');
     params.push(user.id);
   }
+  const shared = buildSubmissionFilterSql(filters);
+  if (shared.where !== '1=1') {
+    conditions.push(shared.where);
+    params.push(...shared.params);
+  }
   if (cursor) {
-    filters.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
+    conditions.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
     params.push(cursor.createdAt, cursor.createdAt, cursor.id);
   }
-  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(`
     SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
            s.decision_reason, s.created_at, s.updated_at, s.created_by,
@@ -480,17 +487,20 @@ async function submissionsPage(db, user, cursor = null) {
   };
 }
 
-async function cashLedgerPage(db, cursor = null) {
+async function cashLedgerPage(db, cursor = null, anchorId = null) {
   const id = parseIdCursor(cursor);
+  const predicates = [], params = [];
+  if (anchorId !== null) { predicates.push('l.id <= ?'); params.push(anchorId); }
+  if (id) { predicates.push('l.id < ?'); params.push(id); }
   const result = await db.prepare(`
     SELECT l.id, l.event_type, l.direction, l.amount_idr, l.balance_after_idr,
            l.submission_id, l.note, l.created_at, u.name AS actor_name
     FROM cash_ledger l
     LEFT JOIN users u ON u.id = l.actor_id
-    ${id ? 'WHERE l.id < ?' : ''}
+    ${predicates.length ? `WHERE ${predicates.join(' AND ')}` : ''}
     ORDER BY l.id DESC
     LIMIT ${HISTORY_PAGE_SIZE + 1}
-  `).bind(...(id ? [id] : [])).all();
+  `).bind(...params).all();
   const rows = result.results || [];
   const hasMore = rows.length > HISTORY_PAGE_SIZE;
   const items = rows.slice(0, HISTORY_PAGE_SIZE);
@@ -523,10 +533,10 @@ function historyMetadata(page, total) {
   };
 }
 
-async function completeCashFlow(db) {
+async function completeCashFlow(db, anchorId) {
   let incoming = 0n, outgoing = 0n, cursor = null, openingConfigured = false;
   for (;;) {
-    const rows = (await db.prepare(`SELECT id,event_type,direction,CAST(amount_idr AS TEXT) AS amount_idr FROM cash_ledger ${cursor === null ? '' : 'WHERE id < ?'} ORDER BY id DESC LIMIT 500`).bind(...(cursor === null ? [] : [cursor])).all()).results || [];
+    const rows = (await db.prepare(`SELECT id,event_type,direction,CAST(amount_idr AS TEXT) AS amount_idr FROM cash_ledger WHERE id <= ? ${cursor === null ? '' : 'AND id < ?'} ORDER BY id DESC LIMIT 500`).bind(...(cursor === null ? [anchorId] : [anchorId, cursor])).all()).results || [];
     for (const row of rows) {
       const amount = BigInt(row.amount_idr || 0);
       if (row.direction === 'credit') incoming += amount;
@@ -569,12 +579,12 @@ async function overview(context, db) {
     ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
     : '0';
   const [cash, submissionPage] = await Promise.all([
-    db.prepare("SELECT balance_idr FROM cash_accounts WHERE id = 'operational' LIMIT 1").first(),
+    db.prepare("SELECT balance_idr, (SELECT COALESCE(MAX(id), 0) FROM cash_ledger) AS ledger_high_water_id FROM cash_accounts WHERE id = 'operational' LIMIT 1").first(),
     submissionsPage(db, user)
   ]);
   const cashBalanceIdr = Number(cash?.balance_idr || 0);
   const submissions = submissionPage.items;
-  const [summaryRow, usersResult, ledgerPage, auditPage, ledgerCount, auditCount, cashFlow] = await Promise.all([
+  const [summaryRow, usersResult, ledgerPage, auditPage, ledgerCount, auditCount, cashFlow, pendingRows] = await Promise.all([
     db.prepare(`
       SELECT
         COUNT(*) AS total_count,
@@ -596,17 +606,32 @@ async function overview(context, db) {
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
       LIMIT 100
     `).all(),
-    cashLedgerPage(db),
+    cashLedgerPage(db, null, Number(cash?.ledger_high_water_id || 0)),
     auditEventsPage(db),
-    db.prepare('SELECT COUNT(*) AS count FROM cash_ledger').first(),
+    db.prepare('SELECT COUNT(*) AS count FROM cash_ledger WHERE id <= ?').bind(Number(cash?.ledger_high_water_id || 0)).first(),
     db.prepare('SELECT COUNT(*) AS count FROM audit_events').first(),
-    completeCashFlow(db)
+    completeCashFlow(db, Number(cash?.ledger_high_water_id || 0)),
+    db.prepare(`
+      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+             s.decision_reason, s.created_at, s.updated_at, s.created_by,
+             creator.name AS created_by_name, creator.position AS created_by_position,
+             resolver.name AS resolved_by_name, sender.name AS sent_by_name
+      FROM submissions s
+      JOIN users creator ON creator.id = s.created_by
+      LEFT JOIN users resolver ON resolver.id = s.resolved_by
+      LEFT JOIN users sender ON sender.id = s.sent_by
+      WHERE s.status = 'pending'
+      ORDER BY s.created_at ASC, s.id ASC
+      LIMIT ${HISTORY_PAGE_SIZE}
+    `).all()
   ]);
   return jsonResponse({
     user: safeUser(user),
     cashBalanceIdr,
+    cashLedgerAnchorId: Number(cash?.ledger_high_water_id || 0),
     cashFlow,
     submissions,
+    pendingSubmissions: (pendingRows?.results || []).map(mapSubmission),
     history: {
       submissions: historyMetadata(submissionPage, summaryRow?.total_count),
       cashLedger: historyMetadata(ledgerPage, ledgerCount?.count),
@@ -631,10 +656,16 @@ async function listSubmissions(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
   const url = new URL(context.request.url);
-  const page = await submissionsPage(db, user, parseSubmissionCursor(url.searchParams.get('cursor')));
-  const count = user.role === 'manager'
-    ? await db.prepare('SELECT COUNT(*) AS count FROM submissions').first()
-    : await db.prepare('SELECT COUNT(*) AS count FROM submissions WHERE created_by = ?').bind(user.id).first();
+  const filters = parseReportFilters(url.searchParams);
+  const page = await submissionsPage(db, user, parseSubmissionCursor(url.searchParams.get('cursor')), filters);
+  const countFilters = buildSubmissionFilterSql(filters);
+  const roleClause = user.role === 'manager' ? '' : ` AND s.created_by = ?`;
+  const countParams = user.role === 'manager'
+    ? countFilters.params
+    : [...countFilters.params, user.id];
+  const count = await db.prepare(`SELECT COUNT(*) AS count FROM submissions s
+    JOIN users creator ON creator.id = s.created_by
+    WHERE ${countFilters.where}${roleClause}`).bind(...countParams).first();
   return jsonResponse({
     submissions: page.items,
     nextCursor: page.nextCursor,
@@ -688,7 +719,7 @@ async function createSubmission(context, db) {
     throw new ApiError(400, 'invalid_amount', 'Nominal harus berupa bilangan rupiah positif.');
   }
   if (!isValidIsoDate(date)) throw new ApiError(400, 'invalid_date', 'Tanggal laporan tidak valid.');
-  if (!description) throw new ApiError(400, 'invalid_description', 'Keperluan wajib diisi (3–150 karakter).');
+  if (!description || description.length < 3) throw new ApiError(400, 'invalid_description', 'Keperluan wajib diisi (3–150 karakter).');
   if (body.note && !note) throw new ApiError(400, 'invalid_note', 'Catatan maksimal 500 karakter.');
   if (!UUID_PATTERN.test(idempotencyKey)) throw new ApiError(400, 'idempotency_required', 'Kunci pengajuan tidak valid.');
 
@@ -956,17 +987,30 @@ async function users(context, db) {
     const passkeyCountSql = context.env?.PASSKEY_AUTH_ENABLED === 'true'
       ? '(SELECT COUNT(*) FROM passkey_credentials p WHERE p.user_id = users.id)'
       : '0';
-    const result = await db.prepare(`
-      SELECT users.id, users.name, users.email, users.position, users.role, users.is_active,
-             CASE WHEN users.password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
-             users.must_change_password, users.created_at, ${passkeyCountSql} AS passkey_count,
-             p.nickname, p.dashboard_position, p.quote, p.photo_mime, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
-             COALESCE(p.version, 0) AS profile_version
-      FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
-      ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
-      LIMIT 100
-    `).all();
-    return jsonResponse({ users: (result.results || []).map(mapListedUser) });
+    const url = new URL(request.url);
+    const rawPage = url.searchParams.get('page') || '1';
+    const rawLimit = url.searchParams.get('limit') || '100';
+    if (!/^\d+$/.test(rawPage) || !/^\d+$/.test(rawLimit)) throw new ApiError(400, 'invalid_pagination', 'Pagination tidak valid.');
+    const page = Number(rawPage), requestedLimit = Number(rawLimit);
+    const limit = Math.min(requestedLimit, 100);
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(requestedLimit) || requestedLimit < 1 || !Number.isSafeInteger(limit) || limit < 1) throw new ApiError(400, 'invalid_pagination', 'Pagination tidak valid.');
+    const offset = (page - 1) * limit;
+    if (!Number.isSafeInteger(offset)) throw new ApiError(400, 'invalid_pagination', 'Halaman terlalu besar.');
+    const [result, count] = await Promise.all([
+      db.prepare(`
+        SELECT users.id, users.name, users.email, users.position, users.role, users.is_active,
+               CASE WHEN users.password_hash IS NULL THEN 0 ELSE 1 END AS password_ready,
+               users.must_change_password, users.created_at, ${passkeyCountSql} AS passkey_count,
+               p.nickname, p.dashboard_position, p.quote, p.photo_mime, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
+               COALESCE(p.version, 0) AS profile_version
+        FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
+        ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE, users.id
+        LIMIT ? OFFSET ?
+      `).bind(limit, offset).all(),
+      db.prepare('SELECT COUNT(*) AS count FROM users').first()
+    ]);
+    const total = Number(count?.count || 0);
+    return jsonResponse({ users: (result.results || []).map(mapListedUser), page, limit, total, hasMore: offset + limit < total });
   }
   ensureMethod(request, 'POST');
   ensureSameOrigin(request);
@@ -1180,34 +1224,60 @@ async function* fullExportCsv(db, snapshotAt) {
   }
 }
 
+async function readExportMutationMarker(db) {
+  // Append-only audit/ledger IDs catch same-millisecond writes; submission
+  // timestamps/counts catch edits and legacy databases without audit rows.
+  const row = await db.prepare(`
+    SELECT
+      (SELECT COALESCE(MAX(id), 0) FROM audit_events) AS audit_max_id,
+      (SELECT COUNT(*) FROM audit_events) AS audit_count,
+      (SELECT COALESCE(MAX(id), 0) FROM cash_ledger) AS ledger_max_id,
+      (SELECT COUNT(*) FROM cash_ledger) AS ledger_count,
+      (SELECT COUNT(*) FROM submissions) AS submission_count,
+      (SELECT COALESCE(MAX(created_at), '') FROM submissions) AS submission_max_created,
+      (SELECT COALESCE(MAX(updated_at), '') FROM submissions) AS submission_max_updated
+  `).first();
+  return JSON.stringify(row || null);
+}
+
+async function collectCsv(db, snapshotAt) {
+  const chunks = [];
+  let byteLength = 0;
+  const encoder = new TextEncoder();
+  for await (const chunk of fullExportCsv(db, snapshotAt)) {
+    byteLength += encoder.encode(chunk).byteLength;
+    if (byteLength > MAX_EXPORT_BYTES) {
+      throw new ApiError(413, 'report_too_large', 'Laporan terlalu besar untuk dibuat dengan aman.');
+    }
+    chunks.push(chunk);
+  }
+  return chunks.join('');
+}
+
+async function runConsistentExport({ db, gather }) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const before = await readExportMutationMarker(db);
+    const snapshotAt = nowIso();
+    const body = await gather(snapshotAt);
+    const after = await readExportMutationMarker(db);
+    if (before === after) return { body, snapshotAt };
+  }
+  throw new ApiError(409, 'report_changed_retry', 'Data berubah selama pembuatan laporan. Coba lagi.');
+}
+
 async function exportCsv(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
   requireManager(user);
-  const snapshotAt = nowIso();
-  const iterator = fullExportCsv(db, snapshotAt);
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async pull(controller) {
-      try {
-        const next = await iterator.next();
-        if (next.done) controller.close();
-        else controller.enqueue(encoder.encode(next.value));
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    async cancel() {
-      await iterator.return?.();
-    }
-  });
-  return new Response(stream, {
+  const { body, snapshotAt } = await runConsistentExport({ db, gather: (at) => collectCsv(db, at) });
+  return new Response(body, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="pangsuma-rekap-lengkap-${jakartaToday()}.csv"`,
       'Cache-Control': 'no-store, max-age=0',
       'Pragma': 'no-cache',
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      'X-Report-Snapshot-At': snapshotAt
     }
   });
 }
@@ -1291,7 +1361,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
     cursor = rows[rows.length - 1];
   }
   const orderedLedger = [...ledger].sort((a, b) => Number(a.id) - Number(b.id));
-  return { submissions, ledger: orderedLedger, audits, filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered: Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q), ledgerIsPartial: hasSpecific, openingBalanceIdr, closingBalanceIdr };
+  return { snapshotAt, submissions, ledger: orderedLedger, audits, filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered: Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q), ledgerIsPartial: hasSpecific, openingBalanceIdr, closingBalanceIdr };
 }
 async function reports(context, db) {
   const user = await requireUser(context.request, db);
@@ -1304,15 +1374,21 @@ async function exportPdf(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
   requireManager(user);
-  const snapshotAt = nowIso();
-  const data = await fullFinancialReportData(db, snapshotAt, parseReportFilters(new URL(context.request.url).searchParams));
-  const bytes = await buildFinancialReport({ ...data, snapshotAt, managerName: user.name });
+  const filters = parseReportFilters(new URL(context.request.url).searchParams);
+  const { body: bytes, snapshotAt } = await runConsistentExport({
+    db,
+    gather: async (at) => {
+      const data = await fullFinancialReportData(db, at, filters);
+      return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name });
+    }
+  });
   return new Response(bytes, { headers: {
     'Content-Type': 'application/pdf',
     'Content-Disposition': `attachment; filename="pangsuma-laporan-keuangan-${jakartaToday()}.pdf"`,
     'Cache-Control': 'no-store, max-age=0',
     'Pragma': 'no-cache',
-    'X-Content-Type-Options': 'nosniff'
+    'X-Content-Type-Options': 'nosniff',
+    'X-Report-Snapshot-At': snapshotAt
   } });
 }
 async function dispatch(context, db, path) {

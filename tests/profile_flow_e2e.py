@@ -262,7 +262,8 @@ def main():
         expect(dialog.locator("#profilePosition")).to_be_visible()
         expect(dialog.locator("#profileQuote")).to_be_visible()
         assert dialog.locator("#profilePhoto").count() == 1
-        assert "sr-only" in (dialog.locator("#profilePhoto").get_attribute("class") or "")
+        expect(dialog.locator("#profilePhoto")).to_be_visible()
+        assert dialog.locator("#profilePhoto").get_attribute("type") == "file"
         assert dialog.locator("#profileNickname").input_value() == ""
         nickname, position, quote = "Profile Alias", "Profile Lead", "Keep <ledger> & \"clear\" 'now'."
         dialog.locator("#profileNickname").fill(nickname)

@@ -171,9 +171,15 @@ export async function createSession(db, userId, options = {}) {
   const sessionHash = await sha256Hex(token);
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString();
-  await db.prepare(
-    'INSERT INTO sessions (session_hash, user_id, created_at, expires_at, auth_method) VALUES (?, ?, ?, ?, ?)'
-  ).bind(sessionHash, userId, createdAt, expiresAt, authMethod).run();
+  const expectedHash = options.expectedPasswordHash;
+  const statement = expectedHash
+    ? db.prepare(`INSERT INTO sessions (session_hash, user_id, created_at, expires_at, auth_method)
+        SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ? AND is_active = 1)`)
+        .bind(sessionHash, userId, createdAt, expiresAt, authMethod, userId, expectedHash)
+    : db.prepare('INSERT INTO sessions (session_hash, user_id, created_at, expires_at, auth_method) VALUES (?, ?, ?, ?, ?)')
+        .bind(sessionHash, userId, createdAt, expiresAt, authMethod);
+  const result = await statement.run();
+  if (expectedHash && Number(result?.meta?.changes || 0) !== 1) return null;
   return { token, expiresAt, cookie: cookieHeader(token, SESSION_SECONDS) };
 }
 

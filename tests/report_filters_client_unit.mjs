@@ -99,3 +99,14 @@ test('finance actions can resolve the bounded filter page without retaining old 
   h.setUser({ id: 'ordinary-user', role: 'user' });
   assert.equal(h.client.findItem('second-page'), null);
 });
+
+test('advanced filters stay collapsed initially and preserve explicit opening during refresh', async () => {
+  const h = clientHarness(); h.client.render(); await settle();
+  assert.match(h.client.render(), /class="report-filter-advanced" >/);
+  h.events.toggle({ target: { matches: () => true, closest: () => ({}), open: true } });
+  h.client.refresh(); await settle();
+  assert.match(h.client.render(), /class="report-filter-advanced" open>/);
+  h.client.clear(); h.setUser({ id: 'different-manager', role: 'manager' });
+  assert.match(h.client.render(), /class="report-filter-advanced" >/);
+  await settle();
+});

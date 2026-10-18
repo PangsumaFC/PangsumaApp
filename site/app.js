@@ -1,5 +1,5 @@
-let activeApiTransactions = 0;
 'use strict';
+let activeApiTransactions = 0;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -81,7 +81,9 @@ const state = {
   user: null,
   cashBalanceIdr: 0,
   submissions: [],
+  pendingSubmissions: [],
   users: [],
+  usersPage: { page: 1, limit: 100, total: 0, hasMore: false },
   cashLedger: [],
   auditEvents: [],
   summary: {},
@@ -108,8 +110,11 @@ let profileSyncBusy = false;
 let managerSyncBusy = false;
 let managerSyncLastAt = 0;
 let managerSyncRerenderPending = false;
+let archiveSearchTimer = 0;
 let cashInsightsRequestEpoch = 0;
 let cashInsightsRequestBusy = false;
+let cashInsightsCacheKey = '';
+let cashInsightsCachedAt = 0;
 const managerSyncIntervalMs = 20_000;
 const managerSyncMinIntervalMs = 15_000;
 let updateCheckBusy = false;
@@ -121,7 +126,7 @@ function readDraft(kind, type = '') { try { const raw = sessionStorage.getItem(d
 function writeDraft(kind, type, value) { try { sessionStorage.setItem(draftKey(kind, type), JSON.stringify(value)); } catch {} }
 function clearDraft(kind, type = '') { try { sessionStorage.removeItem(draftKey(kind, type)); } catch {} }
 function reportDraft(type = reportTypePreset) { return readDraft('report', type) || {}; }
-function persistReportDraft() { const form = $('#reportForm'); if (!state.user || !form) return; writeDraft('report', reportTypePreset, { type: reportTypePreset, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(reportTypePreset).submittedFingerprint || '' }); }
+function persistReportDraft() { const form = $('#reportForm'); if (!state.user || !form) return; const type = String(form.type?.value || reportTypePreset); writeDraft('report', type, { type, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(type).submittedFingerprint || '' }); }
 function persistCashTopupDraft() { if (!state.user || !$('#cashTopupForm')) return; writeDraft('cash-topup', '', { amountIdr: String($('#cashTopupAmount')?.value || '').slice(0, 20), note: String($('#cashTopupNote')?.value || '').slice(0, 500), idempotencyKey: cashTopupIdempotencyKey || '', fingerprint: cashTopupFingerprint || '' }); }
 
 function hasUnsavedDraft() {
@@ -241,6 +246,13 @@ function cashInsightInteger(value) {
 }
 function cashInsightMoney(value) { return money(cashInsightInteger(value)); }
 function cashInsightMinimumKey() { return `pangsuma:cash-minimum-idr:${state.user?.id || 'anonymous'}`; }
+function cashInsightMinimumSource(insight = state.cashInsights) {
+  try {
+    const stored = localStorage.getItem(cashInsightMinimumKey());
+    if (stored !== null && /^\d+$/.test(stored)) return 'local';
+  } catch {}
+  return insight?.minimumIdr === null || insight?.minimumIdr === undefined ? 'none' : 'server';
+}
 function getCashInsightMinimum(insight = state.cashInsights) {
   try {
     const stored = localStorage.getItem(cashInsightMinimumKey());
@@ -251,6 +263,10 @@ function getCashInsightMinimum(insight = state.cashInsights) {
 function cashInsightThresholdLabel(insight) {
   const value = getCashInsightMinimum(insight);
   return value === null ? 'Belum diatur' : cashInsightMoney(value);
+}
+function cashInsightThresholdSourceLabel(insight) {
+  const source = cashInsightMinimumSource(insight);
+  return source === 'local' ? 'Batas minimum perangkat ini (lokal)' : source === 'server' ? 'Batas default server' : 'Batas minimum perangkat ini (lokal)';
 }
 function cashInsightTrendText(insight) {
   if (!insight?.trend) return 'Belum ada data tren.';
@@ -287,7 +303,7 @@ function cashInsightsRegion() {
   const minimum = getCashInsightMinimum(insight);
   const minimumStatus = minimum === null ? 'Belum ada batas peringatan' : account < cashInsightInteger(minimum) ? 'Di bawah batas minimum' : 'Batas minimum terpenuhi';
   const equation = `<dl class="cash-health-equation"><div><dt>Saldo awal</dt><dd>${cashInsightMoney(totals.openingIdr)}</dd></div><span aria-hidden="true">+</span><div><dt>Penambahan</dt><dd>${cashInsightMoney(totals.topupsIdr)}</dd></div><span aria-hidden="true">−</span><div><dt>Pengeluaran</dt><dd>${cashInsightMoney(totals.outgoingIdr)}</dd></div><span aria-hidden="true">=</span><div><dt>Saldo hitung</dt><dd>${cashInsightMoney(expected)}</dd></div></dl>`;
-  return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo ter-rekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>Batas minimum perangkat ini</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
+  return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo ter-rekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>${cashInsightThresholdSourceLabel(insight)}</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (lokal, Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
 }
 function renderCashInsightsRegion(force = false) {
   const form = $('#cashMinimumForm');
@@ -295,14 +311,18 @@ function renderCashInsightsRegion(force = false) {
   const region = $('.cash-insights-region');
   if (region && currentPage === 'finance' && state.user?.role === 'manager') region.outerHTML = cashInsightsRegion();
 }
-async function loadCashInsights() {
+async function loadCashInsights({ force = false } = {}) {
   if (!state.user || state.user.role !== 'manager' || state.user.mustChangePassword || cashInsightsRequestBusy) return;
+  const cacheKey = `${authEpoch}:${state.user.id}:${state.cashLedgerAnchorId ?? state.cashLedger?.[0]?.id ?? 0}:${state.cashBalanceIdr}:${todayISO()}`;
+  if (!force && state.cashInsights && cacheKey === cashInsightsCacheKey && Date.now() - cashInsightsCachedAt < 60000) return;
   const requestedUser = state.user; const requestEpoch = authEpoch; const requestId = ++cashInsightsRequestEpoch;
   cashInsightsRequestBusy = true;
   try {
     const result = await api('/cash/insights');
     if (requestEpoch !== authEpoch || !state.user || state.user.id !== requestedUser.id || requestId !== cashInsightsRequestEpoch) return;
     state.cashInsights = result;
+    cashInsightsCacheKey = cacheKey;
+    cashInsightsCachedAt = Date.now();
     state.cashInsightsError = '';
     renderCashInsightsRegion();
   } catch (error) {
@@ -333,6 +353,9 @@ function managerOverviewSnapshot() {
     summary: state.summary,
     cashLedger: state.cashLedger,
     auditEvents: state.auditEvents,
+    pendingSubmissions: state.pendingSubmissions,
+    users: state.users,
+    usersPage: state.usersPage,
     history: state.history,
     cashInsights: state.cashInsights
   });
@@ -353,10 +376,11 @@ async function refreshManagerOverview({ force = false } = {}) {
   managerSyncBusy = true;
   const before = managerOverviewSnapshot();
   try {
-    await refreshOverview();
+    await refreshOverview({ preserveHistory: true });
+    if (currentPage === 'users') await refreshUsersPage(Number(state.usersPage.page || 1));
     const changed = before !== managerOverviewSnapshot();
     if (!changed && !managerSyncRerenderPending) return false;
-    if (!['overview', 'approvals', 'finance'].includes(currentPage)) {
+    if (!['overview', 'approvals', 'finance', 'users'].includes(currentPage)) {
       managerSyncRerenderPending = changed || managerSyncRerenderPending;
       return changed;
     }
@@ -376,8 +400,31 @@ async function refreshManagerOverview({ force = false } = {}) {
   }
 }
 
-function requestManagerOverviewRefresh() {
-  return refreshManagerOverview();
+async function requestUserOverviewRefresh() {
+  if (!state.user || state.user.role !== 'user' || state.user.mustChangePassword || document.hidden || currentPage === 'new-report' || navigator.onLine === false) return false;
+  const pageAtStart = currentPage;
+  const ownerAtStart = state.user.id;
+  const epochAtStart = authEpoch;
+  try {
+    await refreshOverview({ preserveHistory: true });
+    if (epochAtStart !== authEpoch || state.user?.id !== ownerAtStart || currentPage !== pageAtStart) return false;
+    if (currentPage === 'my-reports' && typeof BoundedHistory !== 'undefined') await BoundedHistory.load('submissions', 'refresh');
+    if (epochAtStart !== authEpoch || state.user?.id !== ownerAtStart || currentPage !== pageAtStart) return false;
+    const active = document.activeElement;
+    const preserveSearch = active?.id === 'archiveSearch' && currentPage === 'my-reports';
+    const selectionStart = preserveSearch ? active.selectionStart : null;
+    const selectionEnd = preserveSearch ? active.selectionEnd : null;
+    renderApp();
+    if (preserveSearch) {
+      const search = $('#archiveSearch');
+      if (search) { search.focus({ preventScroll: true }); search.setSelectionRange(selectionStart, selectionEnd); }
+    }
+    return true;
+  } catch { return false; }
+}
+
+function requestManagerOverviewRefresh(force = false) {
+  return refreshManagerOverview({ force });
 }
 
 class ApiFailure extends Error {
@@ -602,7 +649,9 @@ function showLogin(message = '') {
   state.cashBalanceIdr = 0;
   state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
   state.submissions = [];
+  state.pendingSubmissions = [];
   state.users = [];
+  state.usersPage = { page: 1, limit: 100, total: 0, hasMore: false };
   state.cashLedger = [];
   state.auditEvents = [];
   state.summary = {};
@@ -644,7 +693,7 @@ function hidePreloader() {
   preloader.hidden = true;
 }
 
-async function refreshOverview() {
+async function refreshOverview({ preserveHistory = false } = {}) {
   const requestedUser = state.user;
   const requestEpoch = authEpoch;
   if (!requestedUser) throw new ApiFailure(401, 'session_changed', 'Sesi tidak aktif. Masuk kembali untuk melanjutkan.');
@@ -654,16 +703,23 @@ async function refreshOverview() {
   }
   state.user = result.user;
   state.cashBalanceIdr = Number(result.cashBalanceIdr) || 0;
+  state.cashLedgerAnchorId = Number(result.cashLedgerAnchorId ?? result.cashLedger?.[0]?.id ?? 0);
   state.cashFlow = result.cashFlow || { incomingIdr: '0', outgoingIdr: '0' };
   if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.refresh();
   if (typeof FinancialControls !== 'undefined') FinancialControls.refresh();
-  if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
-  state.submissions = Array.isArray(result.submissions) ? result.submissions : [];
+  if (!preserveHistory && typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
+  const nextHistory = result.history || emptyHistory();
+  const preserveUserHistory = preserveHistory && state.user?.role === 'user' && currentPage === 'my-reports';
+  for (const collection of ['submissions', 'cashLedger', 'auditEvents']) {
+    const browsingOlderPage = preserveHistory && Number(state.history?.[collection]?.pageNumber || 1) > 1;
+    if ((collection === 'submissions' && preserveUserHistory) || browsingOlderPage) continue;
+    state[collection] = Array.isArray(result[collection]) ? result[collection] : [];
+    state.history[collection] = nextHistory[collection] || emptyHistory()[collection];
+  }
+  state.pendingSubmissions = Array.isArray(result.pendingSubmissions) ? result.pendingSubmissions : [];
   state.users = Array.isArray(result.users) ? result.users : [];
-  state.cashLedger = Array.isArray(result.cashLedger) ? result.cashLedger : [];
-  state.auditEvents = Array.isArray(result.auditEvents) ? result.auditEvents : [];
+  if (!preserveHistory) state.usersPage = { page: 1, limit: 100, total: 0, hasMore: state.users.length >= 100 };
   state.summary = result.summary || {};
-  state.history = result.history || emptyHistory();
   configureBoundedHistory();
   if (state.user?.role === 'manager') void loadCashInsights();
 }
@@ -795,12 +851,12 @@ function userOverview() {
     <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><h2 id="userStatusTitle">Laporan terbaru</h2></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada laporan', 'Pilih Buat laporan di navigasi untuk mengirim kebutuhan.')}</section>`;
 }
 function managerApprovals() {
-  const pending = state.submissions.filter(item => item.status === 'pending');
+  const pending = Array.isArray(state.pendingSubmissions) ? state.pendingSubmissions : state.submissions.filter(item => item.status === 'pending');
   const history = state.submissions.filter(item => item.status !== 'pending');
   const audit = state.auditEvents;
   return `${pageHeading('Persetujuan', 'Tinjau setiap pengajuan. Keputusan petty cash tercatat bersama perubahan saldo.')}
     <div class="metric-row" aria-label="Ringkasan persetujuan">${metricCard('review', 'Menunggu', String(state.summary.pending ?? pending.length))}${metricCard('wallet', 'Saldo petty cash', compactMoney(state.cashBalanceIdr), 'overview', money(state.cashBalanceIdr))}${metricCard('report', 'Masuk hari ini', String(state.summary.today ?? 0))}</div>
-    <div class="section-row"><div><h2>Antrian</h2></div></div>${pending.length ? `<div class="list-stack">${pending.map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Belum ada pengajuan menunggu', 'Keputusan Manager yang selesai akan tetap ada di riwayat.')}
+    <div class="section-row"><div><h2>Antrian</h2></div></div>${pending.length ? `<div class="list-stack">${pending.map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>${Number(state.summary.pending || 0) > pending.length ? `<p class="field-help" role="status">Menampilkan ${pending.length} antrean tertua dari ${Number(state.summary.pending)} pengajuan menunggu.</p>` : ''}` : emptyState('Belum ada pengajuan menunggu', 'Keputusan Manager yang selesai akan tetap ada di riwayat.')}
     <div class="section-row"><div><h2>Riwayat keputusan</h2></div><span class="archive-total">${Math.max(0, Number(state.summary.total || 0) - Number(state.summary.pending || 0))} pengajuan</span></div>${history.length ? `<div class="list-stack">${history.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada keputusan', 'Persetujuan dan penolakan akan tercatat di sini.')}
     ${historyControls('submissions', 'pengajuan')}
     <details class="audit-panel" data-panel="audit-events"><summary>Riwayat perubahan sistem (${state.history.auditEvents.loaded} dari ${state.history.auditEvents.total})</summary>${audit.length ? `<ol class="audit-list">${audit.map(auditRow).join('')}</ol>` : `<p class="field-help">Belum ada aktivitas audit.</p>`}${historyControls('auditEvents', 'aktivitas audit')}</details>`;
@@ -835,7 +891,7 @@ function auditRow(event) {
   };
   const label = actionLabels[event.action] || event.action;
   const amount = details.amount_idr ? ` · ${money(details.amount_idr)}` : '';
-  const reason = details.reason ? ` · Alasan: ${details.reason}` : '';
+  const reason = details.reason ? ` · Alasan: ${escapeHTML(details.reason)}` : '';
   return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actor_name || 'Sistem')}</span></div><small>${escapeHTML(dateTimeLong(event.created_at))}${amount}${reason}</small></li>`;
 }
 
@@ -843,6 +899,15 @@ function ledgerRow(event) {
   const debit = event.direction === 'debit';
   const topup = event.event_type === 'cash_topup';
   return `<li><div class="audit-main"><strong>${topup ? 'Petty cash ditambah' : debit ? 'Pengeluaran petty cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
+}
+
+async function refreshUsersPage(page = 1, append = false) {
+  if (!state.user || state.user.role !== 'manager') return false;
+  const result = await api(`/users?page=${page}&limit=100`);
+  const rows = Array.isArray(result.users) ? result.users : [];
+  state.users = rows;
+  state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore) };
+  return true;
 }
 
 function usersPage() {
@@ -860,16 +925,13 @@ function usersPage() {
   const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
-    <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.users.length} akun</span></div>
-    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
+    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
 
 function myReportsPage() {
   const query = state.archiveSearch.trim().toLocaleLowerCase('id-ID');
-  const filtered = state.submissions.filter(item => {
-    const text = `${item.description} ${item.note} ${reportTypeLabel(item.type)} ${dateLong(item.date)} ${item.status}`.toLocaleLowerCase('id-ID');
-    return (state.archiveType === 'all' || item.type === state.archiveType) && (!query || text.includes(query));
-  }).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt).localeCompare(String(a.createdAt)));
+  const filtered = state.submissions.filter(item => state.archiveType === 'all' || item.type === state.archiveType).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
   const groups = new Map();
   for (const item of filtered) {
     const key = String(item.date).slice(0, 7);
@@ -1200,6 +1262,20 @@ function friendlyError(error) {
   return 'Koneksi ke layanan gagal. Periksa koneksi lalu coba lagi.';
 }
 
+async function renderAfterMutation(successMessage, committedMessage = successMessage) {
+  try {
+    await refreshOverview();
+    renderApp();
+    showToast(successMessage);
+    return true;
+  } catch (error) {
+    if (error?.code === 'session_changed' || !state.user) return false;
+    renderApp();
+    showToast(committedMessage);
+    return false;
+  }
+}
+
 async function performConfirmedAction() {
   if (!confirmAction) return;
   const button = $('#confirmSubmit');
@@ -1211,9 +1287,7 @@ async function performConfirmedAction() {
     if (action.kind === 'deactivate') await api(`/users/${encodeURIComponent(action.id)}/deactivate`, { method: 'POST', body: {} });
     closeDialogs();
     confirmAction = null;
-    await refreshOverview();
-    renderApp();
-    showToast(action.successMessage);
+    await renderAfterMutation(action.successMessage, `${action.successMessage} Ringkasan belum diperbarui; muat ulang saat koneksi tersedia.`);
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1231,9 +1305,7 @@ async function performReject(event) {
   try {
     await api(`/submissions/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason } });
     closeDialogs();
-    await refreshOverview();
-    renderApp();
-    showToast('Penolakan dan alasannya tersimpan pada riwayat.');
+    await renderAfterMutation('Penolakan dan alasannya tersimpan pada riwayat.', 'Penolakan sudah tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1247,20 +1319,21 @@ async function performUserPasswordReset(event) {
   if (!form.reportValidity()) return;
   const button = $('#userPasswordSubmit');
   setButtonBusy(button, true, 'Menyimpan password…');
+  const targetId = resetTargetId;
+  const target = state.users.find(user => user.id === targetId);
+  const targetEmail = target?.email;
   try {
-    const target = state.users.find(user => user.id === resetTargetId);
-    if (!target?.email) throw new Error('Akun pengguna tidak ditemukan. Muat ulang halaman lalu coba lagi.');
+    if (!targetEmail || resetTargetId !== targetId) throw new Error('Akun pengguna tidak ditemukan. Muat ulang halaman lalu coba lagi.');
     const credential = await PasswordCrypto.deriveWithRandomSalt($('#temporaryPassword').value);
-    await api(`/users/${encodeURIComponent(resetTargetId)}/password`, {
+    if (resetTargetId !== targetId || state.users.find(user => user.id === targetId)?.email !== targetEmail) throw new Error('Target akun berubah. Tutup dialog lalu ulangi dari daftar pengguna.');
+    await api(`/users/${encodeURIComponent(targetId)}/password`, {
       method: 'POST',
       body: { credential }
     });
     closeDialogs();
     form.reset();
     resetTargetId = '';
-    await refreshOverview();
-    renderApp();
-    showToast('Password tersimpan. Sampaikan secara terpisah kepada pengguna.');
+    await renderAfterMutation('Password tersimpan. Sampaikan secara terpisah kepada pengguna.', 'Password tersimpan. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1323,9 +1396,7 @@ async function performNewUser(event) {
       email: String(data.get('email')).trim(),
       position: String(data.get('position') || '').trim()
     } });
-    await refreshOverview();
-    renderApp();
-    showToast('Akun User dibuat. Atur password sementara sebelum akses diberikan.');
+    await renderAfterMutation('Akun User dibuat. Atur password sementara sebelum akses diberikan.', 'Akun User dibuat. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1355,6 +1426,7 @@ async function performNewSubmission(event) {
   try {
     const payload = { type: String(data.get('type')), amountIdr: Number(data.get('amountIdr')), date: String(data.get('date')), description: String(data.get('description')).trim(), note: String(data.get('note') || '').trim() };
     const savedDraft = typeof readDraft === 'function' ? readDraft('report', payload.type) : null;
+    if (typeof reportTypePreset !== 'undefined' && reportTypePreset !== payload.type) submissionIdempotencyKey = savedDraft?.idempotencyKey || '';
     const submittedFingerprint = JSON.stringify(payload);
     if (!submissionIdempotencyKey || (savedDraft?.submittedFingerprint && savedDraft.submittedFingerprint !== submittedFingerprint)) submissionIdempotencyKey = newSubmissionKey();
     if (typeof writeDraft === 'function') writeDraft('report', payload.type, { ...payload, amountIdr: String(payload.amountIdr), idempotencyKey: submissionIdempotencyKey, submittedFingerprint });
@@ -1457,18 +1529,48 @@ async function downloadPdf(button) {
 
 function configureBoundedHistory() {
   if (typeof BoundedHistory === 'undefined') return;
+  const configuredEpoch = authEpoch;
+  const configuredOwner = state.user?.id;
   BoundedHistory.configure({
-    api, getUser: () => state.user, getEpoch: () => authEpoch,
+    api: async (path, options) => {
+      const requestedPage = currentPage;
+      const requestedQuery = `${state.archiveSearch}|${state.archiveType}`;
+      const read = async endpoint => {
+        const result = await api(endpoint, options);
+        if (requestedPage !== currentPage || (requestedPage === 'my-reports' && requestedQuery !== `${state.archiveSearch}|${state.archiveType}`)) throw new ApiFailure(409, 'session_changed', 'Halaman sudah berubah.');
+        return result;
+      };
+      if (path.startsWith('/history/submissions') && state.user?.role === 'user' && currentPage === 'my-reports') {
+        const url = new URL(path, 'https://app.local');
+        const query = new URLSearchParams(url.search);
+        const search = state.archiveSearch.trim();
+        const aliases = { 'disetujui': 'approved', 'approved': 'approved', 'menunggu manager': 'pending', 'menunggu': 'pending', 'ditolak': 'rejected', 'terkirim ke finance': 'sent', 'terkirim': 'sent' };
+        if (aliases[search.toLocaleLowerCase('id-ID')]) query.set('status', aliases[search.toLocaleLowerCase('id-ID')]);
+        else if (search) query.set('q', search);
+        if (state.archiveType !== 'all') query.set('kind', state.archiveType);
+        return read(`/submissions?${query.toString()}`);
+      }
+      return read(path);
+    }, getUser: () => state.user, getEpoch: () => authEpoch,
     getRows: key => state[key] || [], setRows: (key, rows) => { state[key] = rows; },
     getPage: key => state.history?.[key], setPage: (key, page) => { state.history[key] = page; },
     onError: error => { if (error.code !== 'session_changed') showToast(friendlyError(error)); },
     onChange: collection => queueMicrotask(() => {
-      if (!state.user || currentPage === 'new-report') return;
+      if (!state.user || currentPage === 'new-report' || authEpoch !== configuredEpoch || state.user.id !== configuredOwner) return;
+      const active = document.activeElement;
+      const preserveSearch = active?.id === 'archiveSearch' && currentPage === 'my-reports';
+      const selectionStart = preserveSearch ? active.selectionStart : null;
+      const selectionEnd = preserveSearch ? active.selectionEnd : null;
       renderApp();
-      if (collection === 'submissions') $('#mainContent').scrollTo(0, 0);
-      const panel = collection === 'cashLedger' ? $('#appContent details[data-panel="cash-ledger"]') : null;
-      if (panel) panel.scrollIntoView({ block: 'start', behavior: 'auto' });
-      document.querySelector(`.history-controls button[data-collection="${collection}"]`)?.focus({ preventScroll: true });
+      if (preserveSearch) {
+        const search = $('#archiveSearch');
+        if (search) { search.focus({ preventScroll: true }); search.setSelectionRange(selectionStart, selectionEnd); }
+      } else {
+        if (collection === 'submissions') $('#mainContent').scrollTo(0, 0);
+        const panel = collection === 'cashLedger' ? $('#appContent details[data-panel="cash-ledger"]') : null;
+        if (panel) panel.scrollIntoView({ block: 'start', behavior: 'auto' });
+        document.querySelector(`.history-controls button[data-collection="${collection}"]`)?.focus({ preventScroll: true });
+      }
     })
   });
 }
@@ -1483,6 +1585,12 @@ function canCloseReportActivity(dialog) {
   if (typeof ReportEvidence === 'undefined' || !dialog) return true;
   if (ReportEvidence.isBusy?.(dialog)) { showToast('Tunggu pemrosesan atau unggahan nota selesai.'); return false; }
   return !ReportEvidence.hasPending?.(dialog) || window.confirm('Nota yang dipilih belum diunggah. Tutup dan buang pilihan nota?');
+}
+function canCloseAppDialog(dialog) {
+  if (!dialog) return true;
+  if (dialog.id === 'reportActivityDialog') return canCloseReportActivity(dialog);
+  if (dialog.id === 'cashTopupDialog' && cashTopupBusy) { showToast('Tunggu penambahan saldo selesai.'); return false; }
+  return true;
 }
 async function openReportActivity(id, trigger) {
   if (!state.user || state.user.mustChangePassword) return;
@@ -1544,12 +1652,15 @@ async function handleAction(button) {
     return;
   }
   if (action === 'history-previous' || action === 'history-first') { await loadMoreHistory(button.dataset.collection, button, action === 'history-first' ? 'first' : 'previous'); return; }
-  if (action === 'refresh-cash-insights') { await loadCashInsights(); return; }
+  if (action === 'refresh-cash-insights') { await loadCashInsights({ force: true }); return; }
   if (action === 'configure-cash-minimum') { configureCashMinimum(button); return; }
   if (action === 'clear-cash-minimum') { clearCashMinimum(); return; }
   if (action === 'load-more-cash-days') { state.cashInsightsDailyLimit = (state.cashInsightsDailyLimit || 14) + 14; renderCashInsightsRegion(); return; }
   const id = button.dataset.id;
   if (action === 'report-detail') { await openReportActivity(id, button);
+  } else if (action === 'load-more-users' || action === 'previous-users') {
+    const next = Math.max(1, Number(state.usersPage.page || 1) + (action === 'previous-users' ? -1 : 1));
+    try { await refreshUsersPage(next); renderApp(); } catch (error) { showToast(friendlyError(error)); }
   } else if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
@@ -1558,8 +1669,8 @@ async function handleAction(button) {
     renderApp();
   } else if (action === 'close-dialog') {
     if (button.closest('#userProfileDialog') && profileDraft?.saving) return;
-    if (button.closest('#cashTopupDialog') && cashTopupBusy) return;
-    button.closest('dialog')?.close();
+    const dialog = button.closest('dialog');
+    if (canCloseAppDialog(dialog)) dialog?.close();
   } else if (action === 'edit-user-profile') {
     openUserProfile(id);
   } else if (action === 'remove-profile-photo') {
@@ -1695,6 +1806,13 @@ function bindEvents() {
       currentPage = page;
       renderApp();
       $('#mainContent').focus({ preventScroll: true });
+      if (page === 'users' && state.user?.role === 'manager') {
+        void refreshUsersPage(1).then(() => { if (currentPage === page) renderApp(); })
+          .catch(error => { if (error.code !== 'session_changed') showToast(friendlyError(error)); });
+      } else if (page === 'my-reports' && state.user?.role === 'user' && typeof BoundedHistory !== 'undefined') {
+        configureBoundedHistory();
+        void BoundedHistory.load('submissions', 'refresh');
+      }
       return;
     }
     const actionButton = event.target.closest('[data-action]');
@@ -1725,7 +1843,7 @@ function bindEvents() {
   });
 
   document.addEventListener('input', event => {
-    if (event.target.closest?.('#reportForm')) persistReportDraft();
+    if (event.target.closest?.('#reportForm') && event.target.id !== 'reportType') persistReportDraft();
     if (event.target.closest?.('#cashTopupForm')) persistCashTopupDraft();
     if (event.target.id === 'loginIdentifier' || event.target.id === 'loginPassword') {
       $('#loginError').hidden = true;
@@ -1734,6 +1852,19 @@ function bindEvents() {
       state.archiveSearch = event.target.value;
       const result = $('#archiveResults');
       if (result) {
+        if (state.user?.role === 'user' && currentPage === 'my-reports' && typeof BoundedHistory !== 'undefined') {
+          window.clearTimeout(archiveSearchTimer);
+          const searchEpoch = authEpoch;
+          const searchOwner = state.user.id;
+          archiveSearchTimer = window.setTimeout(() => {
+            if (searchEpoch !== authEpoch || state.user?.id !== searchOwner || currentPage !== 'my-reports') return;
+            BoundedHistory.reset();
+            state.submissions = [];
+            state.history.submissions = { nextCursor: null, hasMore: false, total: 0, loaded: 0 };
+            configureBoundedHistory();
+            void BoundedHistory.load('submissions', 'first');
+          }, 250);
+        }
         const selectionStart = event.target.selectionStart;
         const selectionEnd = event.target.selectionEnd;
         const updated = myReportsPage();
@@ -1749,15 +1880,31 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener('change', event => {
+    if (event.target.id !== 'reportType' || !event.target.closest('#reportForm')) return;
+    reportTypePreset = String(event.target.value);
+    submissionIdempotencyKey = reportDraft(reportTypePreset).idempotencyKey || '';
+    renderApp();
+    $('#reportType')?.focus({ preventScroll: true });
+  });
+
   document.addEventListener('click', event => {
     const filter = event.target.closest('[data-report-filter]');
     if (filter) {
       state.archiveType = filter.dataset.reportFilter;
+      window.clearTimeout(archiveSearchTimer);
+      if (state.user?.role === 'user' && currentPage === 'my-reports' && typeof BoundedHistory !== 'undefined') {
+        BoundedHistory.reset();
+        state.submissions = [];
+        state.history.submissions = { nextCursor: null, hasMore: false, total: 0, loaded: 0 };
+        configureBoundedHistory();
+        void BoundedHistory.load('submissions', 'first');
+      }
       renderApp();
     }
     const dialog = event.target;
     if (dialog.id === 'userProfileDialog' && profileDraft?.saving) return;
-    if (dialog instanceof HTMLDialogElement && event.target === dialog) dialog.close();
+    if (dialog instanceof HTMLDialogElement && event.target === dialog && canCloseAppDialog(dialog)) dialog.close();
   });
 
   document.addEventListener('error', event => {
@@ -1781,15 +1928,15 @@ function bindEvents() {
     $('#profileError').hidden = true;
     $('#profileSubmit').disabled = false;
   });
-  window.addEventListener('focus', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
-  window.addEventListener('pageshow', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); });
-  window.addEventListener('online', () => { refreshProfile(); requestManagerOverviewRefresh(); });
+  window.addEventListener('focus', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(true); requestUserOverviewRefresh(); });
+  window.addEventListener('pageshow', () => { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(true); requestUserOverviewRefresh(); });
+  window.addEventListener('online', () => { refreshProfile(); requestManagerOverviewRefresh(true); requestUserOverviewRefresh(); });
   window.addEventListener('online', checkForAppUpdate);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); checkForAppUpdate(); }
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(true); requestUserOverviewRefresh(); checkForAppUpdate(); }
   });
   window.setInterval(() => {
-    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(); checkForAppUpdate(); }
+    if (!document.hidden) { updateWelcomePanel(); refreshProfile(); requestManagerOverviewRefresh(true); requestUserOverviewRefresh(); checkForAppUpdate(); }
   }, managerSyncIntervalMs);
   window.setInterval(checkForAppUpdate, updateCheckIntervalMs);
 
@@ -1813,9 +1960,9 @@ function bindEvents() {
   $('#openingBalanceDialog').addEventListener('click', event => {
     if (event.target === event.currentTarget) event.currentTarget.close();
   });
-  $('#cashTopupDialog').addEventListener('cancel', event => { if (cashTopupBusy) event.preventDefault(); });
+  $('#cashTopupDialog').addEventListener('cancel', event => { if (!canCloseAppDialog(event.currentTarget)) event.preventDefault(); });
   $('#cashTopupDialog').addEventListener('click', event => {
-    if (event.target === event.currentTarget && !cashTopupBusy) event.currentTarget.close();
+    if (event.target === event.currentTarget && canCloseAppDialog(event.currentTarget)) event.currentTarget.close();
   });
 }
 
@@ -1831,9 +1978,7 @@ async function performOpeningBalance(event) {
       body: { amountIdr: Number($('#openingAmount').value), ownerConfirmed: $('#ownerConfirmed').checked }
     });
     closeDialogs();
-    await refreshOverview();
-    renderApp();
-    showToast(result.alreadyApplied ? 'Saldo awal ini sudah pernah dicatat.' : 'Saldo awal dan audit tersimpan.');
+    await renderAfterMutation(result.alreadyApplied ? 'Saldo awal ini sudah pernah dicatat.' : 'Saldo awal dan audit tersimpan.', 'Saldo awal dan audit tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {

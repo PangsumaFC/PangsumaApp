@@ -77,6 +77,16 @@ test('stale epoch response is ignored and reset invalidates an old response', as
   assert.deepEqual(ctx.getRows(), []);
 });
 
+test('reset cannot let an old request clear busy for a newer request', async () => {
+  let releaseOld, releaseNew; const oldGate = new Promise(resolve => { releaseOld = resolve; }); const newGate = new Promise(resolve => { releaseNew = resolve; });
+  let call = 0; const busy = [];
+  setup({ api: async () => { call++; if (call === 1) { await oldGate; return { submissions: [{ id:'old' }], total:1 }; } await newGate; return { submissions: [{ id:'new' }], total:1 }; }, onError: undefined });
+  globalThis.BoundedHistory.configure({ api: async () => { call++; if (call === 1) { await oldGate; return { submissions: [{ id:'old' }], total:1 }; } await newGate; return { submissions: [{ id:'new' }], total:1 }; }, getUser: () => ({ id:'u1', role:'user' }), getEpoch: () => 1, onBusy: (_c, value) => busy.push(value) });
+  const first = globalThis.BoundedHistory.load('submissions', 'first'); globalThis.BoundedHistory.reset();
+  const second = globalThis.BoundedHistory.load('submissions', 'first'); releaseOld(); await first; assert.equal(globalThis.BoundedHistory.controlsMeta('submissions').busy, true);
+  releaseNew(); await second; assert.equal(globalThis.BoundedHistory.controlsMeta('submissions').busy, false); assert.equal(busy.at(-1), false); assert.ok(busy.filter(Boolean).length >= 2);
+});
+
 test('user cannot request manager-only history and cursor trail is bounded', async () => {
   let calls = 0;
   setup({ api: async () => { calls++; return { cashLedger: [], total: 0 }; } });

@@ -66,7 +66,8 @@ def test_outputs_and_manifest() -> None:
 
     manifest = json.loads((SITE / "manifest.webmanifest").read_text())
     assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
-    assert all("?v=2026.10.18.8" in item["src"] for item in manifest["icons"])
+    build = json.loads((SITE / "version.json").read_text())["build"]
+    assert all(f"?v={build}" in item["src"] for item in manifest["icons"])
     assert all(item["purpose"] in {"any", "maskable"} for item in manifest["icons"])
     assert all("any maskable" not in item["purpose"] for item in manifest["icons"])
     assert {item["purpose"] for item in manifest["icons"]} == {"any", "maskable"}

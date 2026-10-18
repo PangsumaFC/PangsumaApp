@@ -65,6 +65,7 @@ def download_once(page: Page, path: Path, standalone: bool = False) -> None:
 def webview_browser_fallback(page: Page, browser: Browser, password: str, label: str) -> None:
     page.locator('[data-page="finance"]:visible').first.click()
     region = page.locator('#managerReportsRegion')
+    region.locator('.report-filter-advanced summary').click()
     region.locator('[name="q"]').fill('PDF fixture petty cash')
     region.locator('[name="jenis"]').select_option('petty_cash')
     region.locator('[name="status"]').select_option('approved')
@@ -199,6 +200,7 @@ def main() -> None:
             direct.save_as(direct_path)
             assert_pdf(direct_path, expected)
             region = page.locator('#managerReportsRegion')
+            region.locator('.report-filter-advanced summary').click()
             region.locator('[name="q"]').fill('PDF fixture petty cash')
             region.locator('[name="jenis"]').select_option('petty_cash')
             region.locator('[type="submit"]').click()

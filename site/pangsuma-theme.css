@@ -757,44 +757,6 @@ button:disabled { box-shadow: none; }
 @media (max-width: 520px) { .cash-health-card { flex-direction: column; } .cash-health-threshold { min-width: 0; width: 100%; text-align: left; } .cash-trend-change { text-align: left; } }
 @media (max-width: 320px) { .cash-health-card, .cash-trend-card { padding: 12px; } .cash-trend-card .section-row { display: block; } .cash-chart-legend { display: block; } .cash-chart-legend span { display: block; margin-top: 4px; } }
 
-/* Cash insights: compact, exact-value and usable at narrow mobile widths. */
-.cash-insights-region { display: grid; gap: 12px; margin: 18px 0; min-width: 0; }
-.cash-health-card, .cash-trend-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
-.cash-health-card { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; background: linear-gradient(135deg, #f7fbfd, #fff); }
-.cash-insights-kicker { margin: 0 0 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
-.cash-health-card h2, .cash-trend-card h2 { margin: 0; color: var(--blue-deep); font-size: 17px; }
-.cash-health-status, .cash-trend-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.cash-health-threshold { min-width: 150px; text-align: right; font-size: 11px; color: var(--muted); }
-.cash-health-threshold strong { display: block; margin: 2px 0; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
-.cash-minimum-form { margin-top: 8px; text-align: left; }
-.cash-minimum-form label { display: block; color: var(--ink); font-size: 12px; font-weight: 650; }
-.cash-minimum-form input { width: 100%; min-height: 38px; margin: 5px 0; box-sizing: border-box; }
-.cash-minimum-form .form-actions { margin-top: 7px; gap: 6px; }
-.cash-minimum-form .form-actions button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
-.cash-trend-card .section-row { align-items: flex-start; }
-.cash-trend-change { color: var(--blue-deep); font-size: 12px; text-align: right; }
-.cash-trend-card details { margin-top: 10px; }
-.cash-chart-caption { margin-bottom: 8px !important; }
-.cash-trend-chart { display: block; width: 100%; max-height: 145px; overflow: visible; fill: #4e87b5; stroke: #7894a9; stroke-width: .7; }
-.cash-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0 10px; color: var(--muted); font-size: 11px; }
-.cash-chart-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; background: #4e87b5; }
-.cash-daily-table { min-width: 620px; font-size: 12px; }
-.cash-daily-table caption { padding: 7px 0; color: var(--muted); font-size: 12px; text-align: left; }
-@media (max-width: 520px) { .cash-health-card { flex-direction: column; } .cash-health-threshold { min-width: 0; width: 100%; text-align: left; } .cash-trend-change { text-align: left; } }
-@media (max-width: 320px) { .cash-health-card, .cash-trend-card { padding: 12px; } .cash-trend-card .section-row { display: block; } .cash-chart-legend { display: block; } .cash-chart-legend span { display: block; margin-top: 4px; } }
-
-.cash-insights-region { display:grid; gap:12px; margin:18px 0; min-width:0; }
-.cash-health-card,.cash-trend-card { min-width:0; padding:14px 16px; border:1px solid var(--line); border-radius:16px; background:var(--paper); }
-.cash-health-card { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; background:linear-gradient(135deg,#f7fbfd,#fff); }
-.cash-insights-kicker { margin:0 0 3px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; }
-.cash-health-card h2,.cash-trend-card h2 { margin:0; color:var(--blue-deep); font-size:17px; }
-.cash-health-status,.cash-trend-card p { margin:5px 0 0; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
-.cash-health-threshold { min-width:150px; text-align:right; font-size:11px; color:var(--muted); }
-.cash-health-threshold strong { display:block; margin:2px 0; color:var(--ink); font-size:14px; overflow-wrap:anywhere; }
-.cash-minimum-form { margin-top:8px; text-align:left; }.cash-minimum-form label { display:block; color:var(--ink); font-size:12px; font-weight:650; }.cash-minimum-form input { width:100%; min-height:38px; margin:5px 0; box-sizing:border-box; }.cash-minimum-form .form-actions { margin-top:7px; gap:6px; }.cash-minimum-form .form-actions button { min-height:34px; padding:6px 10px; font-size:12px; }
-.cash-trend-card .section-row { align-items:flex-start; }.cash-trend-change { color:var(--blue-deep); font-size:12px; text-align:right; }.cash-trend-card details { margin-top:10px; }.cash-chart-caption { margin-bottom:8px!important; }.cash-trend-chart { display:block; width:100%; max-height:145px; fill:#4e87b5; stroke:#7894a9; stroke-width:.7; }.cash-chart-legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin:6px 0 10px; color:var(--muted); font-size:11px; }.cash-chart-legend i { display:inline-block; width:9px; height:9px; margin-right:3px; background:#4e87b5; }.cash-daily-table { min-width:620px; font-size:12px; }.cash-daily-table caption { padding:7px 0; color:var(--muted); font-size:12px; text-align:left; }
-@media (max-width:520px) { .cash-health-card { flex-direction:column; }.cash-health-threshold { min-width:0; width:100%; text-align:left; }.cash-trend-change { text-align:left; } } @media (max-width:320px) { .cash-health-card,.cash-trend-card { padding:12px; }.cash-trend-card .section-row { display:block; }.cash-chart-legend { display:block; }.cash-chart-legend span { display:block; margin-top:4px; } }
-
 /* Accessible report workspace. */
 .manager-report-filters { margin: 20px 0 28px; padding: clamp(14px, 3vw, 22px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); }
 .manager-report-filters fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -815,6 +777,14 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
   .report-filter-actions > button { flex: 1; }
 }
 @media (max-width: 350px) { .report-filter-grid { grid-template-columns: minmax(0, 1fr); } }
+.report-filter-search { display: grid; gap: 6px; color: var(--ink); font-size: 13px; font-weight: 600; }
+.report-filter-advanced { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fbfcfd; }
+.report-filter-advanced summary { min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; cursor: pointer; color: var(--blue-deep); font-weight: 700; }
+.report-filter-advanced summary span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.report-filter-advanced[open] summary { border-bottom: 1px solid var(--line); }
+.report-filter-advanced .report-filter-grid { padding: 12px; }
+@media (max-width: 390px) { .report-filter-advanced summary span { max-width: 45%; text-align: right; } }
+
 .cash-health-equation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 14px 0; }
 .cash-health-equation > div { min-width: 0; }
 .cash-health-equation dt { color: var(--muted); font-size: 11px; }

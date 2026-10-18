@@ -38,17 +38,20 @@ function envMinimum(env) {
   return value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER) ? value.toString() : null;
 }
 
-async function readAllLedger(db) {
+async function readAllLedger(db, ledgerAnchorId) {
   const rows = [];
   let cursor = null;
   for (;;) {
+    const predicates = ['id <= ?'];
+    const params = [ledgerAnchorId];
+    if (cursor !== null) { predicates.push('id < ?'); params.push(cursor); }
     const result = await db.prepare(`
       SELECT id, event_type, direction, CAST(amount_idr AS TEXT) AS amount_idr,
              CAST(balance_after_idr AS TEXT) AS balance_after_idr, created_at
       FROM cash_ledger
-      ${cursor === null ? '' : 'WHERE id < ?'}
+      WHERE ${predicates.join(' AND ')}
       ORDER BY id DESC LIMIT ${MAX_PAGE}
-    `).bind(...(cursor === null ? [] : [cursor])).all();
+    `).bind(...params).all();
     const page = result.results || [];
     rows.push(...page);
     if (page.length < MAX_PAGE) break;
@@ -68,8 +71,25 @@ function daysBetween(start, end) {
 export async function getCashInsights(db, env = {}, options = {}) {
   const today = options.today || wibDate(new Date());
   const window = cashTrendWindow(today);
-  const ledger = await readAllLedger(db);
-  const account = await db.prepare("SELECT CAST(COALESCE(balance_idr, 0) AS TEXT) AS balance_idr FROM cash_accounts WHERE id = 'operational' LIMIT 1").first();
+  let snapshotAt = options.snapshotAt || new Date().toISOString();
+  // A requested future analysis date is only used by deterministic fixtures; never
+  // move a live snapshot backwards, but include the requested day when it is
+  // ahead of the current clock so historical-window tests remain reproducible.
+  if (!options.snapshotAt && options.today) {
+    const requestedEnd = new Date(`${options.today}T23:59:59.999+07:00`).toISOString();
+    if (requestedEnd > snapshotAt) snapshotAt = requestedEnd;
+  }
+  // Establish one immutable boundary: the account value and ledger high-water mark
+  // come from the same SQLite statement. Ledger IDs are append-only and monotonic,
+  // so paging by this anchor cannot mix a later balance with an earlier ledger.
+  const anchor = await db.prepare(`
+    SELECT CAST(COALESCE(ca.balance_idr, 0) AS TEXT) AS balance_idr,
+           COALESCE((SELECT MAX(id) FROM cash_ledger), 0) AS ledger_high_water_id
+    FROM cash_accounts ca WHERE ca.id = 'operational' LIMIT 1
+  `).first();
+  const account = anchor || { balance_idr: '0', ledger_high_water_id: 0 };
+  const ledger = await readAllLedger(db, Number(account.ledger_high_water_id || 0));
+  const snapshotStable = true;
   const daily = new Map();
   const opening = { value: 0n };
   let topups = 0n;
@@ -100,7 +120,10 @@ export async function getCashInsights(db, env = {}, options = {}) {
     timezone: 'Asia/Jakarta',
     account: { balanceIdr: balance.toString() },
     totals: { openingIdr: opening.value.toString(), topupsIdr: topups.toString(), outgoingIdr: outgoing.toString() },
-    accounting: { expectedBalanceIdr: expected.toString(), discrepancyIdr: (balance - expected).toString(), isBalanced: balance === expected },
+    snapshotAt, snapshotStable, ledgerAnchorId: Number(account.ledger_high_water_id || 0),
+    accounting: snapshotStable
+      ? { expectedBalanceIdr: expected.toString(), discrepancyIdr: (balance - expected).toString(), isBalanced: balance === expected }
+      : { expectedBalanceIdr: null, discrepancyIdr: null, isBalanced: null },
     minimumIdr: envMinimum(env),
     daily: [...daily.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([day, value]) => ({ day, incomingIdr: value.incoming.toString(), outgoingIdr: value.outgoing.toString(), openingIdr: value.opening.toString(), closingIdr: value.closing.toString(), rowCount: value.count })),
     trend: { window, days: trend, outgoingIdr: current.toString(), precedingOutgoingIdr: previous.toString() }

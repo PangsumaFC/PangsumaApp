@@ -109,6 +109,7 @@ def main():
         page.locator('[data-page="finance"]:visible').first.click()
         region = page.locator("#managerReportsRegion")
         expect(region).to_be_visible()
+        region.locator('.report-filter-advanced summary').click()
         region.locator('[name="q"]').fill("Workspace dana latihan")
         region.locator('[name="jenis"]').select_option("petty_cash")
         region.locator('[name="status"]').select_option("approved")

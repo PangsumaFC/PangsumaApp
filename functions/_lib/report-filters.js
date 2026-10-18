@@ -16,11 +16,18 @@ function valueOf(params, ...keys) {
   for (const key of keys) if (params.has(key)) return params.get(key);
   return '';
 }
+const STATUS_ALIASES = new Map([
+  ['pending', 'pending'], ['approved', 'approved'], ['rejected', 'rejected'], ['sent', 'sent'],
+  ['menunggu manager', 'pending'],
+  ['menunggu', 'pending'], ['disetujui', 'approved'], ['ditolak', 'rejected'],
+  ['terkirim', 'sent'], ['terkirim ke finance', 'sent']
+]);
 function one(value, name, allowed) {
   if (!value) return '';
   const result = String(value).trim();
-  if (!allowed.has(result)) throw new ApiError(400, `invalid_${name}`, `${name} filter tidak valid.`);
-  return result;
+  const normalized = name === 'status' ? (STATUS_ALIASES.get(result.toLowerCase()) || result) : result;
+  if (!allowed.has(normalized)) throw new ApiError(400, `invalid_${name}`, `${name} filter tidak valid.`);
+  return normalized;
 }
 function escapedLike(value) {
   return String(value).replace(/[\\%_]/g, ch => `\\${ch}`);
@@ -35,6 +42,8 @@ export function parseReportFilters(input = new URLSearchParams(), now = new Date
   const today = jakartaDate(now);
   let startDate = valueOf(params, 'start', 'startDate', 'dari').trim();
   let endDate = valueOf(params, 'end', 'endDate', 'sampai').trim();
+  const exactDate = valueOf(params, 'date').trim();
+  if (exactDate) { startDate = exactDate; endDate = exactDate; }
   if (period === 'mingguini') {
     const day = new Date(`${today}T00:00:00.000Z`).getUTCDay();
     startDate = shiftDate(today, -(day === 0 ? 6 : day - 1));
@@ -54,7 +63,7 @@ export function parseReportFilters(input = new URLSearchParams(), now = new Date
   if (q.length > 120) throw new ApiError(400, 'invalid_search', 'Pencarian maksimal 120 karakter.');
   const applicant = valueOf(params, 'pengaju', 'applicant', 'createdBy').trim();
   if (applicant.length > 120) throw new ApiError(400, 'invalid_applicant', 'Pengaju maksimal 120 karakter.');
-  const type = one(valueOf(params, 'jenis', 'type'), 'type', TYPES);
+  const type = one(valueOf(params, 'jenis', 'type', 'kind'), 'type', TYPES);
   const status = one(valueOf(params, 'status'), 'status', STATUSES);
   return { period, startDate, endDate, q, applicant, type, status };
 }
@@ -74,9 +83,13 @@ export function buildSubmissionFilterSql(filters, { alias = 's', creatorAlias = 
     params.push(f.applicant, like, like);
   }
   if (f.q) {
-    const like = `%${escapedLike(f.q)}%`;
-    clauses.push(`(${alias}.description LIKE ? ESCAPE '\\' OR ${alias}.note LIKE ? ESCAPE '\\' OR ${creatorAlias}.name LIKE ? ESCAPE '\\')`);
-    params.push(like, like, like);
+    const localizedStatus = STATUS_ALIASES.get(String(f.q).trim().toLowerCase());
+    if (localizedStatus) { clauses.push(`${alias}.status = ?`); params.push(localizedStatus); }
+    else {
+      const like = `%${escapedLike(f.q)}%`;
+      clauses.push(`(${alias}.description LIKE ? ESCAPE '\\' OR ${alias}.note LIKE ? ESCAPE '\\' OR ${creatorAlias}.name LIKE ? ESCAPE '\\' OR ${alias}.date LIKE ? ESCAPE '\\')`);
+      params.push(like, like, like, like);
+    }
   }
   return { where: clauses.length ? clauses.join(' AND ') : '1=1', clauses, params };
 }

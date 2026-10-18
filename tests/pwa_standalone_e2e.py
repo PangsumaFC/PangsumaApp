@@ -160,6 +160,7 @@ def main() -> None:
         page.locator('[data-page="finance"]:visible').first.click()
         form = page.locator("#managerReportFiltersForm")
         form.wait_for(state="visible")
+        form.locator('.report-filter-advanced summary').click()
         form.locator("input[name='q']").fill("PWA regression included")
         form.locator("select[name='jenis']").select_option("finance_request")
         form.locator("select[name='status']").select_option("approved")

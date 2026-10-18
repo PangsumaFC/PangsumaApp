@@ -7,7 +7,7 @@ const source = fs.readFileSync(new URL('../site/report-evidence.js', import.meta
 
 test('receipt picker is an explicit gallery control without forced camera capture', () => {
   assert.match(source, /class="receipt-file-label" for="receipt-file-\$\{esc\(submission\.id\)\}"/);
-  assert.match(source, /type="file" accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.match(source, /type="file" accept="image\/jpeg,image\/png"/);
   assert.doesNotMatch(source, /capture="environment"/);
   assert.match(source, /ctx\.input\.disabled = true/);
 });

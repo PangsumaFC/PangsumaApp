@@ -25,3 +25,9 @@ test('normalizer rejects SVG before decoding and oversized input', async () => {
   await assert.rejects(() => evidence.normalizeImage({ type: 'image/svg+xml', size: 100 }), /SVG/);
   await assert.rejects(() => evidence.normalizeImage({ type: 'image/jpeg', size: 10 * 1024 * 1024 + 1 }), /10 MB/);
 });
+
+test('picker accept list is aligned with decoder-supported JPEG and PNG types', () => {
+  const source = fs.readFileSync(new URL('../site/report-evidence.js', import.meta.url), 'utf8');
+  assert.match(source, /accept=\"image\/jpeg,image\/png\"/);
+  assert.doesNotMatch(source, /accept=\"image\/jpeg,image\/png,image\/webp\"/);
+});

@@ -86,7 +86,12 @@
       const suppliedPage = typeof options.getPage === 'function' ? options.getPage(collection) : null;
       if (Array.isArray(suppliedRows)) s.rows = suppliedRows;
       if (suppliedPage && typeof suppliedPage === 'object') {
-        s.trail[0] = { ...s.trail[0], nextCursor: suppliedPage.nextCursor || null, hasMore: Boolean(suppliedPage.hasMore), total: Number(suppliedPage.total || 0) };
+        const suppliedNumber = Number(suppliedPage.pageNumber || 1);
+        if (s.trail[s.index].pageNumber !== suppliedNumber) {
+          s.trail = [{ cursor: '', pageNumber: 1, nextCursor: null, hasMore: false, total: 0 }];
+          s.index = 0;
+        }
+        s.trail[s.index] = { ...s.trail[s.index], nextCursor: suppliedPage.nextCursor || null, hasMore: Boolean(suppliedPage.hasMore), total: Number(suppliedPage.total || 0) };
       }
       s.metadata = metadata(s, s.rows);
     }
@@ -94,7 +99,7 @@
   }
 
   function load(collection, direction = 'next') {
-    if (!configs[collection] || !['next', 'previous', 'first'].includes(direction)) return Promise.resolve(undefined);
+    if (!configs[collection] || !['next', 'previous', 'first', 'refresh'].includes(direction)) return Promise.resolve(undefined);
     if (!options.api || !allowed(collection)) return Promise.resolve(undefined);
     if (busy.has(collection)) return busy.get(collection);
     const s = stateFor(collection);
@@ -110,6 +115,9 @@
       if (!current.hasMore || !current.nextCursor) return Promise.resolve(undefined);
       cursor = String(current.nextCursor);
       pageNumber = current.pageNumber + 1;
+    } else if (direction === 'refresh') {
+      cursor = current.cursor;
+      pageNumber = current.pageNumber;
     } else if (direction === 'previous') {
       if (s.index <= 0) return Promise.resolve(undefined);
       targetIndex = s.index - 1;
@@ -127,7 +135,7 @@
         if (direction === 'first') {
           s.trail = [{ cursor: '', pageNumber: 1, nextCursor: result?.nextCursor || null, hasMore: Boolean(result?.hasMore), total: Number(result?.total || 0) }];
           s.index = 0;
-        } else if (direction === 'previous') {
+        } else if (direction === 'previous' || direction === 'refresh') {
           s.index = targetIndex;
           s.trail[s.index] = { ...s.trail[s.index], nextCursor: result?.nextCursor || null, hasMore: Boolean(result?.hasMore), total: Number(result?.total || 0) };
         } else {
@@ -142,8 +150,12 @@
         if (requestedGeneration === generation && requestedEpoch === epoch() && requestedOwner === owner() && typeof options.onError === 'function') options.onError(error, collection);
         return undefined;
       } finally {
-        busy.delete(collection);
-        setBusy(collection, false);
+        // A reset or a newer request may have replaced this promise. Never let
+        // an old response clear the busy state belonging to that newer request.
+        if (busy.get(collection) === requestPromise) {
+          busy.delete(collection);
+          setBusy(collection, false);
+        }
       }
     })();
     busy.set(collection, requestPromise);
