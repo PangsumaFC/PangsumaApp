@@ -123,6 +123,9 @@ function resetNavigationSession(page = 'overview') {
 function navigateToPage(page, { replace = false, fromPop = false } = {}) {
   if (!navigationPageAllowed(page)) return false;
   const changed = currentPage !== page;
+  const profileDialog = typeof document !== 'undefined' ? document.querySelector('#userProfileDialog[open]') : null;
+  if (changed && profileDialog?.id === 'userProfileDialog' && !canCloseAppDialog(profileDialog)) return false;
+  if (changed && profileDialog?.id === 'userProfileDialog') profileDialog.close();
   currentPage = page;
   if (navigationHistoryAvailable() && !fromPop && changed) {
     try {
@@ -135,6 +138,16 @@ function navigateToPage(page, { replace = false, fromPop = false } = {}) {
 }
 function handleNavigationPop(event) {
   if (navigationHandlingPop) { navigationHandlingPop = false; return; }
+  const profileDialog = typeof document !== 'undefined' ? document.querySelector('#userProfileDialog[open]') : null;
+  if (profileDialog?.id === 'userProfileDialog') {
+    if (!canCloseAppDialog(profileDialog)) {
+      if (navigationHistoryAvailable()) { navigationHandlingPop = true; try { window.history.forward(); } catch { navigationHandlingPop = false; } }
+      return;
+    }
+    profileDialog.close();
+    if (navigationHistoryAvailable()) { navigationHandlingPop = true; try { window.history.forward(); } catch { navigationHandlingPop = false; } }
+    return;
+  }
   const reportDialog = typeof document !== 'undefined' ? document.querySelector('#reportActivityDialog[open]') : null;
   if (reportDialog) {
     if (!canCloseReportActivity(reportDialog)) {
@@ -209,9 +222,20 @@ function persistReportDraft(type = reportTypePreset) {
 }
 function persistCashTopupDraft() { if (!state.user || !$('#cashTopupForm')) return; writeDraft('cash-topup', '', { amountIdr: String($('#cashTopupAmount')?.value || '').slice(0, 20), note: String($('#cashTopupNote')?.value || '').slice(0, 500), idempotencyKey: cashTopupIdempotencyKey || '', fingerprint: cashTopupFingerprint || '' }); }
 
+function profileDraftDirty() {
+  if (!profileDraft || profileDraft.loading || !profileDraft.target) return false;
+  const form = typeof document !== 'undefined' ? document.querySelector('#userProfileForm') : null;
+  if (!form) return false;
+  const value = selector => String(form.querySelector(selector)?.value || '').trim();
+  const baseline = profileDraft.baseline || {};
+  return value('#profileNickname') !== String(baseline.nickname || '')
+    || value('#profilePosition') !== String(baseline.position || '')
+    || value('#profileQuote') !== String(baseline.quote || '')
+    || profileDraft.photoDataUrl !== undefined;
+}
 function hasUnsavedDraft() {
   if (typeof ReportEvidence !== 'undefined' && ReportEvidence.hasPending?.()) return true;
-  if (profileDraft?.photoDataUrl !== undefined) return true;
+  if (typeof profileDraftDirty === 'function' && profileDraftDirty()) return true;
   if ([...document.querySelectorAll('input[type="file"]')].some(field => field.files?.length && (!field.closest?.('dialog') || field.closest('dialog').open) && !field.closest?.('[hidden]'))) return true;
   return [...document.querySelectorAll('form:not(#loginForm)')].some(form => {
     const dialog = form.closest('dialog');
@@ -1127,9 +1151,10 @@ function openDialog(id) {
 }
 
 function closeDialogs() {
-  const reportDialog = $('#reportActivityDialog');
-  if (reportDialog?.open && !canCloseReportActivity(reportDialog)) return false;
-  $$('dialog[open]').forEach(dialog => dialog.close());
+  const openDialogs = $$('dialog[open]');
+  if (openDialogs.some(dialog => !canCloseAppDialog(dialog))) return false;
+  openDialogs.forEach(dialog => dialog.close());
+  return true;
 }
 
 function renderProfilePreview() {
@@ -1162,9 +1187,14 @@ async function openUserProfile(id) {
     if (profileDraft !== draft || epoch !== authEpoch) return;
     draft.target = result.user;
     draft.profileVersion = result.user.profileVersion;
-    $('#profileNickname').value = result.user.nickname || '';
-    $('#profilePosition').value = result.user.dashboardPosition ?? result.user.position ?? '';
-    $('#profileQuote').value = result.user.quote || '';
+    draft.baseline = {
+      nickname: String(result.user.nickname || '').trim(),
+      position: String(result.user.dashboardPosition ?? result.user.position ?? '').trim(),
+      quote: String(result.user.quote || '').trim()
+    };
+    $('#profileNickname').value = draft.baseline.nickname;
+    $('#profilePosition').value = draft.baseline.position;
+    $('#profileQuote').value = draft.baseline.quote;
     controls.forEach(control => { control.disabled = false; });
     draft.loading = false;
     $('#profilePhotoStatus').textContent = '';
@@ -1694,6 +1724,10 @@ function canCloseReportActivity(dialog) {
 function canCloseAppDialog(dialog) {
   if (!dialog) return true;
   if (dialog.id === 'reportActivityDialog') return canCloseReportActivity(dialog);
+  if (dialog.id === 'userProfileDialog') {
+    if (profileDraft?.saving || profileDraft?.processing) { showToast('Tunggu pemrosesan atau penyimpanan profil selesai.'); return false; }
+    if (profileDraftDirty() && !window.confirm('Perubahan profil belum disimpan. Tutup dan buang perubahan?')) return false;
+  }
   if (dialog.id === 'cashTopupDialog' && cashTopupBusy) { showToast('Tunggu penambahan saldo selesai.'); return false; }
   return true;
 }
@@ -2022,7 +2056,7 @@ function bindEvents() {
       : 'Pemilihan foto dibatalkan. Profil belum diubah; Anda dapat memilih foto lagi.';
   });
   $('#userProfileDialog').addEventListener('cancel', event => {
-    if (profileDraft?.saving) event.preventDefault();
+    if (!canCloseAppDialog(event.currentTarget)) event.preventDefault();
   });
   $('#userProfileDialog').addEventListener('close', () => {
     profileSelection += 1;
