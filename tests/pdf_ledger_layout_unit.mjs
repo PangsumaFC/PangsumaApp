@@ -55,7 +55,8 @@ test('multipage cashflow ledger has headers only on page one, no page subtotals,
   assert.match(pageTexts[0], /PANGSUMA FC/);
   assert.match(pageTexts[0], /Laporan Petty Cash/);
   assert.match(pageTexts[0], /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo/);
-  assert.match(pageTexts[0], /Filter: Semua transaksi uji/);
+  assert.doesNotMatch(pageTexts[0], /Filter:/);
+  assert.doesNotMatch(pageTexts[0], /Saldo hanya kas tercatat|Tanggal: pencatatan kas/);
   assert.equal((text.match(/Laporan Petty Cash/g) || []).length, 1);
   assert.equal((text.match(/No\./g) || []).length, 1);
   for (const [index, pageText] of pageTexts.entries()) {

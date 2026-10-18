@@ -137,7 +137,7 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   const total = finalWords.find(w => w.word === 'keseluruhan');
   if (total) {
     const gap = (pdfYFromBbox(total) - 8) - pdfYFromBbox(approvalLabel);
-    assert.ok(gap >= 8 && gap <= 24, `approval label must follow totals by 12–18pt (observed ${gap.toFixed(2)}pt)`);
+    assert.ok(gap >= 20 && gap <= 24, `approval label must follow totals by 20–24pt (observed ${gap.toFixed(2)}pt)`);
   }
   if (result.text.includes('Keterangan')) {
     const grid = result.pdf.getPages().map(page => streamBytes(result.pdf, page)).join('\n');

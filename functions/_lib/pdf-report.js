@@ -131,11 +131,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const latest = dates.length ? dates.reduce((a, b) => a > b ? a : b) : new Date(snapshot);
   const periodDate = date => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
   const period = periodLabel || `Periode ${periodDate(earliest)} - ${periodDate(latest)} | Seluruh riwayat`;
-  const filterLines = filterDescription ? wrap(`Filter: ${filterDescription}`, regular, 7.5, CONTENT_W) : [];
-  const scope = 'Saldo hanya kas tercatat; Finance masuk total pengajuan. Tanggal: pencatatan kas / tanggal pengajuan.' + (ledgerIsPartial ? ' Saldo akun termasuk transaksi di luar filter.' : '');
-  const scopeLines = wrap(scope, regular, 8, CONTENT_W);
-  const headerBottom = 103 + filterLines.length * 10 + scopeLines.length * 10;
-  let page; let y; let unicodeReplaced = sanitize(filterDescription).replaced;
+  const headerBottom = 103;
+  let page; let y; let unicodeReplaced = false;
   let approvalAnchor = null;
   const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
@@ -149,11 +146,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
     page.drawText('Laporan Petty Cash', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
-    page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
+    page.drawText(`Tanggal cetak: ${mark(shortDate(snapshot))}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
-    filterLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 92 - index * 10, size: 7.5, font: regular, color: MUTED }));
-    scopeLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 94 - filterLines.length * 10 - index * 10, size: 8, font: regular, color: MUTED }));
     y = PAGE_H - headerBottom;
   }
   function footer() {
@@ -268,8 +263,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     drawGrid(y, height);
     y -= height + 13;
     // The grid lower edge is 17pt above y (13pt post-table gap plus the
-    // grid's 4pt lower inset); approval follows that edge, not the page foot.
-    approvalAnchor = y + 17;
+    // grid's 4pt lower inset). Keep the approval label 20pt below that edge.
+    approvalAnchor = y + 8;
   }
 
   function drawFinalApproval() {
@@ -307,7 +302,11 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       attachment_urls: l.dropbox_receipt_urls || l.report_attachment_urls || (l.dropbox_receipt_url ? [l.dropbox_receipt_url] : []),
       direction: l.direction, amount_idr: l.amount_idr ?? l.amount,
     })));
-  } else text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
+  } else {
+    text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
+    // Keep the same modest 20pt separation for an empty report's final row.
+    approvalAnchor = y - 8;
+  }
   if (unicodeReplaced) { ensure(22); text('Karakter di luar font ditampilkan sebagai ?.', MARGIN, y, 7, regular, MUTED); }
   drawFinalApproval();
   footer();

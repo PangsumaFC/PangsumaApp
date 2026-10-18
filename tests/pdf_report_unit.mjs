@@ -90,7 +90,8 @@ test('filtered PDF preserves explicit period, real account balances, concise sco
     periodLabel: 'Periode 01/10/2026 - 15/10/2026', filterDescription: 'Jenis: Petty Cash | Status: Disetujui',
     openingBalanceIdr: 2000, closingBalanceIdr: 1500, ledgerIsPartial: true }));
   assert.match(result.text, /Periode 01\/10\/2026 - 15\/10\/2026/);
-  assert.match(result.text, /Filter: Jenis: Petty Cash/);
+  assert.doesNotMatch(result.text, /Filter:/);
+  assert.doesNotMatch(result.text, /Saldo hanya kas tercatat|Tanggal: pencatatan kas/);
   assert.match(result.text, /Biaya terpilih/);
   assert.match(result.text, /-\nRp500\nRp1\.500/);
   assert.match(result.text, /Total kas keseluruhan\nRp0\nRp500/);
@@ -99,7 +100,7 @@ test('filtered PDF preserves explicit period, real account balances, concise sco
   assert.match(result.text, /Deskripsi pengajuan/);
   assert.match(result.text, /Lampiran/);
   assert.doesNotMatch(result.text, /Finance disetujui/);
-  assert.match(result.text, /termasuk transaksi di luar filter/);
+  assert.doesNotMatch(result.text, /termasuk transaksi di luar filter/);
   assert.ok(result.text.includes(`Halaman ${result.count} dari ${result.count}`));
 });
 
@@ -137,6 +138,7 @@ test('audit-only input does not affect cashflow period or print audit details', 
   assert.match(text, /Periode 18 Okt 2026 - 18 Okt 2026/);
   assert.doesNotMatch(text, /Audit periode September/);
   assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
+  assert.doesNotMatch(text, /Tanggal cetak:.*\d{2}:\d{2}/);
 });
 
 test('font substitution has a concise conditional data-integrity marker, not a generic disclaimer', async () => {

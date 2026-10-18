@@ -1,50 +1,50 @@
-const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.18.19';
+const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.18.20';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.18.19',
-  '/password-crypto.js?v=2026.10.18.19',
-  '/app.js?v=2026.10.18.19',
-  '/pwa-install.js?v=2026.10.18.19',
-  '/pwa-updates.js?v=2026.10.18.19',
-  '/pwa-files.js?v=2026.10.18.19',
-  '/pwa-files.css?v=2026.10.18.19',
-  '/report-filters.js?v=2026.10.18.19',
-  '/financial-controls.js?v=2026.10.18.19',
-  '/financial-controls.css?v=2026.10.18.19',
-  '/report-evidence.js?v=2026.10.18.19',
-  '/report-evidence.css?v=2026.10.18.19',
-  '/bounded-history.js?v=2026.10.18.19',
-  '/mobile-polish.css?v=2026.10.18.19',
-  '/mobile-viewport.js?v=2026.10.18.19',
+  '/pangsuma-theme.css?v=2026.10.18.20',
+  '/password-crypto.js?v=2026.10.18.20',
+  '/app.js?v=2026.10.18.20',
+  '/pwa-install.js?v=2026.10.18.20',
+  '/pwa-updates.js?v=2026.10.18.20',
+  '/pwa-files.js?v=2026.10.18.20',
+  '/pwa-files.css?v=2026.10.18.20',
+  '/report-filters.js?v=2026.10.18.20',
+  '/financial-controls.js?v=2026.10.18.20',
+  '/financial-controls.css?v=2026.10.18.20',
+  '/report-evidence.js?v=2026.10.18.20',
+  '/report-evidence.css?v=2026.10.18.20',
+  '/bounded-history.js?v=2026.10.18.20',
+  '/mobile-polish.css?v=2026.10.18.20',
+  '/mobile-viewport.js?v=2026.10.18.20',
   '/pangsuma-login-crest-384.png',
   '/pangsuma-loading-logo.png',
   '/pangsuma-loading-emblem.png',
   '/manifest.webmanifest',
-  '/favicon-32.png?v=2026.10.18.19',
-  '/apple-touch-icon.png?v=2026.10.18.19',
-  '/pangsuma-icon-192.png?v=2026.10.18.19',
-  '/pangsuma-icon-512.png?v=2026.10.18.19',
-  '/pangsuma-icon-maskable-192.png?v=2026.10.18.19',
-  '/pangsuma-icon-maskable-512.png?v=2026.10.18.19'
+  '/favicon-32.png?v=2026.10.18.20',
+  '/apple-touch-icon.png?v=2026.10.18.20',
+  '/pangsuma-icon-192.png?v=2026.10.18.20',
+  '/pangsuma-icon-512.png?v=2026.10.18.20',
+  '/pangsuma-icon-maskable-192.png?v=2026.10.18.20',
+  '/pangsuma-icon-maskable-512.png?v=2026.10.18.20'
 ];
 const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/').map(path => path.split('?')[0]));
 // These assets are required for the core app and its report/authentication flows
 // to remain usable offline. Branding and cosmetic enhancements are optional.
 const MANDATORY_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.18.19',
-  '/password-crypto.js?v=2026.10.18.19',
-  '/app.js?v=2026.10.18.19',
-  '/pwa-install.js?v=2026.10.18.19',
-  '/pwa-updates.js?v=2026.10.18.19',
-  '/pwa-files.js?v=2026.10.18.19',
-  '/pwa-files.css?v=2026.10.18.19',
-  '/report-filters.js?v=2026.10.18.19',
-  '/financial-controls.js?v=2026.10.18.19',
-  '/financial-controls.css?v=2026.10.18.19',
-  '/report-evidence.js?v=2026.10.18.19',
-  '/report-evidence.css?v=2026.10.18.19',
-  '/bounded-history.js?v=2026.10.18.19',
+  '/pangsuma-theme.css?v=2026.10.18.20',
+  '/password-crypto.js?v=2026.10.18.20',
+  '/app.js?v=2026.10.18.20',
+  '/pwa-install.js?v=2026.10.18.20',
+  '/pwa-updates.js?v=2026.10.18.20',
+  '/pwa-files.js?v=2026.10.18.20',
+  '/pwa-files.css?v=2026.10.18.20',
+  '/report-filters.js?v=2026.10.18.20',
+  '/financial-controls.js?v=2026.10.18.20',
+  '/financial-controls.css?v=2026.10.18.20',
+  '/report-evidence.js?v=2026.10.18.20',
+  '/report-evidence.css?v=2026.10.18.20',
+  '/bounded-history.js?v=2026.10.18.20',
 ];
 const OPTIONAL_SHELL = APP_SHELL.filter(path => !MANDATORY_SHELL.includes(path));
 
@@ -99,7 +99,7 @@ self.addEventListener('activate', event => {
     .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
     .then(() => self.clients.claim())
     .then(() => self.clients.matchAll?.({ type: 'window', includeUncontrolled: true }))
-    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.18.19' }))));
+    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.18.20' }))));
 });
 
 self.addEventListener('fetch', event => {

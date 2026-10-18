@@ -52,7 +52,9 @@ const audits = [{ id: 77, created_at: '2026-10-06T04:00:00.000Z', action: 'submi
 test('cashflow report keeps filters, totals and ledger notes but excludes submission and audit dumps', async () => {
   const { text } = await render({ submissions, ledger, audits, filterDescription: 'Status: disetujui; Pemohon: Dina', periodLabel: '01-06 Oktober 2026' });
   assert.match(text, /Tanggal cetak/);
-  assert.match(text, /Status: disetujui; Pemohon: Dina/);
+  assert.doesNotMatch(text, /Filter:|Status: disetujui; Pemohon: Dina/);
+  assert.doesNotMatch(text, /Saldo hanya kas tercatat|Tanggal: pencatatan kas/);
+  assert.doesNotMatch(text, /Tanggal cetak:.*\d{2}:\d{2}/);
   assert.match(text, /Top up kas Oktober/);
   assert.match(text, /Beli tinta printer/);
   assert.match(text, /Rp500\.000/);
