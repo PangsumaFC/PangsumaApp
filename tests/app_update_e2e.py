@@ -61,14 +61,19 @@ def main():
         page.locator("#appUpdateReload").click()
         expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
         page.locator("#reportForm button[type=submit]").evaluate("button => button.removeAttribute('aria-busy')")
-        # Simulate storage loss: this genuinely transient draft still needs
-        # confirmation, unlike the ordinary safely stored report draft.
-        page.evaluate("clearDraft('report', 'petty_cash'); window.__confirmCalls = 0; window.confirm = () => { window.__confirmCalls++; return false; }")
-        page.locator("#appUpdateReload").click()
-        expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
-        assert page.evaluate("window.__confirmCalls") == 1
+        page.wait_for_function("() => !transactionInFlight()")
+        # Change the DOM without input/change events to simulate a value that
+        # has not reached storage; ordinary autosaved drafts need no warning.
+        page.evaluate("document.querySelector('#reportDescription').value = 'Perubahan sementara'; window.__confirmCalls = 0; window.confirm = () => { window.__confirmCalls++; return false; }; void 0")
+        assert page.evaluate("hasUnsavedDraft()") is True
+        page.wait_for_function("() => !transactionInFlight()")
+        page.evaluate("reloadToLatestBuild()")
+        expect(page.locator("#reportForm [name='description']")).to_have_value("Perubahan sementara")
+        observed = page.evaluate("({confirmCalls: window.__confirmCalls, busy: transactionInFlight(), unsaved: hasUnsavedDraft(), page: currentPage})")
+        assert observed["confirmCalls"] == 1, observed
 
-        page.evaluate("persistReportDraft(); sessionStorage.setItem('qa-unexpected-confirm', '0'); window.confirm = () => { sessionStorage.setItem('qa-unexpected-confirm', '1'); return false; }")
+        page.evaluate("document.querySelector('#reportDescription').value = 'Draf jangan hilang'; persistReportDraft(); sessionStorage.setItem('qa-unexpected-confirm', '0'); window.confirm = () => { sessionStorage.setItem('qa-unexpected-confirm', '1'); return false; }; void 0")
+        page.wait_for_function("() => !transactionInFlight()")
         build["value"] = current
         with page.expect_navigation(wait_until="networkidle", timeout=20_000):
             page.evaluate("void reloadToLatestBuild()")
