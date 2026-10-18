@@ -22,7 +22,7 @@ test('shared lifecycle does not replace the independent cursor contracts', () =>
   assert.match(source, /const request = usersPageLifecycle\.begin\(\)/);
   assert.match(source, /const request = historyPageLifecycle\.begin\(\)/);
   assert.match(source, /BoundedHistory\.load\(collection, direction\)/);
-  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=100&q=\$\{encodeURIComponent\(search\)\}`\)/);
+  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=5&q=\$\{encodeURIComponent\(search\)\}`\)/);
 });
 
 test('cancellation invalidates in-flight result and leaves a clean retry lifecycle', () => {

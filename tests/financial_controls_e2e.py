@@ -209,7 +209,7 @@ def main():
         assert api(page, f"/api/receipts/{receipt_id}")["status"] == 200
         dialog.locator('[data-action="close-dialog"]').click()
 
-        # Seed enough similarly named reports to force the bounded 25-row UI pages.
+        # Seed enough similarly named reports to force the bounded 5-row UI pages.
         for i in range(81):
             seed_report(page, f"Nota paginasi {i:03d}", 1000 + i)
         page.reload(wait_until="networkidle")
@@ -218,37 +218,37 @@ def main():
         query = "Nota paginasi"
         region.locator('[name="q"]').fill(query)
         region.locator('[type="submit"]').click()
-        expect(region.locator(".manager-filtered-results .item-row")).to_have_count(25, timeout=20000)
+        expect(region.locator(".manager-filtered-results .item-row")).to_have_count(5, timeout=20000)
         assert api(page, "/api/reports?q=Nota%20paginasi")["data"]["total"] == 83
         expect(region).to_contain_text(re.compile(r"\b83\b"))
         first_ids = region.locator('.manager-filtered-results .item-row [data-action="report-detail"]').evaluate_all("els => els.map(e => e.dataset.id)")
-        assert len(first_ids) == 25 and len(set(first_ids)) == 25
+        assert len(first_ids) == 5 and len(set(first_ids)) == 5
         next_button = region.locator('[data-manager-reports-action="next"], [data-action="reports-next"], .history-controls [data-action="next"]').first
         if not next_button.count():
-            next_button = region.locator("button").filter(has_text="Berikutnya").first
+            next_button = region.locator("button").filter(has_text=re.compile("berikutnya", re.I)).first
         expect(next_button).to_be_visible()
         next_button.click()
-        expect(region.locator(".manager-filtered-results .item-row")).to_have_count(25, timeout=20000)
+        expect(region.locator(".manager-filtered-results .item-row")).to_have_count(5, timeout=20000)
         expect(region.locator('.manager-filtered-results [data-action="report-detail"]').first).not_to_have_attribute("data-id", first_ids[0])
         second_ids = region.locator('.manager-filtered-results .item-row [data-action="report-detail"]').evaluate_all("els => els.map(e => e.dataset.id)")
         assert len(set(first_ids).intersection(second_ids)) == 0
         prev = region.locator("button").filter(has_text="Sebelumnya").first
         expect(prev).to_be_enabled()
         prev.click()
-        expect(region.locator('.manager-filtered-results .item-row')).to_have_count(25, timeout=20000)
+        expect(region.locator('.manager-filtered-results .item-row')).to_have_count(5, timeout=20000)
         expect(region.locator('.manager-filtered-results [data-action="report-detail"]').first).to_have_attribute("data-id", first_ids[0])
         assert region.locator('.manager-filtered-results .item-row [data-action="report-detail"]').evaluate_all("els => els.map(e => e.dataset.id)") == first_ids
 
-        # The sole primary PDF action preserves the active filter and full bounded
+        # The category PDF action preserves the active search and full bounded
         # result set, not only the currently visible page.
         fallback = page.locator("#managerPdfFallbackLink")
         assert fallback.count() == 0
         assert page.locator("#managerPdfFallback").count() == 0
-        href = page.evaluate("() => ManagerReportFilters.pdfUrl()")
+        href = page.evaluate("() => ManagerReportFilters.pdfUrl('finance_request')")
         params = parse_qs(urlparse(href).query)
         assert params.get("q") == [query] and "cursor" not in params
         with page.expect_download() as download:
-            page.locator('[data-action="download-pdf"]:visible').click()
+            page.locator('[data-action="download-pdf"][data-report-type="finance_request"]:visible').click()
         pdf = SCREENSHOTS / "financial-controls-filtered.pdf"
         download.value.save_as(pdf)
         text = " ".join(subprocess.run(["pdftotext", str(pdf), "-"], check=True, capture_output=True, text=True).stdout.split())
@@ -267,7 +267,7 @@ def main():
         assert not errors, errors
         ctx.close()
         browser.close()
-    print("FINANCIAL_CONTROLS_E2E_PASS reconciliation_discrepancy=125 ledger_unchanged=1 settings=1 duplicate_warning=1 receipt_private_binary=1 bounded_pages=25 pdf_full_filtered=1 mobile_widths=4 screenshots=" + str(SCREENSHOTS), flush=True)
+    print("FINANCIAL_CONTROLS_E2E_PASS reconciliation_discrepancy=125 ledger_unchanged=1 settings=1 duplicate_warning=1 receipt_private_binary=1 bounded_pages=5 pdf_full_filtered=1 mobile_widths=4 screenshots=" + str(SCREENSHOTS), flush=True)
 
 
 if __name__ == "__main__":

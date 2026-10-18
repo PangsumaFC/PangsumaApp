@@ -125,7 +125,7 @@ def main():
         for key, value in {"q":"Workspace dana latihan", "jenis":"petty_cash", "status":"approved", "periode":"customWIB", "start":today, "end":today}.items():
             assert query.get(key) == [value], (key, query, href)
         with page.expect_download() as dl:
-            page.locator('[data-action="download-pdf"]:visible').click()
+            page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
         pdf = SCREENSHOTS / "filtered-workspace.pdf"
         dl.value.save_as(pdf)
         text = " ".join(subprocess.run(["pdftotext", str(pdf), "-"], check=True, capture_output=True, text=True).stdout.split())

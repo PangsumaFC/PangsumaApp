@@ -23,7 +23,9 @@ test('Finance search and pagination controls are touch-sized and keyboard-visibl
 test('PDF download has no external browser or clipboard fallback UI', () => {
   assert.doesNotMatch(app, /managerPdfFallback|pdf-fallback/);
   assert.doesNotMatch(app, /Coba buka di Chrome atau Safari|navigator\.clipboard/);
-  assert.match(app, /ManagerReportFilters\.pdfUrl\(\)/);
+  assert.match(app, /ManagerReportFilters\.pdfUrl\(reportType\)/);
+  assert.match(app, /data-report-type="petty_cash"/);
+  assert.match(app, /data-report-type="finance_request"/);
 });
 test('Receipt list retry is actionable and does not clear pending upload state', () => {
   assert.ok(evidence.includes('class=\"receipt-retry\"'));

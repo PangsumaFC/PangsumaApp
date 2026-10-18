@@ -1,6 +1,6 @@
 import { ApiError, ensureMethod, jsonResponse } from './http.js';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 5;
 
 function parseCursor(raw) {
   if (!raw) return null;

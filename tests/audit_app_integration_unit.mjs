@@ -40,7 +40,8 @@ test('audit: pencarian user menerima label status terlokalisasi', () => {
 test('audit: pending queue memakai window oldest dan count transparan', () => {
   assert.match(source, /pendingSubmissions/);
   assert.match(source, /Array\.isArray\(state\.pendingSubmissions\)/);
-  assert.match(source, /Menampilkan \$\{pending\.length\} antrean tertua/);
+  assert.match(source, /pendingPage\.total/);
+  assert.match(source, /limit: '5'/);
 });
 
 test('audit: polling user/manager refresh tidak menimpa draf dan user table ikut refresh', () => {
@@ -57,7 +58,7 @@ test('audit: laporan user memakai server search dan alias status canonical', () 
 });
 
 test('audit: user admin list memakai pagination dan total server', () => {
-  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=100&q=/);
+  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=5&q=/);
   assert.match(source, /state\.usersPage = \{ page:/);
   assert.match(source, /data-action=\"load-more-users\"/);
 });

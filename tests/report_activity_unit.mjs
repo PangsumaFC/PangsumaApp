@@ -30,12 +30,17 @@ test('activity cursor paginates without duplicate event IDs', async () => {
   const id = '22222222-2222-4222-8222-222222222222';
   insertSubmission(db, { id, createdAt: '2028-01-01T01:00:00.000Z', updatedAt: '2028-01-01T01:00:00.000Z' });
   for (let i = 0; i < 101; i++) insertAudit(db, { entityId: id, actorId: i % 2 ? 'manager-1' : 'user-a', action: 'submission.status_changed', details: { from: 'pending', to: 'approved', reason: `reason-${i}` }, createdAt: `2028-01-01T01:${String(i % 60).padStart(2, '0')}:00.000Z` });
-  const first = await call(db, `/submissions/${id}/activity`, managerToken);
-  assert.equal(first.body.activity.length, 100); assert.equal(first.body.hasMore, true); assert.ok(first.body.nextCursor);
-  const second = await call(db, `/submissions/${id}/activity?cursor=${first.body.nextCursor}`, managerToken);
-  assert.equal(second.body.activity.length, 1); assert.equal(second.body.hasMore, false);
-  const ids = [...first.body.activity, ...second.body.activity].map(e => e.id);
-  assert.equal(new Set(ids).size, 101); assert.equal(ids.at(-1), Math.max(...ids));
+  const first = await call(db, `/submissions/${id}/activity?limit=5`, managerToken);
+  assert.equal(first.body.activity.length, 5); assert.equal(first.body.hasMore, true); assert.ok(first.body.nextCursor);
+  const all = [...first.body.activity]; let cursor = first.body.nextCursor;
+  while (cursor) {
+    const page = await call(db, `/submissions/${id}/activity?limit=5&cursor=${cursor}`, managerToken);
+    all.push(...page.body.activity); cursor = page.body.nextCursor || '';
+    if (!page.body.hasMore) break;
+  }
+  const ids = all.map(e => e.id);
+  assert.equal(all.length, 101); assert.equal(new Set(ids).size, 101); assert.equal(ids.at(-1), Math.max(...ids));
+  assert.equal(ids[0], Math.min(...ids));
   assert.equal((await call(db, `/submissions/${id}/activity?cursor=0`, managerToken)).response.status, 400);
   assert.equal((await call(db, `/submissions/${id}/activity?cursor=abc`, managerToken)).response.status, 400);
 });

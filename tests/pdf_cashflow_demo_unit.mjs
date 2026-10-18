@@ -66,10 +66,10 @@ test('direct renderer merges eligible submissions with 48 ledger rows and preser
   const bytes = await buildFinancialReport({
     snapshotAt: '2026-10-18T12:00:00.000Z', ledger, openingBalanceIdr: opening, closingBalanceIdr: closing,
     submissions: [
-      { id: 'finance-sent', type: 'finance_request', status: 'sent', amount_idr: 999_999_999, description: financeSent, created_by_role: 'user', date: '2026-10-10' },
-      { id: 'manager-finance', type: 'finance_request', status: 'approved', amount_idr: 777_000, description: 'MANAGER-FINANCE-ELIGIBLE', created_by_role: 'manager', date: '2026-10-11' },
-      { id: 'user-pending', type: 'finance_request', status: 'pending', amount_idr: 888_000, description: 'USER-PENDING-EXCLUDED', created_by_role: 'user', date: '2026-10-10' },
-      { id: 'user-rejected', type: 'finance_request', status: 'rejected', amount_idr: 666_000, description: 'USER-REJECTED-EXCLUDED', created_by_role: 'user' }
+      { id: 'finance-sent', type: 'petty_cash', status: 'approved', amount_idr: 999_999_999, description: financeSent, created_by_role: 'user', date: '2026-10-10' },
+      { id: 'manager-finance', type: 'petty_cash', status: 'approved', amount_idr: 777_000, description: 'MANAGER-FINANCE-ELIGIBLE', created_by_role: 'manager', date: '2026-10-11' },
+      { id: 'user-pending', type: 'petty_cash', status: 'pending', amount_idr: 888_000, description: 'USER-PENDING-EXCLUDED', created_by_role: 'user', date: '2026-10-10' },
+      { id: 'user-rejected', type: 'petty_cash', status: 'rejected', amount_idr: 666_000, description: 'USER-REJECTED-EXCLUDED', created_by_role: 'user' }
     ],
     audits: [{ id: 9, created_at: '2026-10-18T04:00:00.000Z', action: 'audit.noise', details_json: `${auditSent} ${'x'.repeat(90_000)}` }],
     maxPages: 150
@@ -124,10 +124,10 @@ test('PDF endpoint merges eligible submissions with ledger and ignores excluded 
   // local_financial_db seeds the canonical zero opening row at id=1; retain it
   // and add 47 rows so the endpoint sees exactly 48 ledger rows in total.
   for (const row of ledger.slice(1, 48)) db.db.prepare(`INSERT INTO cash_ledger (id,event_type,direction,amount_idr,balance_after_idr,note,created_at,actor_id) VALUES (?,?,?,?,?,?,?,?)`).run(row.id, row.event_type, row.direction, row.amount_idr, row.balance_after_idr, `${row.description} | ${row.note || ''}`, seededAt, 'manager-1');
-  insertSubmission(db, { id: '99999999-9999-4999-8999-999999999999', type: 'finance_request', status: 'sent', amount: 999999999, description: `SIMULASI ${financeSent}`, date: '2026-10-10' });
-  insertSubmission(db, { id: '88888888-8888-4888-8888-888888888888', type: 'finance_request', status: 'approved', amount: 777000, description: 'MANAGER-FINANCE-ELIGIBLE', createdBy: 'manager-1', date: '2026-10-11' });
-  insertSubmission(db, { id: '77777777-7777-4777-8777-777777777777', type: 'finance_request', status: 'pending', amount: 666000, description: 'USER-PENDING-EXCLUDED', date: '2026-10-12' });
-  insertSubmission(db, { id: '66666666-6666-4666-8666-666666666666', type: 'finance_request', status: 'rejected', amount: 555000, description: 'USER-REJECTED-EXCLUDED', date: '2026-10-13' });
+  insertSubmission(db, { id: '99999999-9999-4999-8999-999999999999', type: 'petty_cash', status: 'approved', amount: 999999999, description: `SIMULASI ${financeSent}`, date: '2026-10-10' });
+  insertSubmission(db, { id: '88888888-8888-4888-8888-888888888888', type: 'petty_cash', status: 'approved', amount: 777000, description: 'MANAGER-FINANCE-ELIGIBLE', createdBy: 'manager-1', date: '2026-10-11' });
+  insertSubmission(db, { id: '77777777-7777-4777-8777-777777777777', type: 'petty_cash', status: 'pending', amount: 666000, description: 'USER-PENDING-EXCLUDED', date: '2026-10-12' });
+  insertSubmission(db, { id: '66666666-6666-4666-8666-666666666666', type: 'petty_cash', status: 'rejected', amount: 555000, description: 'USER-REJECTED-EXCLUDED', date: '2026-10-13' });
   insertAudit(db, { entityId: '99999999-9999-4999-8999-999999999999', details: { text: `${auditSent} ${'z'.repeat(90_000)}` }, createdAt: '2026-10-10T04:00:00.000Z' });
   const response = await onRequest({ request: request('/export.pdf?opening=0&fullhistory=0', managerToken), env: { DB: db } });
   assert.equal(response.status, 200, await response.clone().text());

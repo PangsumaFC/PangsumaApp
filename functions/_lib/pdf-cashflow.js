@@ -1,7 +1,12 @@
 // Report-only projection. Never changes submission state, ledger or balances.
 export function isReportSubmission(row) {
-  return String(row.created_by_role ?? row.role ?? '').toLowerCase() === 'manager'
-    || ['approved', 'sent'].includes(String(row.status ?? '').toLowerCase());
+  const type = String(row.type ?? '').toLowerCase();
+  const status = String(row.status ?? '').toLowerCase();
+  const managerAutoapproved = String(row.created_by_role ?? row.role ?? '').toLowerCase() === 'manager'
+    && row.resolved_by == null && status === 'approved';
+  if (!['petty_cash', 'finance_request'].includes(type)) return false;
+  if (type === 'finance_request') return ['approved', 'sent'].includes(status);
+  return ['approved', 'sent'].includes(status) || managerAutoapproved;
 }
 export function reportInteger(value) {
   if (typeof value === 'bigint') return value;
@@ -75,7 +80,7 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
       report_description: [submission.description, submission.note,
         `${finance ? 'Finance' : 'Pengajuan'} ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`,
         submission.created_by_name ? `Pengaju: ${submission.created_by_name}` : ''].filter(Boolean).join(' | '),
-      is_cash: false, direction: '', amount_idr: 0, balance_after_idr: null,
+      is_cash: false, direction: '', amount_idr: 0, submission_amount_idr: submission.amount_idr ?? submission.amount ?? 0, balance_after_idr: null,
       dropbox_receipt_urls: receiptUrls(submission), report_attachment_urls: receiptUrls(submission),
       dropbox_receipt_url: receiptUrls(submission)[0] || null,
     });

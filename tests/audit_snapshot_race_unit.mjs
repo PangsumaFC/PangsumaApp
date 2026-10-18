@@ -87,15 +87,23 @@ for (const path of ['/export.csv', '/export.pdf']) {
 test('pending queue finds the old pending submission beyond latest 100 and User search totals stay owner scoped', async () => {
   const { db, managerToken, userAToken } = await seededFinancialDb();
   insertSubmission(db, { id: 'old-pending', createdAt: before, date: '2020-01-01', description: 'Target lama' });
-  for (let i = 0; i < 105; i++) insertSubmission(db, { id: `new-${i}`, status: 'approved', createdAt: '2020-02-01T00:00:00.000Z', date: '2020-02-01' });
+  for (let i = 0; i < 105; i++) insertSubmission(db, { id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, status: 'approved', createdAt: '2020-02-01T00:00:00.000Z', date: '2020-02-01' });
   insertSubmission(db, { id: 'other-owner', createdBy: 'user-b', description: 'Target lama', createdAt: before, date: '2020-01-01' });
   const overview = await (await call(db, managerToken, '/overview')).json();
-  assert.equal(overview.submissions.length, 100); assert.ok(overview.pendingSubmissions.some(row => row.id === 'old-pending'));
+  assert.equal(overview.submissions.length, 5); assert.ok(overview.pendingSubmissions.some(row => row.id === 'old-pending'));
   const response = await call(db, userAToken, '/submissions?q=Target%20lama'); const body = await response.json();
   assert.equal(response.status, 200); assert.equal(body.total, 1); assert.equal(body.submissions[0].id, 'old-pending');
-  const status = await (await call(db, userAToken, '/submissions?q=Disetujui')).json();
-  assert.equal(status.total, 105); assert.equal(status.submissions.length, 100); assert.equal(status.hasMore, true);
-  const raw = await (await call(db, userAToken, '/submissions?q=approved')).json(); assert.equal(raw.total, 105);
+  const pages = []; let cursor = '';
+  do {
+    const query = `/submissions?q=Disetujui&limit=5${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const page = await (await call(db, userAToken, query)).json();
+    pages.push(...(page.items || page.submissions || [])); cursor = page.nextCursor || '';
+    if (!page.hasMore) break;
+  } while (cursor);
+  assert.equal(pages.length, 105); assert.equal(new Set(pages.map(row => row.id)).size, 105);
+  assert.ok(pages.every(row => row.status === 'approved'));
+  assert.deepEqual(pages.map(row => row.createdAt), [...pages.map(row => row.createdAt)].sort().reverse());
+  const raw = await (await call(db, userAToken, '/submissions?q=approved&limit=5')).json(); assert.equal((raw.items || raw.submissions).length, 5);
   const empty = await (await call(db, userAToken, '/submissions?pengaju=unknown')).json();
   assert.equal(empty.total, 0); assert.equal(empty.submissions.length, 0);
 });

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { unifiedReportRows } from '../functions/_lib/pdf-cashflow.js';
 const date = '2026-10-10';
 const make = (id, extras = {}) => ({ id, date, created_at: `${date}T03:00:00Z`, description: `Request ${id}`, type: 'finance_request', status: 'approved', amount_idr: 1000, created_by_role: 'user', ...extras });
-test('one chronological projection includes approved users, sent Finance and every manager state, never pending/rejected users', () => {
-  const submissions = [make('pending', { status: 'pending' }), make('rejected', { status: 'rejected' }), make('approved'), make('sent', { status: 'sent', amount_idr: 2000 }), make('manager', { status: 'pending', created_by_role: 'manager', amount_idr: 3000 })];
+test('one chronological projection includes approved users, sent Finance, and manager auto-approval while excluding pending/rejected', () => {
+  const submissions = [make('pending', { status: 'pending' }), make('rejected', { status: 'rejected' }), make('approved'), make('sent', { status: 'sent', amount_idr: 2000 }), make('manager', { status: 'approved', created_by_role: 'manager', resolved_by: null, amount_idr: 3000 })];
   const result = unifiedReportRows({ submissions });
   assert.equal(result.rows.length, 3);
   assert.equal(result.totalSubmitted, 6000n);

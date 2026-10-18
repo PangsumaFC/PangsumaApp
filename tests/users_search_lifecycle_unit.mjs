@@ -20,7 +20,7 @@ test('current account request exposes loading and keeps server pagination/query'
   const { c, pending } = harness();
   const p = c.refreshUsersPage(2, false, ' beta ');
   assert.equal(c.state.usersPage.loading, true);
-  assert.match(pending[0].url, /page=2&limit=100&q=beta$/);
+  assert.match(pending[0].url, /page=2&limit=5&q=beta$/);
   pending[0].resolve({ users: [{ id: 'b' }], page: 2, total: 101, hasMore: false });
   assert.equal(await p, true);
   assert.equal(c.state.usersPage.query, 'beta');

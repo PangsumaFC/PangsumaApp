@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../site/report-filters.js', import.meta.url), 'utf8');
 test('report client uses bounded cursor pages and does not append an unbounded list', () => {
-  assert.match(source, /const PAGE_SIZE = 25/);
+  assert.match(source, /const PAGE_SIZE = 5/);
   assert.match(source, /p\.set\('limit', String\(PAGE_SIZE\)\)/);
   assert.match(source, /AbortController/);
   assert.match(source, /data-manager-report-action="after"/);

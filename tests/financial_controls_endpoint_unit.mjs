@@ -100,7 +100,8 @@ test('overview totals and opening flag use all ledger rows, not the visible 100'
   const created = await call(f.db, '/submissions', f.managerToken, { method:'POST', headers:{ 'Idempotency-Key':key() }, body:{ type:'petty_cash', amountIdr:3, date:'2025-01-03', description:'Biaya arus kas lokal' } });
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   const overview = await call(f.db, '/overview', f.managerToken);
-  assert.equal(overview.body.cashLedger.length, 100);
+  assert.equal(overview.body.cashLedger.length, 5);
+  assert.equal(overview.body.history.cashLedger.total, f.db.db.prepare('SELECT COUNT(*) n FROM cash_ledger').get().n);
   assert.equal(overview.body.cashFlow.incomingIdr, expectedIncoming.toString());
   assert.equal(overview.body.cashFlow.outgoingIdr, '3');
   assert.equal(overview.body.cashFlow.openingConfigured, true);

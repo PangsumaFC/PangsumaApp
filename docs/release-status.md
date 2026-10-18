@@ -1,3 +1,17 @@
+# Rilis 2026.10.19.2 — PDF kategori dan daftar lima item
+
+Rilis web/PWA di atas basis `2026.10.19.1` (`2c01e56`). Finance Manager memiliki tepat dua aksi: **Unduh laporan Petty Cash** dan **Unduh laporan Request**. Server membatasi masing-masing ke kategori yang benar dan status approved/sent, termasuk pengajuan Manager yang disetujui otomatis. Filter periode, pencarian, dan pengaju tetap dipakai; jenis/status daftar tidak mencampur kategori ekspor. Request memakai nominal pengajuan dan total request, bukan saldo atau arus kas buatan. Tabel tunggal, tanda tangan, stempel, DATA DEMO, format rupiah, dan tautan bukti Dropbox dipertahankan. Halaman bookmark PDF lama kini hanya petunjuk menuju Finance, bukan aksi unduh ketiga. Batas APK lama tetap berlaku; ini bukan rilis APK.
+
+Daftar User/Manager, antrean persetujuan, Finance, pengguna, ledger, audit, aktivitas laporan, dan rekonsiliasi memakai halaman lima item dengan navigasi. Ringkasan dashboard menampilkan lima item dan akses lanjut. Pencarian tetap dilakukan pada kumpulan data server, bukan hanya halaman yang terlihat; total dan ekspor tidak dibatasi menjadi lima. Cursor maju/mundur, penolakan respons lintasakun, pemulihan error, fokus, dan lampiran yang sedang disiapkan dipertahankan. Kolom pencarian akun ditata konsisten dan badge Manager tidak terpotong.
+
+Draf rekonsiliasi disimpan per akun dan periode. Pergantian bulan/reload hanya memulihkan nominal/catatan bulan yang tepat, mereset konfirmasi/preview, serta menolak form yang periodenya tidak cocok. Kunci retry dipertahankan per periode. Draf lama tanpa periode tetap tersimpan dan hanya dapat dipulihkan secara eksplisit ke periode kosong, tanpa menimpa draf aktif atau memulihkan konfirmasi lama.
+
+Pengujian lokal mencakup seluruh unit (`npm test`), dua suite skema SQLite offline, QA browser read-only `qa_five_item_pagination_e2e.py` dan `qa_reconciliation_e2e.py`, serta runner lokal dashboard-design, navigation-loader, app-update, manager-actions, financial-workspace, financial-controls, cash-topup, mobile-download, dan pwa-standalone. PDF diuji melampaui lima baris, judul/kategori/status/nominal/total, batas resource, bukti, serta batas role. Viewport meliputi 320/390px, landscape, desktop 1280px, dan keyboard simulasi. Bukti browser/PWA adalah Chromium/emulasi, bukan perangkat Android fisik.
+
+Tidak ada perubahan migrasi, konfigurasi binding produksi, akun, pengaturan, saldo, transaksi, atau izin Dropbox. Seluruh tulisan pengujian memakai fixture/database lokal sementara. Workflow deploy yang sudah ada melakukan gate skema read-only; migrasi manual tidak dijalankan. Keberhasilan live harus dibuktikan oleh workflow commit yang sama dan `/version.json` bernilai `2026.10.19.2`.
+
+## Arsip rilis sebelumnya
+
 # Rilis 2026.10.18.9 — hapus fallback PDF keluar APK
 
 Perubahan terbatas pada situs: APK yang memiliki bridge `PangsumaFileBridge` tidak lagi ditawari Chrome, intent, salin tautan, atau unduh langsung palsu. Tombol PDF hanya menampilkan “Unduh PDF langsung memerlukan APK yang diperbarui.” Jalur PDF browser/PWA biasa tetap dipertahankan. Deteksi APK memakai bridge yang diketahui, bukan user-agent. Wrapper tanpa bridge itu tidak dapat dipastikan sebagai APK.

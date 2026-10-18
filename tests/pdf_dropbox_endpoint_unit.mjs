@@ -90,9 +90,9 @@ async function pdfText(bytes) {
 async function makeDb() {
   const seeded = await seededFinancialDb();
   applyMigrations(seeded.db);
-  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000001', createdBy: 'user-a', status: 'approved', date: '2025-02-01', description: 'LINKED RECEIPT ROW', amount: 1100, createdAt: '2025-02-01T04:00:00.000Z' });
-  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000002', createdBy: 'user-a', status: 'approved', date: '2025-02-01', description: 'STANDALONE READY ROW', amount: 2200, createdAt: '2025-02-01T04:01:00.000Z' });
-  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000003', createdBy: 'user-a', status: 'approved', date: '2025-02-01', description: 'LEGACY BLANK ROW', amount: 3300, createdAt: '2025-02-01T04:02:00.000Z' });
+  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000001', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-02-01', description: 'LINKED RECEIPT ROW', amount: 1100, createdAt: '2025-02-01T04:00:00.000Z' });
+  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000002', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-02-01', description: 'STANDALONE READY ROW', amount: 2200, createdAt: '2025-02-01T04:01:00.000Z' });
+  insertSubmission(seeded.db, { id: '41000000-0000-4000-8000-000000000003', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-02-01', description: 'LEGACY BLANK ROW', amount: 3300, createdAt: '2025-02-01T04:02:00.000Z' });
   addLedger(seeded.db, '41000000-0000-4000-8000-000000000001', 1100, 1);
   const first = await addLegacyReceipt(seeded.db, '41000000-0000-4000-8000-000000000001', 1, PNG_2X3);
   const second = await addLegacyReceipt(seeded.db, '41000000-0000-4000-8000-000000000001', 2, PNG_1X1);
@@ -139,7 +139,7 @@ test('PDF export remains manager-only and missing enabled metadata fails closed 
   assert.equal((await onRequest({ request: request('/export.pdf', userAToken), env: { DB: db, DROPBOX_RECEIPTS_ENABLED: 'true' } })).status, 403);
   const missing = await seededFinancialDb();
   applyMigrations(missing.db, migrationFiles().slice(0, 3));
-  insertSubmission(missing.db, { id: '42000000-0000-4000-8000-000000000001', createdBy: 'user-a', status: 'approved', date: '2025-02-01', description: 'METADATA TABLE REQUIRED', amount: 5, createdAt: '2025-02-01T04:00:00.000Z' });
+  insertSubmission(missing.db, { id: '42000000-0000-4000-8000-000000000001', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-02-01', description: 'METADATA TABLE REQUIRED', amount: 5, createdAt: '2025-02-01T04:00:00.000Z' });
   const enabled = await onRequest({ request: request('/export.pdf', missing.managerToken), env: { DB: missing.db, DROPBOX_RECEIPTS_ENABLED: 'true' } });
   assert.equal(enabled.status, 503);
   const disabled = await onRequest({ request: request('/export.pdf', missing.managerToken), env: { DB: missing.db, DROPBOX_RECEIPTS_ENABLED: 'false' } });

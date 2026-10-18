@@ -26,7 +26,7 @@ for (const options of [{ standalone: true }, { iosStandalone: true }]) {
   test(`PWA uses the same authenticated Blob download flow as a tab: ${JSON.stringify(options)}`, async () => {
     const h = downloadHarness(options);
     await h.run();
-    assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
+    assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-petty-cash-2026-10-18.pdf' }]);
     assert.equal(h.calls.fetch, 1);
   });
 }
@@ -39,7 +39,7 @@ test('installed PWA does not use a mode-only PDF dialog', async () => {
   const h = downloadHarness({ standalone: true, helper: true }); await h.run();
   assert.equal(h.calls.prepared.length, 0);
   assert.equal(h.calls.fetch, 1);
-  assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
+  assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-petty-cash-2026-10-18.pdf' }]);
 });
 test('standalone User cannot request a Manager export', async () => {
   const h = downloadHarness({ standalone: true, role: 'user' }); await h.run();

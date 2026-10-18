@@ -14,7 +14,7 @@ async function exportResponse(db, token) { return onRequest({ request: request('
 for (const [label, count, kind] of [['submission section', 601, 'submissions'], ['ledger section', 601, 'ledger']]) {
   test(`PDF rejects more than 600 rows in the ${label} before rendering`, async () => {
     const { db, managerToken } = await seededFinancialDb();
-    if (kind === 'submissions') for (let i = 0; i < count; i++) insertSubmission(db, { id: id('60000000', i), createdBy: 'user-a', status: 'approved', date: '2025-01-01', description: `Submission ${i}`, amount: 1 });
+    if (kind === 'submissions') for (let i = 0; i < count; i++) insertSubmission(db, { id: id('60000000', i), createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-01-01', description: `Submission ${i}`, amount: 1 });
     else for (let i = 0; i < count; i++) addLedger(db, i);
     const response = await exportResponse(db, managerToken);
     assert.equal(response.status, 413); assert.equal((await response.json()).error.code, 'report_too_large');
@@ -23,7 +23,7 @@ for (const [label, count, kind] of [['submission section', 601, 'submissions'], 
 
 test('PDF rejects more than 1000 unified rows even when each section is within 600', async () => {
   const { db, managerToken } = await seededFinancialDb();
-  for (let i = 0; i < 500; i++) insertSubmission(db, { id: id('61000000', i), createdBy: 'user-a', status: 'approved', date: '2025-01-01', description: `Submission ${i}`, amount: 1 });
+  for (let i = 0; i < 500; i++) insertSubmission(db, { id: id('61000000', i), createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-01-01', description: `Submission ${i}`, amount: 1 });
   for (let i = 0; i < 501; i++) addLedger(db, i);
   const response = await exportResponse(db, managerToken);
   assert.equal(response.status, 413); const body = await response.json(); assert.equal(body.error.code, 'report_too_large'); assert.match(body.error.message, /1\.000 baris gabungan/);
@@ -31,7 +31,7 @@ test('PDF rejects more than 1000 unified rows even when each section is within 6
 
 test('PDF rejects rendered report descriptions over 80000 characters', async () => {
   const { db, managerToken } = await seededFinancialDb();
-  for (let i = 0; i < 200; i++) insertSubmission(db, { id: id('62000000', i), createdBy: 'user-a', status: 'approved', date: '2025-01-01', description: `Description ${i} ${'x'.repeat(130)}`, note: 'y'.repeat(300), amount: 1 });
+  for (let i = 0; i < 200; i++) insertSubmission(db, { id: id('62000000', i), createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-01-01', description: `Description ${i} ${'x'.repeat(130)}`, note: 'y'.repeat(300), amount: 1 });
   const response = await exportResponse(db, managerToken);
   assert.equal(response.status, 413); const body = await response.json(); assert.equal(body.error.code, 'report_too_large'); assert.match(body.error.message, /80\.000 karakter/);
 });

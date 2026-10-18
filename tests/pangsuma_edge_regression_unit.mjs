@@ -66,7 +66,7 @@ for (const section of ['submissions', 'ledger', 'audits']) {
   test(`PDF handles oversized ${section}: guards report sources, excludes audit dump`, async () => {
     const f = await fixture();
     if (section === 'submissions') {
-      for (let i = 0; i < 1001; i++) insertSubmission(f.db, { id: `pdf-sub-${i}`, createdBy: 'user-a', status: 'approved', date: '2025-01-15', createdAt: `2025-01-15T04:${String(i % 60).padStart(2, '0')}:00.000Z`, description: `Long description ${'x'.repeat(120)}` });
+      for (let i = 0; i < 1001; i++) insertSubmission(f.db, { id: `pdf-sub-${i}`, type: 'petty_cash', createdBy: 'user-a', status: 'approved', date: '2025-01-15', createdAt: `2025-01-15T04:${String(i % 60).padStart(2, '0')}:00.000Z`, description: `Long description ${'x'.repeat(120)}` });
     } else if (section === 'ledger') {
       for (let i = 0; i < 1001; i++) f.db.db.prepare("INSERT INTO cash_ledger(event_type,direction,amount_idr,balance_after_idr,note,created_at,actor_id) VALUES ('cash_topup','credit',1,1,?,?,'manager-1')").run(`Long ledger note ${'x'.repeat(120)}`, `2025-01-01T00:${String(i % 60).padStart(2, '0')}:00.000Z`);
     } else {

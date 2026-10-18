@@ -27,7 +27,36 @@
   const storeKey = kind => `pangsuma.financial.${kind}.v2:${user()?.id || 'none'}`;
   function read(kind) { try { return JSON.parse(sessionStorage.getItem(storeKey(kind)) || '{}'); } catch { return {}; } }
   function write(kind, value) { try { sessionStorage.setItem(storeKey(kind), JSON.stringify(value)); } catch {} }
-  function keyFor(kind, payload) { const draft = read(kind), fp = JSON.stringify(payload); if (draft.fp === fp && draft.key) return draft.key; const key = newKey(); write(kind, { ...draft, fp, key }); return key; }
+  function keyFor(kind, payload) {
+    const stored = read(kind), fp = JSON.stringify(payload);
+    const draft = kind === 'reconciliation' ? (stored.drafts?.[payload.period] || {}) : stored;
+    if (draft.fp === fp && draft.key) return draft.key;
+    const key = newKey();
+    if (kind === 'reconciliation') saveReconDraft(payload.period, { ...draft, fp, key });
+    else write(kind, { ...draft, fp, key });
+    return key;
+  }
+  // Reconciliation drafts are account-scoped by storage key and period-scoped inside it.
+  // Keep the old flat shape under legacyDraft: it has no trustworthy month and must never
+  // be silently discarded or applied to a different month.
+  const blankReconDraft = period => ({ period, physicalCashIdr:'', note:'', confirmed:false });
+  function reconStore() { const stored = read('reconciliation'); return stored && typeof stored === 'object' ? stored : {}; }
+  function draftFor(period) { const stored = reconStore(); const draft = stored.drafts?.[period]; return draft && draft.period === period ? { period, physicalCashIdr:draft.physicalCashIdr ?? '', note:draft.note || '', confirmed:false } : blankReconDraft(period); }
+  function saveReconDraft(period, draft) {
+    const stored = reconStore(), drafts = { ...(stored.drafts || {}) };
+    drafts[period] = { ...drafts[period], ...draft, period, confirmed: Boolean(draft.confirmed) };
+    write('reconciliation', { ...stored, drafts });
+  }
+  function legacyReconDraft() {
+    const legacy = reconStore().legacyDraft;
+    return legacy && typeof legacy === 'object' ? legacy : null;
+  }
+  function migrateReconStore() {
+    const stored = reconStore();
+    if (stored.legacyDraft || stored.drafts) return stored;
+    if (Object.keys(stored).length) { const migrated = { drafts:{}, legacyDraft:{ ...stored } }; write('reconciliation', migrated); return migrated; }
+    return stored;
+  }
   function cleanError(error) {
     if (error?.status === 503) return 'Fitur menunggu skema lengkap. Tidak ada saldo yang diubah.';
     if (error?.status === 409 && error?.code === 'version_conflict') return 'Pengaturan telah berubah. Muat versi terbaru sebelum menyimpan kembali.';
@@ -47,10 +76,10 @@
     const token = stamp(), requestId = ++reconRequest;
     state.reconLoading = true; state.error = ''; changed('finance');
     try {
-      const query = new URLSearchParams({ period, limit:'20' }); if (cursor) query.set('cursor', cursor);
+      const query = new URLSearchParams({ period, limit:'5' }); if (cursor) query.set('cursor', cursor);
       const result = await hooks.api(`/cash/reconciliations?${query}`);
       if (!current(token) || requestId !== reconRequest || period !== state.period) return;
-      state.items = result.reconciliations || []; state.preview = result.preview || null;
+      state.items = result.reconciliations || []; state.preview = result.preview && (!result.preview.period || result.preview.period === period) ? { ...result.preview, period } : null;
       state.nextCursor = result.nextCursor || null; state.hasMore = Boolean(result.hasMore); state.page = page;
       state.trail[page] = cursor; state.trail.length = page + 1;
       if (state.trail.length > 200) { state.trail.shift(); state.page--; }
@@ -82,7 +111,7 @@
   }
   function renderRows() {
     if (!state.items.length) return '<p class="fc-muted">Belum ada rekonsiliasi untuk periode ini.</p>';
-    return `<div class="fc-table-wrap" tabindex="0" aria-label="Tabel rekonsiliasi, dapat digeser"><table class="fc-table"><thead><tr><th>Periode</th><th>Saldo ledger</th><th>Fisik</th><th>Selisih</th><th>Manager / dibuat</th><th>Catatan</th></tr></thead><tbody>${state.items.map(row => `<tr><td>${esc(row.period)}</td><td>${esc(rupiah(row.ledgerBalanceIdr))}</td><td>${esc(rupiah(row.physicalCashIdr))}</td><td>${esc(rupiah(row.discrepancyIdr))}</td><td>${esc(row.managerName)}<br><small>${esc(dateWib(row.createdAt))}</small></td><td>${esc(row.note)}</td></tr>`).join('')}</tbody></table></div><div class="form-actions">${state.page > 0 ? '<button class="fc-secondary" type="button" data-fc-action="previous-reconciliations">Sebelumnya</button>' : ''}${state.hasMore ? '<button class="fc-secondary" type="button" data-fc-action="more-reconciliations">20 berikutnya</button>' : ''}</div>`;
+    return `<div class="fc-history" aria-busy="${state.reconLoading}"><div class="fc-table-wrap" tabindex="0" aria-label="Tabel rekonsiliasi, dapat digeser"><table class="fc-table"><thead><tr><th>Periode</th><th>Saldo ledger</th><th>Fisik</th><th>Selisih</th><th>Manager / dibuat</th><th>Catatan</th></tr></thead><tbody>${state.items.map(row => `<tr><td>${esc(row.period)}</td><td>${esc(rupiah(row.ledgerBalanceIdr))}</td><td>${esc(rupiah(row.physicalCashIdr))}</td><td>${esc(rupiah(row.discrepancyIdr))}</td><td>${esc(row.managerName)}<br><small>${esc(dateWib(row.createdAt))}</small></td><td>${esc(row.note)}</td></tr>`).join('')}</tbody></table></div><div class="form-actions">${state.page > 0 ? '<button class="fc-secondary" type="button" data-fc-action="previous-reconciliations">Sebelumnya</button>' : ''}${state.hasMore ? '<button class="fc-secondary" type="button" data-fc-action="more-reconciliations">Lihat 5 berikutnya</button>' : ''}</div></div>`;
   }
   function renderSettings() {
     const values = state.settingsDraft || state.settings || {}, busy = state.settingsSaving || state.settingsLoading;
@@ -90,14 +119,15 @@
   }
   function renderFinance() {
     if (!manager()) return '';
-    state.period ||= previousMonth(); state.draft ||= read('reconciliation');
-    const d = state.draft, busy = state.reconSaving;
-    return `<section class="fc-finance" aria-labelledby="fc-title"><div class="fc-heading"><div><h2 id="fc-title">Kontrol keuangan</h2><p>Rekonsiliasi untuk bulan yang sudah berakhir. Tanggal mengikuti WIB.</p></div></div><details class="fc-disclosure" data-fc-section="reconciliation" ${state.financeOpen ? 'open' : ''}><summary>Rekonsiliasi akhir bulan</summary><div class="fc-content"><form id="fc-reconciliation-form" novalidate aria-busy="${busy}"><label>Periode tertutup<input type="month" name="period" required max="${previousMonth()}" value="${esc(state.period)}" ${busy ? 'disabled' : ''}></label><p class="fc-preview" aria-live="polite">Saldo ledger: ${state.reconLoading ? 'Memuat…' : state.preview ? esc(rupiah(state.preview.ledgerBalanceIdr)) : 'Akan dihitung saat periode dipilih'}</p><label>Hasil hitung fisik (Rp)<input name="physicalCashIdr" inputmode="numeric" type="number" min="0" max="${Number.MAX_SAFE_INTEGER}" step="1" required value="${esc(d.physicalCashIdr ?? '')}" ${busy ? 'disabled' : ''}></label><label>Catatan<textarea name="note" minlength="3" maxlength="1000" required ${busy ? 'disabled' : ''}>${esc(d.note || '')}</textarea></label><label class="fc-check"><input type="checkbox" name="confirmed" required ${d.confirmed ? 'checked' : ''} ${busy ? 'disabled' : ''}> Saya mencatat hasil hitung fisik; selisih tidak mengubah saldo</label><button class="fc-primary" type="submit" ${busy || state.reconLoading || !state.preview ? 'disabled' : ''}>${busy ? 'Menyimpan…' : 'Simpan rekonsiliasi'}</button><p class="fc-form-error" data-fc-error role="alert"></p></form><h3>Riwayat rekonsiliasi</h3>${renderRows()}</div></details><details class="fc-disclosure" data-fc-section="settings" ${state.settingsOpen ? 'open' : ''}><summary>Pengaturan peringatan</summary><div class="fc-content">${renderSettings()}</div></details>${state.error ? `<p class="fc-error" role="alert">${esc(state.error)}</p>` : ''}${state.success ? `<p class="fc-success" role="status">${esc(state.success)}</p>` : ''}</section>`;
+    state.period ||= previousMonth(); migrateReconStore(); if (!state.draft || state.draft.period !== state.period) state.draft = draftFor(state.period);
+    const d = state.draft, busy = state.reconSaving, legacy = legacyReconDraft();
+    return `<section class="fc-finance" aria-labelledby="fc-title"><div class="fc-heading"><div><h2 id="fc-title">Kontrol keuangan</h2><p>Rekonsiliasi untuk bulan yang sudah berakhir. Tanggal mengikuti WIB.</p></div></div><details class="fc-disclosure" data-fc-section="reconciliation" ${state.financeOpen ? 'open' : ''}><summary>Rekonsiliasi akhir bulan</summary><div class="fc-content"><form id="fc-reconciliation-form" novalidate aria-busy="${busy}"><label>Periode tertutup<input type="month" name="period" required max="${previousMonth()}" value="${esc(state.period)}" ${busy ? 'disabled' : ''}></label>${legacy ? `<p class="fc-legacy-notice" role="status">Draf lama dipertahankan tetapi bulannya tidak diketahui. Tidak akan diterapkan otomatis. <button type="button" class="fc-secondary" data-fc-action="restore-legacy">Pulihkan ke ${esc(state.period)}</button></p>` : ''}<p class="fc-preview" aria-live="polite">Saldo ledger: ${state.reconLoading ? 'Memuat…' : state.preview ? esc(rupiah(state.preview.ledgerBalanceIdr)) : 'Akan dihitung saat periode dipilih'}</p><label>Hasil hitung fisik (Rp)<input name="physicalCashIdr" inputmode="numeric" type="number" min="0" max="${Number.MAX_SAFE_INTEGER}" step="1" required value="${esc(d.physicalCashIdr ?? '')}" ${busy ? 'disabled' : ''}></label><label>Catatan<textarea name="note" minlength="3" maxlength="1000" required ${busy ? 'disabled' : ''}>${esc(d.note || '')}</textarea></label><label class="fc-check"><input type="checkbox" name="confirmed" required ${d.confirmed ? 'checked' : ''} ${busy ? 'disabled' : ''}> Saya mencatat hasil hitung fisik; selisih tidak mengubah saldo</label><button class="fc-primary" type="submit" ${busy || state.reconLoading || !state.preview ? 'disabled' : ''}>${busy ? 'Menyimpan…' : 'Simpan rekonsiliasi'}</button><p class="fc-form-error" data-fc-error role="alert"></p></form><h3>Riwayat rekonsiliasi</h3>${renderRows()}</div></details><details class="fc-disclosure" data-fc-section="settings" ${state.settingsOpen ? 'open' : ''}><summary>Pengaturan peringatan</summary><div class="fc-content">${renderSettings()}</div></details>${state.error ? `<p class="fc-error" role="alert">${esc(state.error)}</p>` : ''}${state.success ? `<p class="fc-success" role="status">${esc(state.success)}</p>` : ''}</section>`;
   }
   function capture(form) {
     if (form.id === 'fc-reconciliation-form') {
-      state.draft = { ...state.draft, physicalCashIdr:form.elements.physicalCashIdr.value, note:form.elements.note.value, confirmed:form.elements.confirmed.checked };
-      write('reconciliation', { ...read('reconciliation'), ...state.draft });
+      if (form.elements.period?.value && form.elements.period.value !== state.period) return false;
+      state.draft = { ...state.draft, period:form.elements.period?.value ?? state.period, physicalCashIdr:form.elements.physicalCashIdr?.value ?? '', note:form.elements.note?.value ?? '', confirmed:Boolean(form.elements.confirmed?.checked) };
+      saveReconDraft(state.draft.period, state.draft);
     } else if (form.id === 'fc-settings-form') {
       state.settingsDraft = { minimumCashIdr:form.elements.minimumCashIdr.value, pendingMaxDays:form.elements.pendingMaxDays.value };
       write('settings', { ...read('settings'), values:state.settingsDraft });
@@ -105,16 +135,19 @@
   }
   async function submitReconciliation(form) {
     if (state.reconSaving || !manager()) return;
+    if (form.elements.period.value !== state.period) { form.querySelector('[data-fc-error]').textContent = 'Pilih ulang periode sebelum menyimpan.'; return; }
     capture(form);
-    const amount = safeInt(state.draft.physicalCashIdr), note = state.draft.note.trim(), period = form.elements.period.value;
-    const error = amount === null ? 'Masukkan bilangan rupiah bulat yang aman.' : note.length < 3 || note.length > 1000 ? 'Catatan wajib 3–1000 karakter.' : !state.draft.confirmed ? 'Konfirmasi pencatatan diperlukan.' : !/^\d{4}-\d{2}$/.test(period) || period > previousMonth() ? 'Pilih bulan yang sudah berakhir.' : '';
+    const amount = safeInt(state.draft.physicalCashIdr), note = String(state.draft.note || '').trim(), period = form.elements.period.value;
+    if (!state.preview && period === state.period && !state.reconLoading) { await loadReconciliations(period); }
+    const formPeriodMatchesState = period === state.period && state.draft.period === period;
+    const error = amount === null ? 'Masukkan bilangan rupiah bulat yang aman.' : note.length < 3 || note.length > 1000 ? 'Catatan wajib 3–1000 karakter.' : !formPeriodMatchesState || state.preview?.period !== period ? 'Muat ulang periode yang dipilih sebelum menyimpan.' : !state.draft.confirmed ? 'Konfirmasi pencatatan diperlukan.' : !/^\d{4}-\d{2}$/.test(period) || period > previousMonth() ? 'Pilih bulan yang sudah berakhir.' : '';
     if (error) { form.querySelector('[data-fc-error]').textContent = error; return; }
     const payload = { period, physicalCashIdr:amount, note, confirmed:true }, key = keyFor('reconciliation', payload), token = stamp();
     state.reconSaving = true; state.error = ''; state.success = ''; changed('finance');
     try {
       await hooks.api('/cash/reconciliations', { method:'POST', headers:{ 'Idempotency-Key':key }, body:payload });
       if (!current(token)) return;
-      state.draft = {}; write('reconciliation', {}); state.success = 'Rekonsiliasi tersimpan.'; state.trail = [''];
+      const stored = reconStore(); const drafts = { ...(stored.drafts || {}) }; delete drafts[period]; write('reconciliation', { ...stored, drafts }); state.draft = draftFor(period); state.success = 'Rekonsiliasi tersimpan.'; state.trail = [''];
       await loadReconciliations(period); notify(state.success, 'success');
     } catch (error) { if (current(token)) { state.error = cleanError(error); notify(state.error); } }
     finally { if (current(token)) { state.reconSaving = false; changed('finance'); } }
@@ -146,13 +179,14 @@
       if (details.open && !before && !state.settings && !settingsPromise) void loadSettings();
     }
   }
-  function onInput(event) { const form = event.target.closest?.('#fc-reconciliation-form,#fc-settings-form'); if (form && manager()) capture(form); }
+  function onInput(event) { const form = event.target.closest?.('#fc-reconciliation-form,#fc-settings-form'); if (form && manager() && !(form.id === 'fc-reconciliation-form' && (event.target.name === 'period' || event.target.type === 'month'))) { if (form.id === 'fc-reconciliation-form' && event.target.name !== 'confirmed' && form.elements.confirmed) form.elements.confirmed.checked = false; capture(form); } }
   function onChange(event) {
-    onInput(event);
-    if (event.target.name !== 'period' || event.target.closest?.('form')?.id !== 'fc-reconciliation-form') return;
+    if (event.target.name !== 'period' || event.target.closest?.('form')?.id !== 'fc-reconciliation-form') { onInput(event); return; }
     const period = event.target.value;
     if (!/^\d{4}-\d{2}$/.test(period) || period > previousMonth()) { state.error = 'Pilih bulan yang sudah berakhir.'; changed('finance'); return; }
-    state.period = period; state.preview = null; state.draft.confirmed = false; state.trail = ['']; state.page = 0; void loadReconciliations(period);
+    if (state.period && state.draft) saveReconDraft(state.period, state.draft);
+    state.period = period; state.preview = null; state.success = ''; state.error = ''; state.items = []; state.draft = draftFor(period);
+    state.trail = ['']; state.page = 0; state.nextCursor = null; state.hasMore = false; void loadReconciliations(period);
   }
   function onClick(event) {
     const button = event.target.closest?.('[data-fc-action]'); if (!button || !manager()) return;
@@ -160,6 +194,12 @@
     if (action === 'approvals') hooks.navigate?.('approvals');
     if (action === 'retry-alerts') { state.alertsLoaded = false; void loadAlerts(true); }
     if (action === 'reload-settings') { state.settingsDraft = null; state.error = ''; write('settings', {}); void loadSettings(true); }
+    if (action === 'restore-legacy') {
+      const legacy = legacyReconDraft();
+      if (legacy && (state.draft?.physicalCashIdr || state.draft?.note)) { state.error = 'Draf periode ini tetap disimpan. Pilih periode kosong untuk memulihkan draf lama.'; changed('finance'); return; }
+      if (legacy) { state.draft = { ...blankReconDraft(state.period), physicalCashIdr: String(legacy.physicalCashIdr ?? ''), note: String(legacy.note ?? ''), confirmed: false }; saveReconDraft(state.period, state.draft); state.success = `Draf lama dipulihkan ke ${state.period}; periksa kembali sebelum menyimpan.`; state.error = ''; changed('finance'); }
+      return;
+    }
     if (state.reconLoading) return;
     if (action === 'more-reconciliations' && state.nextCursor) void loadReconciliations(state.period, state.nextCursor, state.page + 1);
     if (action === 'previous-reconciliations' && state.page > 0) void loadReconciliations(state.period, state.trail[state.page - 1], state.page - 1);

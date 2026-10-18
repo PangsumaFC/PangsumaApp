@@ -50,7 +50,7 @@ function cursorFor(direction, snapshotAt, filters, row) {
 }
 function boundLimit(params) {
   const raw = params.get('limit');
-  if (raw == null || raw === '') return 25;
+  if (raw == null || raw === '') return 5;
   if (!/^\d+$/.test(raw)) throw new ApiError(400, 'invalid_limit', 'Limit laporan tidak valid.');
   const limit = Number(raw);
   if (limit < 1 || limit > MAX_LIMIT) throw new ApiError(400, 'invalid_limit', 'Limit laporan harus 1 sampai 100.');

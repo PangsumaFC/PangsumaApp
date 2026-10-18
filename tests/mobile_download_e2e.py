@@ -31,29 +31,31 @@ ANDROID_WEBVIEW_UA = (
 )
 
 
-def assert_pdf(path: Path, expected_text: set[str]) -> None:
+def assert_pdf(path: Path, expected_text: set[str], report_type: str = "petty_cash") -> None:
     raw = path.read_bytes()
     assert raw.startswith(b"%PDF-"), "download must be a PDF"
     completed = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True)
     text = completed.stdout
-    for heading in ("PANGSUMA FC", "Laporan Petty Cash", "Total kas keseluruhan"):
+    for heading in ("PANGSUMA FC", "Laporan Request Finance" if report_type == "finance_request" else "Laporan Petty Cash", "DATA DEMO"):
         # Check actual rendered content, not only MIME or the file extension.
         assert heading in text, (heading, text[:1000])
     assert "Lampiran Audit" not in text
     assert "Pengajuan Petty Cash" not in text
     text = " ".join(text.split())
-    for value in ("500.000", "125.000", "375.000"):
+    for value in (("75.000",) if report_type == "finance_request" else ("125.000", "375.000")):
         assert value in text, (value, text[:1500])
     for fixture in expected_text:
         assert fixture in text, (fixture, text[:1000])
+    excluded = "PDF fixture petty cash" if report_type == "finance_request" else "Mobile PDF fixture finance"
+    assert excluded not in text, (excluded, text[:1500])
 
 
-def download_once(page: Page, path: Path, standalone: bool = False) -> None:
+def download_once(page: Page, path: Path, standalone: bool = False, report_type: str = "petty_cash") -> None:
     page.locator('[data-page="finance"]:visible').first.click()
-    page.locator('[data-action="download-pdf"]:visible').wait_for(timeout=10_000)
+    expect(page.locator('[data-action="download-pdf"]:visible')).to_have_count(2)
     assert page.locator('.pdf-fallback,#managerPdfFallbackLink').count() == 0
     with page.expect_download(timeout=15_000) as pending:
-        page.locator('[data-action="download-pdf"]:visible').click()
+        page.locator(f'[data-action="download-pdf"][data-report-type="{report_type}"]:visible').click()
     assert page.locator('#pwaPdfDialog').count() == 0
     download = pending.value
     assert download.failure() is None
@@ -71,7 +73,7 @@ def webview_browser_fallback(page: Page, browser: Browser, password: str, label:
     expect(region.locator('.manager-filtered-results .item-row')).to_have_count(1)
     exports: list[str] = []
     page.on('request', lambda request: exports.append(request.url) if '/api/export.pdf' in request.url else None)
-    page.locator('[data-action="download-pdf"]:visible').click()
+    page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
     dialog = page.locator('#pwaPdfApkDialog')
     expect(dialog).to_be_visible()
     expect(dialog.locator('#pwaPdfApkStatus')).to_have_text('Unduh PDF langsung memerlukan APK yang diperbarui.')
@@ -184,7 +186,10 @@ def main() -> None:
                 continue
             destination = SCREENSHOTS / f"mobile-{label}-export.pdf"
             download_once(page, destination, label == 'standalone')
-            assert_pdf(destination, expected)
+            assert_pdf(destination, {"PDF fixture petty cash"})
+            request_destination = SCREENSHOTS / f"mobile-{label}-request.pdf"
+            download_once(page, request_destination, label == "standalone", "finance_request")
+            assert_pdf(request_destination, {"Mobile PDF fixture finance"}, "finance_request")
             session = api(page, "/api/session")
             assert session["status"] == 200 and session["data"].get("user", {}).get("role") == "manager", session
             assert not page.locator("#loginGate").is_visible()
@@ -196,7 +201,7 @@ def main() -> None:
             region.locator('[type="submit"]').click()
             expect(region.locator('.manager-filtered-results .item-row')).to_have_count(1)
             with page.expect_download(timeout=15_000) as filtered_pending:
-                page.locator('[data-action="download-pdf"]:visible').click()
+                page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
             filtered_path = SCREENSHOTS / f'mobile-{label}-filtered.pdf'
             filtered_pending.value.save_as(filtered_path)
             filtered_text = subprocess.run(['pdftotext', str(filtered_path), '-'], check=True, capture_output=True, text=True).stdout

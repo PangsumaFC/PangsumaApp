@@ -75,7 +75,7 @@ def main():
         # honest API error and re-enables the primary button for a later retry.
         assert page.locator("#managerPdfFallback,#managerPdfFallbackLink").count() == 0
         page.route("**/api/export.pdf**", lambda r: r.fulfill(status=500, content_type="application/json", body=json.dumps({"error": {"code": "forced_failure"}})))
-        button = page.locator('[data-action="download-pdf"]')
+        button = page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]')
         button.click()
         expect(page.locator("#toast")).to_contain_text("Rekap lengkap tidak dapat dibuat.", timeout=10000)
         expect(button).to_be_enabled(timeout=10000)

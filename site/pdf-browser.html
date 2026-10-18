@@ -4,34 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#17334e">
-  <meta name="description" content="Unduh laporan PDF di browser untuk Manager Pangsuma.">
-  <title>Unduh PDF di browser</title>
-  <link rel="stylesheet" href="/pdf-browser.css?v=2026.10.19.1">
-  <script src="/pdf-browser.js?v=2026.10.19.1" defer></script>
+  <meta name="description" content="Laporan PDF Manager tersedia di halaman Finance Pangsuma.">
+  <title>Laporan tersedia di Finance</title>
+  <link rel="stylesheet" href="/pdf-browser.css?v=2026.10.19.2">
+  <script src="/pdf-browser.js?v=2026.10.19.2" defer></script>
 </head>
 <body>
   <main class="handoff-shell" id="mainContent">
     <section class="handoff-card" aria-labelledby="pageTitle">
       <p class="eyebrow">Pangsuma App</p>
-      <h1 id="pageTitle">Unduh PDF di browser</h1>
+      <h1 id="pageTitle">Laporan tersedia di Finance</h1>
       <div id="browserInstructions">
-        <p class="intro">Masuk sebagai Manager di browser ini, lalu periksa sesi dan unduh PDF.</p>
-        <ol class="steps">
-          <li><span>Buka/login Manager dari <a id="loginLink" href="/">link ini</a>.</span></li>
-          <li>Kembali ke halaman ini lalu pilih <strong>Periksa sesi</strong>.</li>
-          <li>Pilih <strong>Unduh PDF</strong> setelah sesi Manager terverifikasi.</li>
-        </ol>
+        <p class="intro">Masuk sebagai Manager, buka Finance, lalu pilih laporan Petty Cash atau Request. Kedua laporan hanya memuat kategori yang dipilih dan pengajuan yang sudah disetujui.</p>
+        <a class="primary-button" id="loginLink" href="/">Buka aplikasi</a>
       </div>
-      <section class="filter-summary" aria-labelledby="filterTitle">
-        <h2 id="filterTitle">Filter yang diterapkan</h2>
-        <ul id="filterList" class="filter-list"></ul>
-      </section>
-      <div class="actions">
-        <button class="secondary-button" id="checkSession" type="button">Periksa sesi</button>
-        <a class="primary-button download-link" id="downloadPdf" href="" hidden aria-disabled="true">Unduh PDF</a>
-      </div>
-      <p class="session-status" id="sessionStatus" role="status" aria-live="polite">Periksa sesi Manager di browser ini sebelum mengunduh.</p>
-      <p class="security-note">Unduhan dijaga oleh server. Halaman ini tidak memindahkan sesi APK, menyimpan token, atau menjalankan unduhan otomatis.</p>
+      <p class="session-status" id="sessionStatus" role="status" aria-live="polite">Halaman ini tidak menjalankan unduhan. Gunakan dua pilihan laporan di Finance.</p>
     </section>
   </main>
 </body>

@@ -38,7 +38,7 @@ def assert_pdf_text(path: Path) -> str:
     raw = path.read_bytes()
     assert raw.startswith(b"%PDF-"), raw[:20]
     text = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True).stdout
-    assert "PANGSUMA FC" in text and "Laporan Petty Cash" in text, text[:500]
+    assert "PANGSUMA FC" in text and "Laporan Request Finance" in text, text[:500]
     assert "Finance disetujui" in text or "Finance" in text, text[:500]
     return text
 
@@ -169,7 +169,7 @@ def main() -> None:
         form.locator("button[type='submit']").click()
         expect(page.locator(".manager-filtered-results")).to_contain_text("PWA regression included")
         expect(page.locator(".manager-filtered-results")).not_to_contain_text("Excluded separate fixture")
-        expected = {"q": ["PWA regression included"], "jenis": ["finance_request"], "status": ["approved"]}
+        expected = {"q": ["PWA regression included"], "jenis": ["finance_request"], "laporan": ["finance_request"]}
         export_urls: list[str] = []
         def delayed_attachment(route):
             export_urls.append(route.request.url)
@@ -187,7 +187,7 @@ def main() -> None:
         output = ARTIFACTS / "pwa-standalone-filtered.pdf"
         started = time.monotonic()
         with page.expect_download(timeout=20_000) as download:
-            page.locator('[data-action="download-pdf"]:visible').click()
+            page.locator('[data-action="download-pdf"][data-report-type="finance_request"]:visible').click()
         dl = download.value
         assert dl.failure() is None
         dl.save_as(output)
@@ -199,7 +199,7 @@ def main() -> None:
         assert "PWA regression included" in text and "Excluded separate fixture" not in text, text
         assert page.evaluate("window.__pwaObjectUrls") >= 1
         expect(page.locator("#pwaPdfDialog")).to_have_count(0)
-        expect(page.locator('[data-action="download-pdf"]:visible')).to_be_enabled()
+        expect(page.locator('[data-action="download-pdf"][data-report-type="finance_request"]:visible')).to_be_enabled()
         page.screenshot(path=str(ARTIFACTS / "pwa-pdf-direct-download.png"), full_page=True)
         assert api(page, "/api/session")["status"] == 200
         print("PWA_STANDALONE_PDF_PASS simulated_display_mode=1 delayed_fetch_ms=5200 direct_download=1 query_exact=1 included=1 excluded=0 actual_blob_download=1 unwanted_share=0 session_active=1", flush=True)

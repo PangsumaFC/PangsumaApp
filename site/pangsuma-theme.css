@@ -227,7 +227,7 @@ h1, .page-heading h1 { margin: 0; color: var(--blue-deep); font-family: var(--di
 .division-row:last-child { border-bottom: 0; }
 .division-name { font-weight: 660; }
 .division-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
-.status { display: inline-flex; min-height: 28px; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 660; white-space: nowrap; }
+.status { display: inline-flex; min-height: 28px; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 660; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 .status-ok { color: #235c43; background: var(--green-pale); }
 .status-wait { color: #5a4716; background: var(--gold-pale); }
 .status-neutral { color: #495969; background: #edf1f4; }
@@ -816,7 +816,12 @@ body.logged-out > .pwa-install-feedback { display: none; }
 .users-search-panel { margin-block: 16px; }
 .users-search-panel h2 { margin: 0 0 8px; }
 .users-search-panel label { display: block; font-weight: 600; margin-bottom: 6px; }
-.users-search-panel input[type="search"] { width: 100%; max-width: 36rem; min-height: 44px; }
+.users-search-panel input[type="search"],
+.users-search-panel .users-search { width: 100%; max-width: 36rem; min-height: 44px; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--paper); font: inherit; }
+.users-search-panel input[type="search"]:focus-visible,
+.users-search-panel .users-search:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
+.fc-legacy-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; padding: 10px 12px; border: 1px solid #e5d9b6; border-radius: 10px; color: #534a35; background: #faf6e9; font-size: 13px; }
+.fc-legacy-notice .fc-secondary { min-height: 36px; padding: 6px 10px; }
 @media (max-width: 640px) {
   .users-search-panel { padding: 16px; }
   .users-search-panel input[type="search"] { max-width: none; }

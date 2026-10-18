@@ -119,15 +119,16 @@ function wrap(text, font, size, maxWidth) {
   return lines.length ? lines : ['-'];
 }
 
-export async function buildFinancialReport({ submissions = [], ledger = [], snapshotAt, managerName, filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false, maxPages = MAX_PDF_PAGES } = {}) {
+export async function buildFinancialReport({ submissions = [], ledger = [], snapshotAt, managerName, reportType = 'petty_cash', filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false, maxPages = MAX_PDF_PAGES } = {}) {
   const pageLimit = Math.min(MAX_PDF_PAGES, Math.max(1, Math.trunc(Number(maxPages)) || MAX_PDF_PAGES));
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const signatureImage = await pdf.embedPng(managerSignaturePng);
   const stampImage = await pdf.embedPng(managerStampPng);
-  pdf.setTitle('Laporan Petty Cash');
-  pdf.setSubject('Buku kas ledger sesuai filter; bukan daftar pengajuan atau audit');
+  const reportTitle = reportType === 'finance_request' ? 'Laporan Request Finance' : 'Laporan Petty Cash';
+  pdf.setTitle(reportTitle);
+  pdf.setSubject(reportType === 'finance_request' ? 'Request Finance yang disetujui Manager' : 'Buku kas Petty Cash dan laporan yang disetujui Manager');
   pdf.setCreator('Pangsuma App');
   const snapshot = snapshotAt || new Date().toISOString();
   const unified = unifiedReportRows({ submissions, ledger });
@@ -150,10 +151,10 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     if (pdf.getPageCount() > 1) return;
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
-    page.drawText('Laporan Petty Cash', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
+    page.drawText(reportTitle, { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
     page.drawText(`Tanggal cetak: ${mark(printDate(snapshot))}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
-    page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
+    page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED, maxWidth: CONTENT_W });
     y = PAGE_H - headerBottom;
   }
   function footer() {
@@ -177,11 +178,17 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     : ledgers.length ? integerIdr(ledgers[0].balance_after_idr) - signed(ledgers[0]) : 0n;
   const incoming = ledgers.filter(l => isIncoming(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
   const outgoing = ledgers.filter(l => isOutgoing(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
+  const requestTotal = unified.totalSubmitted;
   const finalBalance = closingBalanceIdr !== null ? integerIdr(closingBalanceIdr) : ledgers.length ? integerIdr(ledgers[ledgers.length - 1].balance_after_idr) : openingBalance;
   const hasSimulation = unified.hasSimulation;
 
   function ledgerTable(rows) {
-    const columns = [
+    const columns = reportType === 'finance_request' ? [
+      { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
+      { key: 'description', label: 'Keterangan / pengaju', width: 253 },
+      { key: 'in', label: 'Nominal request', width: 110, align: 'right' },
+      { key: 'attachment', label: 'Lampiran', width: 90 },
+    ] : [
       { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
       { key: 'description', label: 'Keterangan', width: 148 }, { key: 'in', label: 'Masuk', width: 76, align: 'right' },
       { key: 'out', label: 'Keluar', width: 76, align: 'right' }, { key: 'balance', label: 'Saldo', width: 86, align: 'right' },
@@ -211,7 +218,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       // Monetary cells are a single accounting-style line; drawMoneyCell fits
       // the complete signed number instead of wrapping or repeating currency.
       const attachmentUrls = Array.isArray(row.attachment_urls) ? row.attachment_urls : (row.attachment_url ? [row.attachment_url] : []);
-      const cells = columns.map((column, index) => index >= 3 && index <= 5
+      const cells = columns.map(column => ['in', 'out', 'balance'].includes(column.key)
         ? [mark(row[column.key])]
         : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map((_, i) => `Bukti ${i + 1}`) : ['-'])
           : wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
@@ -228,7 +235,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
         cells.forEach((cell, cellIndex) => {
           const column = columns[cellIndex];
           // A continuation chunk carries text only; monetary values are counted and printed once.
-          const slice = offset === 0 ? cell.slice(offset, offset + count) : (cellIndex >= 3 && cellIndex <= 5 ? [] : cell.slice(offset, offset + count));
+          const slice = offset === 0 ? cell.slice(offset, offset + count) : (['in', 'out', 'balance'].includes(column.key) ? [] : cell.slice(offset, offset + count));
           slice.forEach((line, lineIndex) => {
             const lineY = y - 12 - lineIndex * lineH;
             if (column.key === 'in' || column.key === 'out' || column.key === 'balance') drawMoneyCell(page, line, x, lineY, column.width, regular, INK, fontSize, pad);
@@ -261,7 +268,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
     let x = MARGIN;
     columns.forEach(column => {
-      const value = column.key === 'description' ? 'Total kas keseluruhan' : column.key === 'in' ? amount(incoming) : column.key === 'out' ? amount(outgoing) : '';
+      const value = column.key === 'description' ? (reportType === 'finance_request' ? 'Total request disetujui' : 'Total kas keseluruhan') : column.key === 'in' ? amount(reportType === 'finance_request' ? requestTotal : incoming) : column.key === 'out' ? amount(reportType === 'finance_request' ? 0 : outgoing) : '';
       if (value) { if (column.key === 'in' || column.key === 'out') drawMoneyCell(page, value, x, y - 12, column.width, bold, NAVY, fontSize, pad); else text(value, x + pad, y - 12, fontSize, bold, NAVY, { maxWidth: column.width - pad * 2, align: column.align }); }
       x += column.width;
     });
@@ -301,9 +308,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       no: i + 1,
       date: shortDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(l.report_at))),
       description: l.report_description,
-      in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
-      out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
-      balance: l.is_cash ? amount(l.balance_after_idr) : '-',
+      in: reportType === 'finance_request' ? amount(l.submission_amount_idr ?? l.amount_idr ?? l.amount) : (isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-'),
+      out: reportType === 'finance_request' ? '-' : (isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-'),
+      balance: reportType === 'finance_request' ? '-' : (l.is_cash ? amount(l.balance_after_idr) : '-'),
       attachment_urls: l.dropbox_receipt_urls || l.report_attachment_urls || (l.dropbox_receipt_url ? [l.dropbox_receipt_url] : []),
       direction: l.direction, amount_idr: l.amount_idr ?? l.amount,
     })));

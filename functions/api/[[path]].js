@@ -49,7 +49,7 @@ const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 const LOGIN_FAILURE_LIMIT = 8;
 const LOGIN_IP_FAILURE_LIMIT = 20;
 const LOGIN_ATTEMPT_MAX_ROWS = 20000;
-const HISTORY_PAGE_SIZE = 100;
+const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 500;
 const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
 // PDF generation sorts each section in memory; reject oversized reports before
@@ -456,7 +456,7 @@ function parseIdCursor(raw) {
   return id;
 }
 
-async function submissionsPage(db, user, cursor = null, filters = {}) {
+async function submissionsPage(db, user, cursor = null, filters = {}, direction = 'after') {
   const conditions = [];
   const params = [];
   if (user.role !== 'manager') {
@@ -468,8 +468,10 @@ async function submissionsPage(db, user, cursor = null, filters = {}) {
     conditions.push(shared.where);
     params.push(...shared.params);
   }
+  const scopeConditions = [...conditions], scopeParams = [...params];
   if (cursor) {
-    conditions.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
+    const op = direction === 'before' ? '>' : '<';
+    conditions.push(`(s.created_at ${op} ? OR (s.created_at = ? AND s.id ${op} ?))`);
     params.push(cursor.createdAt, cursor.createdAt, cursor.id);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -483,17 +485,26 @@ async function submissionsPage(db, user, cursor = null, filters = {}) {
     LEFT JOIN users resolver ON resolver.id = s.resolved_by
     LEFT JOIN users sender ON sender.id = s.sent_by
     ${where}
-    ORDER BY s.created_at DESC, s.id DESC
+    ORDER BY s.created_at ${direction === 'before' ? 'ASC' : 'DESC'}, s.id ${direction === 'before' ? 'ASC' : 'DESC'}
     LIMIT ${HISTORY_PAGE_SIZE + 1}
   `).bind(...params).all();
   const rows = result.results || [];
   const hasMore = rows.length > HISTORY_PAGE_SIZE;
   const pageRows = rows.slice(0, HISTORY_PAGE_SIZE);
+  if (direction === 'before') pageRows.reverse();
   const last = pageRows[pageRows.length - 1];
+  const first = pageRows[0];
+  async function hasEdge(row, op) {
+    if (!row) return false;
+    const where = [...scopeConditions, `(s.created_at ${op} ? OR (s.created_at = ? AND s.id ${op} ?))`].join(' AND ');
+    return Boolean(await db.prepare(`SELECT 1 AS found FROM submissions s JOIN users creator ON creator.id=s.created_by WHERE ${where} LIMIT 1`).bind(...scopeParams, row.created_at, row.created_at, row.id).first());
+  }
+  const hasNext = direction === 'before' ? await hasEdge(last, '<') : hasMore;
+  const hasPrevious = direction === 'before' ? hasMore : Boolean(cursor && await hasEdge(first, '>'));
   return {
-    items: pageRows.map(mapSubmission),
-    hasMore,
-    nextCursor: hasMore && last ? `${last.created_at}|${last.id}` : null
+    items: pageRows.map(mapSubmission), hasMore:hasNext,
+    nextCursor: hasNext && last ? `${last.created_at}|${last.id}` : null,
+    previousCursor: hasPrevious && first ? `${first.created_at}|${first.id}` : null
   };
 }
 
@@ -614,7 +625,7 @@ async function overview(context, db) {
              COALESCE(p.version, 0) AS profile_version
       FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
       ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE
-      LIMIT 100
+      LIMIT 5
     `).all(),
     cashLedgerPage(db, null, Number(cash?.ledger_high_water_id || 0)),
     auditEventsPage(db),
@@ -667,7 +678,8 @@ async function listSubmissions(context, db) {
   const user = await requireUser(context.request, db);
   const url = new URL(context.request.url);
   const filters = parseReportFilters(url.searchParams);
-  const page = await submissionsPage(db, user, parseSubmissionCursor(url.searchParams.get('cursor')), filters);
+  const direction = url.searchParams.get('direction') === 'before' ? 'before' : 'after';
+  const page = await submissionsPage(db, user, parseSubmissionCursor(url.searchParams.get('cursor')), filters, direction);
   const countFilters = buildSubmissionFilterSql(filters);
   const roleClause = user.role === 'manager' ? '' : ` AND s.created_by = ?`;
   const countParams = user.role === 'manager'
@@ -678,7 +690,10 @@ async function listSubmissions(context, db) {
     WHERE ${countFilters.where}${roleClause}`).bind(...countParams).first();
   return jsonResponse({
     submissions: page.items,
+    items: page.items,
     nextCursor: page.nextCursor,
+    previousCursor: page.previousCursor || null,
+    hasPrevious: Boolean(page.previousCursor),
     hasMore: page.hasMore,
     total: Number(count?.count || 0)
   });
@@ -1296,10 +1311,13 @@ async function exportCsv(context, db) {
 }
 
 // Read every page rather than exporting only the dashboard's first 100 rows.
-async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilters()) {
+async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilters(), reportType = 'petty_cash') {
+  filters = { ...filters, type: reportType, status: '' };
   const ledger = [];
   const submissions = [];
-  const hasSpecific = hasSubmissionSpecificFilter(filters);
+  // Category is the report scope, not a user-selected linked-row filter.
+  // Only applicant/search/date constraints should make ledger rows partial.
+  const hasSpecific = Boolean(filters.applicant || filters.q);
   const filtered = Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q);
   const submissionFilter = buildSubmissionFilterSql({ ...filters, startDate: '', endDate: '' }, { alias: 's', creatorAlias: 'creator' });
   const actionable = 'Persempit filter: pilih rentang lebih pendek, pemohon, jenis, atau status lalu coba lagi.';
@@ -1308,6 +1326,14 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
   // First collect the cash rows. Date boundaries for cash always use ledger.created_at.
   const ledgerWhere = ['l.created_at <= ?'];
   const ledgerParams = [snapshotAt];
+  // Petty reports may include standalone cash movements, but linked movements
+  // must belong to an eligible petty submission. Request rows remain nominal
+  // requests; genuine linked ledger metadata is reused without inventing cash.
+  if (reportType === 'finance_request') {
+    ledgerWhere.push("l.submission_id IS NOT NULL AND s.type = 'finance_request' AND s.status IN ('approved', 'sent')");
+  } else {
+    ledgerWhere.push("(l.submission_id IS NULL OR (s.type = 'petty_cash' AND s.status IN ('approved', 'sent')) )");
+  }
   if (filters.startDate) { ledgerWhere.push('l.created_at >= ?'); ledgerParams.push(wibBoundary(filters.startDate)); }
   if (filters.endDate) { ledgerWhere.push('l.created_at < ?'); ledgerParams.push(wibBoundary(filters.endDate, true)); }
   if (hasSpecific) {
@@ -1329,7 +1355,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
     linkedClauses.push('sl.created_at < ?'); linkedParams.push(wibBoundary(filters.endDate, true));
   }
   const dateScope = periodClauses.length ? periodClauses.join(' AND ') : '1=1';
-  const eligibility = "(creator.role = 'manager' OR s.status IN ('approved', 'sent'))";
+  const eligibility = `(s.type = '${reportType}' AND s.status IN ('approved', 'sent'))`;
   const submissionWhere = ['s.created_at <= ?', eligibility, submissionFilter.where,
     `(${dateScope} OR EXISTS (SELECT 1 FROM cash_ledger sl WHERE ${linkedClauses.join(' AND ')}))`];
   const submissionParams = [snapshotAt, ...submissionFilter.params, ...periodParams, ...linkedParams];
@@ -1372,7 +1398,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
     const cursorParams = submissionCursor ? [submissionCursor.created_at, submissionCursor.created_at, submissionCursor.id] : [];
     const rows = (await db.prepare(`
       SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
-             s.decision_reason, s.created_at, s.updated_at, s.created_by,
+             s.decision_reason, s.resolved_by, s.created_at, s.updated_at, s.created_by,
              creator.name AS created_by_name, creator.position AS created_by_position,
              creator.role AS created_by_role, resolver.name AS resolved_by_name,
              sender.name AS sent_by_name
@@ -1407,6 +1433,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
   const closingBalanceIdr = closing?.balance_after_idr ?? 0;
   return {
     snapshotAt,
+    reportType,
     submissions: submissions.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.created_at || '').localeCompare(String(b.created_at || ''))),
     ledger: ledger.sort((a, b) => Number(a.id) - Number(b.id)),
     filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered,
@@ -1455,17 +1482,20 @@ async function exportPdf(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
   requireManager(user);
-  const filters = parseReportFilters(new URL(context.request.url).searchParams);
+  const params = new URL(context.request.url).searchParams;
+  const reportType = params.get('laporan') || 'petty_cash';
+  if (!['petty_cash', 'finance_request'].includes(reportType)) throw new ApiError(400, 'invalid_report_type', 'Jenis laporan PDF tidak valid.');
+  const filters = parseReportFilters(params);
   const { body: bytes, snapshotAt } = await runConsistentExport({
     db,
     gather: async (at) => {
-      const data = await attachReadyDropboxReceipts(context, db, await fullFinancialReportData(db, at, filters), at);
-      return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name, maxPages: MAX_PDF_PAGES });
+      const data = await attachReadyDropboxReceipts(context, db, await fullFinancialReportData(db, at, filters, reportType), at);
+      return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name, reportType, maxPages: MAX_PDF_PAGES });
     }
   });
   return new Response(bytes, { headers: {
     'Content-Type': 'application/pdf',
-    'Content-Disposition': `attachment; filename="pangsuma-laporan-keuangan-${jakartaToday()}.pdf"`,
+    'Content-Disposition': `attachment; filename="pangsuma-laporan-${reportType === 'finance_request' ? 'request-finance' : 'petty-cash'}-${jakartaToday()}.pdf"`,
     'Cache-Control': 'no-store, max-age=0',
     'Pragma': 'no-cache',
     'X-Content-Type-Options': 'nosniff',

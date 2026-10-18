@@ -82,8 +82,9 @@ const state = {
   cashBalanceIdr: 0,
   submissions: [],
   pendingSubmissions: [],
+  pendingPage: { cursor: '', nextCursor: '', total: 0, hasMore: false, hasPrevious: false, loading: false, error: '' },
   users: [],
-  usersPage: { page: 1, limit: 100, total: 0, hasMore: false, query: '', loading: false, error: '' },
+  usersPage: { page: 1, limit: 5, total: 0, hasMore: false, query: '', loading: false, error: '' },
   cashLedger: [],
   auditEvents: [],
   summary: {},
@@ -96,6 +97,7 @@ const state = {
 let currentPage = 'overview';
 let lastRenderedPage = '';
 let authEpoch = 0;
+let pendingRequestGeneration = 0;
 // Navigation history is deliberately a small, session-scoped view state. Never
 // put report, finance, or identity data in the URL/history entry.
 let navigationSession = '';
@@ -139,6 +141,7 @@ function navigateToPage(page, { replace = false, fromPop = false } = {}) {
   }
   renderApp();
   if (page === 'users' && state.user?.role === 'manager' && typeof loadUsersPageView === 'function') void loadUsersPageView();
+  if (page === 'approvals' && state.user?.role === 'manager') void loadPendingPage('first');
   return true;
 }
 function handleNavigationPop(event) {
@@ -784,8 +787,9 @@ function showLogin(message = '') {
   state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
   state.submissions = [];
   state.pendingSubmissions = [];
+  state.pendingPage = { cursor: '', nextCursor: '', total: 0, hasMore: false, hasPrevious: false, loading: false, error: '' };
   state.users = [];
-  state.usersPage = { page: 1, limit: 100, total: 0, hasMore: false };
+  state.usersPage = { page: 1, limit: 5, total: 0, hasMore: false };
   state.cashLedger = [];
   state.auditEvents = [];
   state.summary = {};
@@ -827,6 +831,28 @@ function hidePreloader() {
   preloader.hidden = true;
 }
 
+async function loadPendingPage(direction = 'first') {
+  if (!state.user || state.user.role !== 'manager' || (state.pendingPage.loading && direction !== 'first')) return;
+  const focusAction = document.activeElement?.dataset?.action;
+  const requestedOwner = state.user.id;
+  const requestedEpoch = authEpoch;
+  const requestGeneration = ++pendingRequestGeneration;
+  const page = state.pendingPage; page.loading = true; page.error = '';
+  if (currentPage === 'approvals') renderApp();
+  try {
+    const query = new URLSearchParams({ status: 'pending', limit: '5' });
+    if (direction === 'next' && page.nextCursor) query.set('cursor', page.nextCursor);
+    if (direction === 'previous' && page.previousCursor) { query.set('cursor', page.previousCursor); query.set('direction', 'before'); }
+    const result = await api(`/submissions?${query}`);
+    if (requestGeneration !== pendingRequestGeneration || requestedEpoch !== authEpoch || state.user?.id !== requestedOwner || (currentPage !== 'approvals' && direction !== 'first')) return;
+    state.pendingSubmissions = Array.isArray(result.items) ? result.items : (Array.isArray(result.submissions) ? result.submissions : []);
+    state.pendingPage = { ...page, cursor: result.cursor || '', nextCursor: result.nextCursor || '', previousCursor: result.previousCursor || '', total: Number(result.total || 0), hasMore: Boolean(result.hasMore), hasPrevious: Boolean(result.hasPrevious || result.previousCursor), loading: false, error: '' };
+    renderApp();
+    if (focusAction?.startsWith('pending-') && currentPage === 'approvals') {
+      (document.querySelector(`[data-action="${direction === 'next' ? 'pending-previous' : 'pending-next'}"]`) || document.querySelector('[data-action="pending-previous"],[data-action="pending-next"]'))?.focus({ preventScroll:true });
+    }
+  } catch (error) { if (requestGeneration !== pendingRequestGeneration || requestedEpoch !== authEpoch || state.user?.id !== requestedOwner) return; page.loading = false; page.error = friendlyError(error); if (currentPage === 'approvals') renderApp(); }
+}
 async function refreshOverview({ preserveHistory = false } = {}) {
   const requestedUser = state.user;
   const requestEpoch = authEpoch;
@@ -854,12 +880,13 @@ async function refreshOverview({ preserveHistory = false } = {}) {
   const retainUsersQuery = state.user?.role === 'manager' && (currentPage === 'users' || state.usersPage.query);
   if (!retainUsersQuery) {
     state.users = Array.isArray(result.users) ? result.users : [];
-    if (!preserveHistory) state.usersPage = { ...state.usersPage, page: 1, limit: 100, total: 0, hasMore: state.users.length >= 100, query: '' };
+    if (!preserveHistory) state.usersPage = { ...state.usersPage, page: 1, limit: 5, total: 0, hasMore: state.users.length >= 5, query: '' };
   }
   state.summary = result.summary || {};
   configureBoundedHistory();
   if (state.user?.role === 'manager') {
     void loadCashInsights();
+    if (currentPage === 'approvals') await loadPendingPage('first');
     if (retainUsersQuery) await refreshUsersPage(state.usersPage.page || 1, false, state.usersPage.query || '');
   }
 }
@@ -962,8 +989,8 @@ function historyControls(collection, label) {
   if (!page || !Number(page.total || 0)) return '';
   const meta = typeof BoundedHistory !== 'undefined' ? BoundedHistory.controlsMeta(collection) : {};
   const number = meta.pageNumber || 1, count = state[collection]?.length || 0;
-  const button = (direction, text) => `<button class="secondary-button" type="button" data-action="${direction}" data-collection="${escapeHTML(collection)}">${text}</button>`;
-  return `<div class="history-controls" aria-live="polite"><p>Halaman ${number} · ${count} ${escapeHTML(label)} ditampilkan · total ${Number(page.total)}.</p><div class="form-actions">${meta.hasPrevious ? button('history-previous', 'Halaman sebelumnya') : ''}${meta.canFirst ? button('history-first', 'Kembali ke terbaru') : ''}${page.hasMore ? button('load-more-history', 'Halaman berikutnya') : ''}</div>${meta.cursorHistoryTruncated ? '<p class="field-help">Navigasi kembali dibatasi demi memori perangkat; semua halaman tetap dapat diakses dari data terbaru.</p>' : ''}</div>`;
+  const button = (direction, text, label = text) => `<button class="secondary-button" type="button" data-action="${direction}" data-collection="${escapeHTML(collection)}" aria-label="${escapeHTML(label)}">${text}</button>`;
+  return `<div class="history-controls" aria-live="polite"><p>Halaman ${number} · ${count} ${escapeHTML(label)} ditampilkan · total ${Number(page.total)}.</p><div class="form-actions">${meta.hasPrevious ? button('history-previous', 'Sebelumnya', `Halaman ${number - 1}, sebelumnya`) : ''}${meta.canFirst ? button('history-first', 'Kembali ke terbaru') : ''}${page.hasMore ? button('load-more-history', 'Lihat 5 berikutnya', `Halaman ${number + 1}, lihat 5 berikutnya`) : ''}</div>${meta.cursorHistoryTruncated ? '<p class="field-help">Navigasi kembali dibatasi demi memori perangkat; semua halaman tetap dapat diakses dari data terbaru.</p>' : ''}</div>`;
 }
 
 function submissionTimeline(item) {
@@ -974,7 +1001,7 @@ function submissionTimeline(item) {
   return `<ol class="submission-timeline" aria-label="Timeline ${escapeHTML(item.description)}">${steps.map(([status, label, timestamp]) => `<li class="timeline-step ${status}"><span class="timeline-dot" aria-hidden="true"></span><span><strong>${label}</strong>${timestamp ? `<small>${escapeHTML(dateTimeLong(timestamp))}</small>` : ''}${status === 'rejected' && item.decisionReason ? `<small class="timeline-reason">${escapeHTML(item.decisionReason)}</small>` : ''}</span></li>`).join('')}</ol>`;
 }
 function managerOverview() {
-  const recent = state.submissions.slice(0, 3);
+  const recent = state.submissions.slice(0, 5);
   const financeWaiting = state.summary.financeWaiting ?? 0;
   const pendingCount = state.summary.pending ?? 0;
   const todayCount = state.summary.today ?? 0;
@@ -983,7 +1010,7 @@ function managerOverview() {
     <div id="financialControlsOverview">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderOverview() : ''}</div>
     <div class="section-row manager-action-row"><h2>Ringkasan operasional</h2><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount))}${metricCard('finance', 'Menunggu Finance', String(financeWaiting))}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
-    <section class="recent-section"><div class="section-row"><h2>Pengajuan terbaru</h2></div>${recent.length ? `<div class="list-stack">${recent.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan')}</section>`;
+    <section class="recent-section"><div class="section-row"><h2>Pengajuan terbaru</h2></div>${recent.length ? `<div class="list-stack">${recent.map(item => submissionCard(item, { includeOwner: true })).join('')}</div><button class="secondary-button" type="button" data-page="approvals">Lihat semua pengajuan</button>` : emptyState('Belum ada pengajuan')}</section>`;
 }
 function userOverview() {
   const own = state.submissions;
@@ -991,7 +1018,7 @@ function userOverview() {
   const pending = state.summary.pending ?? 0;
   return `${welcomePanel()}
     <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(total))}${metricCard('review', 'Menunggu', String(pending))}</div>
-    <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><h2 id="userStatusTitle">Laporan terbaru</h2></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada laporan', 'Pilih Buat laporan di navigasi untuk mengirim kebutuhan.')}</section>`;
+    <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><h2 id="userStatusTitle">Laporan terbaru</h2></div>${own.length ? `<div class="list-stack">${own.slice(0, 5).map(item => submissionCard(item)).join('')}</div><button class="secondary-button" type="button" data-page="my-reports">Lihat semua laporan</button>` : emptyState('Belum ada laporan', 'Pilih Buat laporan di navigasi untuk mengirim kebutuhan.')}</section>`;
 }
 function managerApprovals() {
   const pending = Array.isArray(state.pendingSubmissions) ? state.pendingSubmissions : state.submissions.filter(item => item.status === 'pending');
@@ -999,8 +1026,8 @@ function managerApprovals() {
   const audit = state.auditEvents;
   return `${pageHeading('Persetujuan', 'Tinjau setiap pengajuan. Keputusan petty cash tercatat bersama perubahan saldo.')}
     <div class="metric-row" aria-label="Ringkasan persetujuan">${metricCard('review', 'Menunggu', String(state.summary.pending ?? pending.length))}${metricCard('wallet', 'Saldo petty cash', compactMoney(state.cashBalanceIdr), 'overview', money(state.cashBalanceIdr))}${metricCard('report', 'Masuk hari ini', String(state.summary.today ?? 0))}</div>
-    <div class="section-row"><div><h2>Antrian</h2></div></div>${pending.length ? `<div class="list-stack">${pending.map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>${Number(state.summary.pending || 0) > pending.length ? `<p class="field-help" role="status">Menampilkan ${pending.length} antrean tertua dari ${Number(state.summary.pending)} pengajuan menunggu.</p>` : ''}` : emptyState('Belum ada pengajuan menunggu', 'Keputusan Manager yang selesai akan tetap ada di riwayat.')}
-    <div class="section-row"><div><h2>Riwayat keputusan</h2></div><span class="archive-total">${Math.max(0, Number(state.summary.total || 0) - Number(state.summary.pending || 0))} pengajuan</span></div>${history.length ? `<div class="list-stack">${history.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada keputusan', 'Persetujuan dan penolakan akan tercatat di sini.')}
+    <div class="section-row"><div><h2>Antrian</h2></div></div>${state.pendingPage.error ? `<p class="inline-error" role="alert">${escapeHTML(state.pendingPage.error)}</p><button class="secondary-button" type="button" data-action="pending-retry">Coba lagi</button>` : ''}${pending.length ? `<div class="list-stack">${pending.map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Belum ada pengajuan menunggu', 'Keputusan Manager yang selesai akan tetap ada di riwayat.')}<p class="field-help" role="status">${state.pendingPage.loading ? 'Memuat antrean…' : `Menampilkan ${pending.length} dari ${Number(state.pendingPage.total || state.summary.pending || 0)} pengajuan menunggu.`}</p><nav class="report-pagination" aria-label="Navigasi antrean">${state.pendingPage.hasPrevious ? '<button class="secondary-button" type="button" data-action="pending-previous">Sebelumnya</button>' : ''}${state.pendingPage.hasMore ? '<button class="secondary-button" type="button" data-action="pending-next">Lihat 5 berikutnya</button>' : ''}</nav>
+    <div class="section-row"><div><h2>Riwayat keputusan</h2></div><span class="archive-total">${Math.max(0, Number(state.summary.total || 0) - Number(state.summary.pending || 0))} pengajuan</span></div>${history.length ? `<div class="list-stack">${history.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Tidak ada keputusan pada halaman ini', 'Gunakan navigasi riwayat untuk melihat pengajuan lainnya.')}
     ${historyControls('submissions', 'pengajuan')}
     <details class="audit-panel" data-panel="audit-events"><summary>Riwayat perubahan sistem (${state.history.auditEvents.loaded} dari ${state.history.auditEvents.total})</summary>${audit.length ? `<ol class="audit-list">${audit.map(auditRow).join('')}</ol>` : `<p class="field-help">Belum ada aktivitas audit.</p>`}${historyControls('auditEvents', 'aktivitas audit')}</details>`;
 }
@@ -1011,7 +1038,7 @@ function financePage() {
   const pdfFallback = isPangsumaApkWrapper()
     ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
     : '';
-  const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button>${pdfFallback}</div>`;
+  const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf" data-report-type="petty_cash">Unduh laporan Petty Cash</button><button class="secondary-button" type="button" data-action="download-pdf" data-report-type="finance_request">Unduh laporan Request</button>${pdfFallback}</div>`;
   const cashActions = `<div class="heading-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.')}
     <section class="finance-section" aria-labelledby="financeReportsTitle"><div class="section-row"><h2 id="financeReportsTitle">Laporan</h2>${reportActions}</div>
@@ -1068,11 +1095,11 @@ async function refreshUsersPage(page = 1, append = false, query = state.usersPag
   state.usersPage = { ...state.usersPage, loading: true, error: '' };
   try {
     const search = String(query || '').trim().slice(0, 100);
-    const result = await api(`/users?page=${page}&limit=100&q=${encodeURIComponent(search)}`);
+    const result = await api(`/users?page=${page}&limit=5&q=${encodeURIComponent(search)}`);
     if (!usersPageLifecycle.current(request) || requestEpoch !== authEpoch || state.user?.id !== requestUserId) return false;
     const rows = Array.isArray(result.users) ? result.users : [];
     state.users = rows;
-    state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore), query: search, loading: false, error: '' };
+    state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 5), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore), query: search, loading: false, error: '' };
     return true;
   } catch (error) {
     if (!usersPageLifecycle.current(request) || requestEpoch !== authEpoch || state.user?.id !== requestUserId) return false;
@@ -1136,7 +1163,7 @@ function usersPage() {
     <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" maxlength="100" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
-    ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users" aria-label="Halaman sebelumnya">Sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users" aria-label="Lihat 5 akun berikutnya">Lihat 5 berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
 
 function myReportsPage() {
@@ -1677,7 +1704,9 @@ function isPangsumaApkWrapper() {
 }
 async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
-  const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
+  const reportType = button?.dataset?.reportType === 'finance_request' ? 'finance_request' : 'petty_cash';
+  const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl(reportType) : `/api/export.pdf?laporan=${reportType}`;
+  const reportFilename = `pangsuma-laporan-${reportType === 'finance_request' ? 'request-finance' : 'petty-cash'}-${todayISO()}.pdf`;
   if (isPangsumaApkWrapper()) {
     // The confirmed APK bridge supports CSV only, not native PDF downloads.
     if (typeof PwaFiles !== 'undefined' && typeof PwaFiles.showApkDownloadStatus === 'function') {
@@ -1695,7 +1724,7 @@ async function downloadPdf(button) {
   if (isMobileAppleBrowser) {
     const anchor = document.createElement('a');
     anchor.href = reportUrl;
-    anchor.download = `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
+    anchor.download = reportFilename;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
@@ -1720,7 +1749,7 @@ async function downloadPdf(button) {
     const blob = await response.blob();
     if (requestEpoch !== authEpoch || !state.user) return;
     const disposition = response.headers.get('Content-Disposition') || '';
-    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || reportFilename;
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -1822,31 +1851,45 @@ async function openReportActivity(id, trigger) {
   const requestedUserId = state.user.id, requestedEpoch = authEpoch;
   const active = () => dialog.isConnected && dialog.open && state.user?.id === requestedUserId && authEpoch === requestedEpoch;
   const statuses = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak', sent: 'Terkirim ke Finance' };
-  const events = [];
+  let events = [];
+  let activityPage = { nextCursor: '', previousCursor: '', hasMore: false, hasPrevious: false };
+  let activityIndex = 0; const activityCursors = [''];
   let busy = false;
   document.body.append(dialog);
   dialog.addEventListener('cancel', event => { if (!canCloseReportActivity(dialog)) event.preventDefault(); });
   dialog.addEventListener('close', () => { dialog.remove(); if (trigger?.isConnected) trigger.focus({ preventScroll: true }); }, { once: true });
   openDialog(dialog.id);
-  async function load(cursor = '') {
+  async function load(cursor = '', direction = 'next') {
     if (busy || !active()) return;
     busy = true; body.setAttribute('aria-busy', 'true');
+    const focusInActivity = body.contains(document.activeElement);
+    const targetIndex = direction === 'before' ? Math.max(0, activityIndex - 1) : (cursor ? activityIndex + 1 : 0);
+    const pageCursor = direction === 'before' ? activityCursors[targetIndex] : cursor;
     const moreButton = body.querySelector('[data-report-activity-more]');
     if (moreButton) setButtonBusy(moreButton, true, 'Memuat aktivitas…');
     try {
-      const result = await api(`/submissions/${encodeURIComponent(id)}/activity${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+      const query = new URLSearchParams();
+      if (pageCursor) query.set('cursor', pageCursor);
+      const result = await api(`/submissions/${encodeURIComponent(id)}/activity${query.toString() ? `?${query}` : ''}`);
       if (!active()) return;
       const sub = result.submission || {};
-      for (const event of result.activity || []) if (!events.some(existing => existing.id === event.id)) events.push(event);
+      events = Array.isArray(result.activity) ? result.activity : [];
+      activityIndex = targetIndex; activityCursors[activityIndex] = pageCursor; activityCursors.length = activityIndex + 1;
+      if (activityCursors.length > 200) { activityCursors.shift(); activityIndex--; }
+      activityPage = { nextCursor: result.nextCursor || '', previousCursor: activityIndex > 0 ? activityCursors[activityIndex - 1] : '', hasMore: Boolean(result.hasMore), hasPrevious: activityIndex > 0 };
+      const receiptWorkspace = body.querySelector('.receipt-workspace');
       const rows = events.map(event => {
         const details = event.details || {};
         const label = event.action === 'submission.created' ? 'Pengajuan dibuat' : 'Status pengajuan berubah';
         const transition = details.to ? `${details.from ? `${statuses[details.from] || details.from} → ` : ''}${statuses[details.to] || details.to}` : '';
         return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actorName || 'Sistem')}</span></div><small>${escapeHTML(dateTimeWibFull(event.createdAt))}</small>${transition ? `<p>${escapeHTML(transition)}</p>` : ''}${details.reason ? `<p>Alasan: ${escapeHTML(details.reason)}</p>` : ''}</li>`;
       }).join('');
-      body.innerHTML = `<p><strong>${escapeHTML(sub.description || '')}</strong><br>${escapeHTML(reportTypeLabel(sub.type))} · ${escapeHTML(money(sub.amountIdr))} · ${escapeHTML(statuses[sub.status] || sub.status)}</p><p class="field-help">Pengaju: ${escapeHTML(sub.createdByName || '—')}${sub.createdByPosition ? ` · ${escapeHTML(sub.createdByPosition)}` : ''}</p>${sub.resolvedByName ? `<p class="field-help">Pemroses: ${escapeHTML(sub.resolvedByName)}</p>` : ''}${sub.sentByName ? `<p class="field-help">Ditandai terkirim oleh: ${escapeHTML(sub.sentByName)}</p>` : ''}${sub.note ? `<p>${escapeHTML(sub.note)}</p>` : ''}${sub.decisionReason ? `<p><strong>Alasan keputusan:</strong> ${escapeHTML(sub.decisionReason)}</p>` : ''}${rows ? `<ol class="audit-list">${rows}</ol>` : '<p class="field-help">Audit aktivitas belum tersedia. Status saat ini berasal dari pengajuan tersimpan.</p>'}${result.hasMore ? '<button class="secondary-button" type="button" data-report-activity-more>Muat aktivitas berikutnya</button>' : ''}`;
-      body.querySelector('[data-report-activity-more]')?.addEventListener('click', () => load(result.nextCursor));
-      if (typeof ReportEvidence !== 'undefined') ReportEvidence.mountReceipts(body, { ...sub, id: sub.id || id });
+      body.innerHTML = `<p><strong>${escapeHTML(sub.description || '')}</strong><br>${escapeHTML(reportTypeLabel(sub.type))} · ${escapeHTML(money(sub.amountIdr))} · ${escapeHTML(statuses[sub.status] || sub.status)}</p><p class="field-help">Pengaju: ${escapeHTML(sub.createdByName || '—')}${sub.createdByPosition ? ` · ${escapeHTML(sub.createdByPosition)}` : ''}</p>${sub.resolvedByName ? `<p class="field-help">Pemroses: ${escapeHTML(sub.resolvedByName)}</p>` : ''}${sub.sentByName ? `<p class="field-help">Ditandai terkirim oleh: ${escapeHTML(sub.sentByName)}</p>` : ''}${sub.note ? `<p>${escapeHTML(sub.note)}</p>` : ''}${sub.decisionReason ? `<p><strong>Alasan keputusan:</strong> ${escapeHTML(sub.decisionReason)}</p>` : ''}${rows ? `<ol class="audit-list">${rows}</ol>` : '<p class="field-help">Audit aktivitas belum tersedia. Status saat ini berasal dari pengajuan tersimpan.</p>'}<nav class="report-pagination" aria-label="Navigasi aktivitas">${activityPage.hasPrevious ? '<button class="secondary-button" type="button" data-report-activity-before>Sebelumnya</button>' : ''}${activityPage.hasMore ? '<button class="secondary-button" type="button" data-report-activity-more>Berikutnya</button>' : ''}</nav>`;
+      body.querySelector('[data-report-activity-more]')?.addEventListener('click', () => load(activityPage.nextCursor, 'next'));
+      body.querySelector('[data-report-activity-before]')?.addEventListener('click', () => load(activityPage.previousCursor, 'before'));
+      if (receiptWorkspace) body.append(receiptWorkspace);
+      else if (typeof ReportEvidence !== 'undefined') ReportEvidence.mountReceipts(body, { ...sub, id: sub.id || id });
+      if (focusInActivity) (body.querySelector(direction === 'before' ? '[data-report-activity-before]' : '[data-report-activity-more]') || body.querySelector('[data-report-activity-before],[data-report-activity-more]'))?.focus({ preventScroll:true });
     } catch (error) {
       if (!active()) return;
       if (!events.length) body.textContent = friendlyError(error);
@@ -1861,6 +1904,9 @@ async function openReportActivity(id, trigger) {
 
 async function handleAction(button) {
   const action = button.dataset.action;
+  if (action === 'pending-next') { void loadPendingPage('next'); return; }
+  if (action === 'pending-previous') { void loadPendingPage('previous'); return; }
+  if (action === 'pending-retry') { void loadPendingPage('first'); return; }
   if (action === 'check-app-update') {
     setButtonBusy(button, true, 'Memeriksa…');
     try {
@@ -1869,7 +1915,7 @@ async function handleAction(button) {
     } finally { if (button.isConnected) setButtonBusy(button, false); }
     return;
   }
-  if (action === 'history-previous' || action === 'history-first') { await loadMoreHistory(button.dataset.collection, button, action === 'history-first' ? 'first' : 'previous'); return; }
+  if (action === 'history-previous' || action === 'history-first') { await loadMoreHistory(button.dataset.collection, button, action === 'history-first' ? 'first' : 'previous'); document.querySelector(`.history-controls button[data-collection="${button.dataset.collection}"][data-action="${action}"]`)?.focus({ preventScroll:true }); if (document.activeElement === document.body) document.querySelector(`.history-controls button[data-collection="${button.dataset.collection}"]`)?.focus({preventScroll:true}); return; }
   if (action === 'refresh-cash-insights') { await loadCashInsights({ force: true }); return; }
   if (action === 'configure-cash-minimum') { configureCashMinimum(button); return; }
   if (action === 'clear-cash-minimum') { clearCashMinimum(); return; }
@@ -1879,10 +1925,14 @@ async function handleAction(button) {
   } else if (action === 'load-more-users' || action === 'previous-users') {
     const next = Math.max(1, Number(state.usersPage.page || 1) + (action === 'previous-users' ? -1 : 1));
     await loadUsersPageView(next);
+    const selector = action === 'previous-users' ? '[data-action="previous-users"]' : '[data-action="load-more-users"]';
+    (document.querySelector(`#appContent ${selector}`) || document.querySelector('#appContent [data-action="previous-users"],#appContent [data-action="load-more-users"],#usersSearch'))?.focus({ preventScroll: true });
   } else if (action === 'retry-users') {
     await loadUsersPageView();
   } else if (action === 'load-more-history') {
-    await loadMoreHistory(button.dataset.collection, button);
+    const collection = button.dataset.collection;
+    await loadMoreHistory(collection, button);
+    (document.querySelector(`.history-controls button[data-action="load-more-history"][data-collection="${collection}"]`) || document.querySelector(`.history-controls button[data-collection="${collection}"]`))?.focus({ preventScroll: true });
   } else if (action === 'open-report-choice') {
     if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
     navigateToPage('new-report');

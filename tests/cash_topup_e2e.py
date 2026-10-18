@@ -70,7 +70,7 @@ def main():
         assert len([entry for entry in after['cashLedger'] if entry['event_type'] == 'cash_topup']) == 2
         assert len([entry for entry in after['auditEvents'] if entry['action'] == 'cash.topup_created']) == 2
         with page.expect_download() as download:
-            page.locator('[data-action="download-pdf"]:visible').click()
+            page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
         pdf_path = SCREENSHOTS / 'laporan-isi-ulang-lokal.pdf'
         download.value.save_as(pdf_path)
         assert pdf_path.read_bytes().startswith(b'%PDF-')
