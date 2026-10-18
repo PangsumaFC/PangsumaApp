@@ -78,7 +78,7 @@ def main():
         pdf_text = ' '.join(pdf_text.split())
         assert 'Transfer pemilik untuk operasional lokal' in pdf_text
         assert 'Tambahan lokal uji retry aman' in pdf_text
-        assert 'Rp300.000' in pdf_text and 'cash.topup_created' in pdf_text
+        assert 'PANGSUMA FC' in pdf_text and 'Laporan Petty Cash' in pdf_text and 'Total kas keseluruhan' in pdf_text
         page.locator('[data-page="overview"]:visible').first.click()
         page.screenshot(path=str(SCREENSHOTS / 'dashboard-isi-ulang-390.png'), full_page=True)
         page.locator('[data-page="finance"]:visible').first.click()

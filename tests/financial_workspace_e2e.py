@@ -119,9 +119,7 @@ def main():
         region.locator('[type="submit"]').click()
         row = region.locator(".manager-filtered-results .item-row").filter(has_text="Workspace dana latihan")
         expect(row).to_have_count(1, timeout=15000)
-        fallback = page.locator("#managerPdfFallbackLink")
-        assert fallback.count() == 1
-        assert page.locator("#managerPdfFallback").get_attribute("hidden") is not None
+        assert page.locator("#managerPdfFallback,#managerPdfFallbackLink").count() == 0
         href = page.evaluate("() => ManagerReportFilters.pdfUrl()")
         query = parse_qs(urlparse(href).query)
         for key, value in {"q":"Workspace dana latihan", "jenis":"petty_cash", "status":"approved", "periode":"customWIB", "start":today, "end":today}.items():
@@ -131,7 +129,7 @@ def main():
         pdf = SCREENSHOTS / "filtered-workspace.pdf"
         dl.value.save_as(pdf)
         text = " ".join(subprocess.run(["pdftotext", str(pdf), "-"], check=True, capture_output=True, text=True).stdout.split())
-        assert "Workspace dana latihan" in text and today in text and "Total pengajuan" in text
+        assert "Workspace dana latihan" in text and today in text and "Total kas keseluruhan" in text
         assert "1" in text
 
         # Activity dialog is opened twice and must remain a single live dialog with real audit rows.

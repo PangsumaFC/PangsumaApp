@@ -148,6 +148,7 @@ def main():
         set_file(page, '#profilePhoto', 'broken.jpg', b'not an image', 'image/jpeg')
         expect(dialog.locator('#profileError')).to_be_visible()
         assert dialog.locator('#profilePreview img').get_attribute('src') == previous
+        page.once("dialog", lambda prompt: prompt.accept())
         dialog.locator('[data-action="close-dialog"]').first.click()
         print('MANAGER_PHOTO_METADATA_PASS empty_mime=1 jpg_alias=1 invalid_replacement_rejected=1 draft_preserved=1', flush=True)
 

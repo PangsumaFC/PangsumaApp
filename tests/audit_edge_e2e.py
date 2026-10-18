@@ -71,20 +71,15 @@ def main():
         pdf_url = page.evaluate("() => ManagerReportFilters.pdfUrl()")
         assert pdf_url.startswith("/api/export.pdf?") and "q=approved" in pdf_url and "status=approved" in pdf_url, pdf_url
 
-        # The primary export fails once: fallback becomes visible. A valid PDF
-        # through the fallback must produce a captured browser download and hide it.
-        fallback = page.locator("#managerPdfFallback")
-        expect(fallback).to_be_hidden()
+        # Release 21 removed the fallback UI: a failed primary export shows the
+        # honest API error and re-enables the primary button for a later retry.
+        assert page.locator("#managerPdfFallback,#managerPdfFallbackLink").count() == 0
         page.route("**/api/export.pdf**", lambda r: r.fulfill(status=500, content_type="application/json", body=json.dumps({"error": {"code": "forced_failure"}})))
-        page.locator('[data-action="download-pdf"]').click()
-        expect(fallback).to_be_visible(timeout=10000)
-        page.unroute("**/api/export.pdf**")
-        page.route("**/api/export.pdf**", lambda r: r.fulfill(status=200, content_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="audit.pdf"'}, body="%PDF-1.4\n%%EOF"))
-        with page.expect_download(timeout=10000) as download_info:
-            page.locator("#managerPdfFallbackLink").click()
-        download = download_info.value
-        assert download.suggested_filename == "audit.pdf"
-        expect(fallback).to_be_hidden(timeout=10000)
+        button = page.locator('[data-action="download-pdf"]')
+        button.click()
+        expect(page.locator("#toast")).to_contain_text("Rekap lengkap tidak dapat dibuat.", timeout=10000)
+        expect(button).to_be_enabled(timeout=10000)
+        assert page.locator("#managerPdfFallback,#managerPdfFallbackLink").count() == 0
         page.unroute("**/api/export.pdf**")
 
         # Initial receipt GET fails (503), retry is actionable, and a prepared
@@ -144,7 +139,7 @@ def main():
         page.unroute("**/receipts", post_then_failed_refresh)
         assert not errors, errors
         ctx.close(); browser.close()
-    print("AUDIT_EDGE_E2E_PASS manager_login=1 groups=2 responsive_viewports=4 pdf_fallback_retry=1 pdf_download=1 receipt_get_retry=1 receipt_refresh_retry=1 errors=0", flush=True)
+    print("AUDIT_EDGE_E2E_PASS manager_login=1 groups=2 responsive_viewports=4 pdf_failure_feedback=1 primary_button_retry_ready=1 receipt_get_retry=1 receipt_refresh_retry=1 errors=0", flush=True)
 
 
 if __name__ == "__main__":

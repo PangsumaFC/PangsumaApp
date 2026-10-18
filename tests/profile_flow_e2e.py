@@ -369,6 +369,7 @@ def main():
         assert direct_conflict["status"] == 409 and direct_conflict["data"]["error"]["code"] == "profile_conflict", direct_conflict
         assert api(manager2, f"/api/users/{target['id']}/profile")["data"]["user"] == conflict_current
         manager.screenshot(path=str(SCREENSHOTS / "manager-profile-conflict.png"), full_page=True)
+        manager.once("dialog", lambda prompt: prompt.accept())
         stale_dialog.locator("[data-action='close-dialog']").first.click()
         target_row.locator("[data-action='edit-user-profile']").click()
         reopened = visible_dialog(manager)
@@ -416,6 +417,7 @@ def main():
         dialog2.locator("#profileNickname").fill("Should Not Save")
         cancel = dialog2.locator("[data-action='close-dialog']").first
         assert cancel.count() == 1, "profile dialog needs a cancel/close selector"
+        manager2.once("dialog", lambda prompt: prompt.accept())
         cancel.click(); dialog2.wait_for(state="hidden")
         second_row.locator("[data-action='edit-user-profile']").click(); dialog2 = visible_dialog(manager2)
         assert dialog2.locator("#profileNickname").input_value() == "Second Alias"

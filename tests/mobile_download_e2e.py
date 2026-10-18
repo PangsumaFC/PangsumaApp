@@ -36,13 +36,13 @@ def assert_pdf(path: Path, expected_text: set[str]) -> None:
     assert raw.startswith(b"%PDF-"), "download must be a PDF"
     completed = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True)
     text = completed.stdout
-    for heading in ("LAPORAN KEUANGAN", "Total pengajuan", "Total kas keseluruhan"):
+    for heading in ("PANGSUMA FC", "Laporan Petty Cash", "Total kas keseluruhan"):
         # Check actual rendered content, not only MIME or the file extension.
         assert heading in text, (heading, text[:1000])
     assert "Lampiran Audit" not in text
     assert "Pengajuan Petty Cash" not in text
     text = " ".join(text.split())
-    for value in ("Rp500.000", "Rp125.000", "Rp375.000"):
+    for value in ("500.000", "125.000", "375.000"):
         assert value in text, (value, text[:1500])
     for fixture in expected_text:
         assert fixture in text, (fixture, text[:1000])

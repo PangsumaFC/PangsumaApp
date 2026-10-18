@@ -38,7 +38,7 @@ def assert_pdf_text(path: Path) -> str:
     raw = path.read_bytes()
     assert raw.startswith(b"%PDF-"), raw[:20]
     text = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True).stdout
-    assert "LAPORAN KEUANGAN" in text and "RINGKASAN" in text, text[:500]
+    assert "PANGSUMA FC" in text and "Laporan Petty Cash" in text, text[:500]
     assert "Finance disetujui" in text or "Finance" in text, text[:500]
     return text
 
@@ -124,6 +124,7 @@ def main() -> None:
         expect(dialog.locator("#profileNickname")).to_have_value("PWA draft alias")
         expect(dialog.locator("#profilePhotoStatus")).to_contain_text("Perubahan foto sebelumnya tetap tersedia")
         print("PWA_PROFILE_CANCEL_PASS dispatched_cancel=1 photo_draft_preserved=1 nickname_preserved=1", flush=True)
+        page.once("dialog", lambda prompt: prompt.accept())
         dialog.locator("[data-action='close-dialog']").first.click(); dialog.wait_for(state="hidden")
 
         # Responsive checks use fresh screenshots after all final CSS is loaded.
@@ -142,6 +143,7 @@ def main() -> None:
         inp.focus(); inp.fill("keyboard reachable")
         assert page.evaluate("""() => { const e=document.activeElement, r=e.getBoundingClientRect(); return {id:e.id, reachable:r.bottom <= innerHeight + 1, scrollY}; }""")["id"] == "profileNickname"
         page.screenshot(path=str(ARTIFACTS / "pwa-keyboard-390x420.png"), full_page=True)
+        page.once("dialog", lambda prompt: prompt.accept())
         dialog.locator("[data-action='close-dialog']").first.click(); dialog.wait_for(state="hidden")
         print("PWA_RESPONSIVE_PASS screenshots=320,390,844x390,keyboard390x420 dialog_overflow_x=0 touch_targets_min=44 active_input=profileNickname", flush=True)
 
@@ -184,27 +186,23 @@ def main() -> None:
         page.route("**/*", dispatch)
         output = ARTIFACTS / "pwa-standalone-filtered.pdf"
         started = time.monotonic()
-        page.locator('[data-action="download-pdf"]:visible').click()
-        expect(page.locator("#pwaPdfDialog")).to_be_visible()
-        expect(page.locator("#pwaPdfDownload")).to_have_attribute("href", re.compile("^blob:"), timeout=20_000)
+        with page.expect_download(timeout=20_000) as download:
+            page.locator('[data-action="download-pdf"]:visible').click()
+        dl = download.value
+        assert dl.failure() is None
+        dl.save_as(output)
         assert time.monotonic() - started >= 5.0
         assert export_urls, "no authenticated fetch observed"
         assert parse_qs(urlparse(export_urls[-1]).query) == expected, export_urls
-        assert page.evaluate("window.__sharedPdf || null") is None, "must not share without a fresh gesture"
-        page.locator("#pwaPdfShare").click()
-        shared = page.evaluate("window.__sharedPdf")
-        assert shared["type"] == "application/pdf" and shared["size"] > 0 and shared["name"].endswith(".pdf"), shared
-        with page.expect_download(timeout=10_000) as download:
-            page.locator("#pwaPdfDownload").click()
-        dl = download.value; assert dl.failure() is None; dl.save_as(output)
+        assert page.evaluate("window.__sharedPdf || null") is None, "direct download must not invoke sharing"
         text = assert_pdf_text(output)
         assert "PWA regression included" in text and "Excluded separate fixture" not in text, text
         assert page.evaluate("window.__pwaObjectUrls") >= 1
-        page.screenshot(path=str(ARTIFACTS / "pwa-pdf-ready-dialog.png"), full_page=True)
-        page.locator("#pwaPdfDialog .pwa-files-close").click()
         expect(page.locator("#pwaPdfDialog")).to_have_count(0)
+        expect(page.locator('[data-action="download-pdf"]:visible')).to_be_enabled()
+        page.screenshot(path=str(ARTIFACTS / "pwa-pdf-direct-download.png"), full_page=True)
         assert api(page, "/api/session")["status"] == 200
-        print("PWA_STANDALONE_PDF_PASS simulated_display_mode=1 delayed_fetch_ms=5200 ready_dialog=1 query_exact=1 included=1 excluded=0 actual_blob_download=1 simulated_native_share=1 session_active=1", flush=True)
+        print("PWA_STANDALONE_PDF_PASS simulated_display_mode=1 delayed_fetch_ms=5200 direct_download=1 query_exact=1 included=1 excluded=0 actual_blob_download=1 unwanted_share=0 session_active=1", flush=True)
 
         build["value"] = next_build
         page.evaluate("checkForAppUpdate()")
