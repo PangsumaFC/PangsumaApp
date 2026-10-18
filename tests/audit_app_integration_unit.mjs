@@ -4,8 +4,9 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8');
 
-test('audit: draft laporan memakai tipe form, bukan preset stale', () => {
-  assert.match(source, /const type = String\(form\.type\?\.value \|\| reportTypePreset\)/);
+test('audit: draft laporan disimpan di jenis aktif sebelum select berpindah', () => {
+  assert.match(source, /function persistReportDraft\(type = reportTypePreset\)/);
+  assert.match(source, /persistReportDraft\(reportTypePreset\);\s+reportTypePreset = String\(event\.target\.value\)/);
   assert.match(source, /event\.target\.id !== 'reportType'/);
   assert.match(source, /submissionIdempotencyKey = reportDraft\(reportTypePreset\)\.idempotencyKey \|\| ''/);
 });

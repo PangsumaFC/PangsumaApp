@@ -236,11 +236,13 @@ function profileDraftDirty() {
 }
 function hasUnsavedDraft() {
   if (typeof ReportEvidence !== 'undefined' && ReportEvidence.hasPending?.()) return true;
+  if (profileDraft?.photoDataUrl !== undefined) return true;
   if (typeof profileDraftDirty === 'function' && profileDraftDirty()) return true;
   if ([...document.querySelectorAll('input[type="file"]')].some(field => field.files?.length && (!field.closest?.('dialog') || field.closest('dialog').open) && !field.closest?.('[hidden]'))) return true;
   return [...document.querySelectorAll('form:not(#loginForm)')].some(form => {
     const dialog = form.closest('dialog');
     if ((dialog && !dialog.open) || form.closest('[hidden]')) return false;
+    if (dialog?.id === 'userProfileDialog' && typeof profileDraftDirty === 'function') return false;
     return [...form.elements].some(field => {
       if (field.disabled || ['submit', 'button', 'hidden'].includes(field.type)) return false;
       if (field.type === 'file') return Boolean(field.files?.length);
@@ -754,7 +756,7 @@ function showLogin(message = '') {
   usersPageLifecycle.cancel();
   historyPageLifecycles.forEach(lifecycle => lifecycle.cancel());
   historyPageLifecycles.clear();
-  closeDialogs();
+  closeDialogs({ force: true });
   $$('form').forEach(form => form.reset());
   $$('input[type="password"], textarea, input[type="number"]').forEach(input => { input.value = ''; });
   state.user = null;
@@ -1163,9 +1165,9 @@ function openDialog(id) {
   if (dialog && !dialog.open) dialog.showModal();
 }
 
-function closeDialogs() {
+function closeDialogs({ force = false } = {}) {
   const openDialogs = $$('dialog[open]');
-  if (openDialogs.some(dialog => !canCloseAppDialog(dialog))) return false;
+  if (!force && openDialogs.some(dialog => !canCloseAppDialog(dialog))) return false;
   openDialogs.forEach(dialog => dialog.close());
   return true;
 }
@@ -1894,7 +1896,7 @@ async function logout() {
   if (hasUnsavedDraft() && !window.confirm('Masih ada draf atau nota yang belum dikirim. Tetap keluar?')) return;
   const button = $('#logoutButton');
   const requestEpoch = authEpoch;
-  closeDialogs();
+  closeDialogs({ force: true });
   $$('input[type="password"]').forEach(input => { input.value = ''; });
   $$('dialog form').forEach(form => form.reset());
   setButtonBusy(button, true, 'Keluar…');
@@ -2167,7 +2169,7 @@ async function performCashTopup(event) {
     clearDraft('cash-topup', '');
     cashTopupIdempotencyKey = '';
     cashTopupFingerprint = '';
-    closeDialogs();
+    closeDialogs({ force: true });
     let refreshed = true;
     try { await refreshOverview(); } catch (error) {
       if (error?.code === 'session_changed' || !state.user) return;
