@@ -2,6 +2,7 @@ import { ApiError, ensureMethod, jsonResponse, readJson } from './http.js';
 import { sha256Hex } from './auth.js';
 import { decode as decodePng } from 'fast-png';
 import jpeg from 'jpeg-js';
+import { dropboxEnabled, dropboxPath, pushReceiptToDropbox, validateDropboxUrl } from './dropbox-receipts.js';
 
 export const RECEIPT_MAX_COUNT = 10;
 export const RECEIPT_MAX_BYTES = 512 * 1024;
@@ -40,9 +41,11 @@ function metadata(row) {
   return { id: row.id, submissionId: row.submission_id, filename: row.filename, mimeType: row.mime_type,
     sizeBytes: Number(row.size_bytes), width: Number(row.width), height: Number(row.height), sha256: row.sha256,
     uploadedBy: row.uploaded_by, uploadedByName: row.uploaded_by_name || '', createdAt: row.created_at,
-    url: `/api/receipts/${encodeURIComponent(row.id)}` };
+    url: `/api/receipts/${encodeURIComponent(row.id)}`,
+    ...(row.dropbox_state ? { storageStatus: row.dropbox_state, ...(row.dropbox_state === 'ready' && validateDropboxUrl(row.dropbox_url) ? { dropboxUrl: row.dropbox_url } : {}) } : {}) };
 }
 const receiptSelect = `SELECT r.id,r.submission_id,r.uploaded_by,r.filename,r.mime_type,r.size_bytes,r.width,r.height,r.sha256,r.created_at,r.idempotency_key,r.payload_hash,u.name uploaded_by_name FROM submission_receipts r JOIN users u ON u.id=r.uploaded_by`;
+const receiptSelectWithDropbox = receiptSelect.replace(' FROM submission_receipts', ', dm.state dropbox_state, dm.public_url dropbox_url FROM submission_receipts') + ' LEFT JOIN receipt_dropbox_metadata dm ON dm.receipt_id=r.id';
 
 function crc32(bytes, start, end) {
   let c = 0xffffffff;
@@ -107,20 +110,29 @@ function decodeBase64(value) {
 }
 function safeFilename(value) { if(typeof value!=='string'||!value.trim()||value.length>180||/[\u0000-\u001f\u007f]/.test(value)) fail('invalid_filename'); const n=value.replaceAll('\\','/').split('/').pop().trim(); if(!n||n==='.'||n==='..')fail('invalid_filename'); return n; }
 function rowPayload(row){ return metadata(row); }
-function resolveDuplicate(duplicate, actorId, key, payloadHash) {
-  // A content duplicate is only safely replayable when its idempotency key is
-  // different, or when the exact same canonical payload was submitted. Never
-  // let the SHA fast path turn a concurrent same-key, different-metadata
-  // request into a false 200.
+async function resolveDuplicate(context, db, duplicate, actorId, key, payloadHash, enabled) {
   if (duplicate?.uploaded_by === actorId && duplicate.idempotency_key === key && duplicate.payload_hash !== payloadHash)
     throw new ApiError(409, 'idempotency_conflict', 'Idempotency-Key sudah digunakan untuk data lain.');
+  // A pending Dropbox job is resumable only when metadata exists; legacy
+  // receipts have no job and must never be migrated as a side effect.
+  if (enabled && duplicate.dropbox_state === 'pending') return resumeDropbox(context, db, duplicate, 200);
   return jsonResponse(rowPayload(duplicate), 200);
 }
 
 export async function listSubmissionReceipts(context, db, actor, submissionId) {
   ensureMethod(context.request, 'GET'); const a=await activeActor(db,actor); await visibleSubmission(db,a,submissionId);
-  const rows=await all(db, `${receiptSelect} WHERE r.submission_id = ? ORDER BY r.created_at ASC,r.id ASC LIMIT 11`,submissionId);
+  const enabled = dropboxEnabled(context.env);
+  if (enabled) await ensureDropboxSchema(db);
+  const rows=await all(db, `${enabled ? receiptSelectWithDropbox : receiptSelect} WHERE r.submission_id = ? ORDER BY r.created_at ASC,r.id ASC LIMIT 11`,submissionId);
   return jsonResponse({items:rows.map(metadata),count:rows.length,maxCount:RECEIPT_MAX_COUNT});
+}
+async function ensureDropboxSchema(db) {
+  try {
+    await db.prepare('SELECT receipt_id,dropbox_path,state FROM receipt_dropbox_metadata LIMIT 0').all();
+    const required = ['receipt_dropbox_metadata_insert_guard','receipt_dropbox_identity_immutable','receipt_dropbox_ready_immutable','receipt_dropbox_active_owner','receipt_dropbox_ready_audit','receipt_dropbox_delete_guard'];
+    const rows = (await db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('receipt_dropbox_metadata_insert_guard','receipt_dropbox_identity_immutable','receipt_dropbox_ready_immutable','receipt_dropbox_active_owner','receipt_dropbox_ready_audit','receipt_dropbox_delete_guard')").all()).results || [];
+    if (!required.every(name => rows.some(row => row.name === name))) throw new Error('incomplete_dropbox_schema');
+  } catch { throw new ApiError(503, 'receipt_storage_unavailable', 'Penyimpanan Dropbox belum tersedia.'); }
 }
 async function ensureReceiptWriteSchema(db) {
   try {
@@ -131,31 +143,51 @@ async function ensureReceiptWriteSchema(db) {
   } catch { throw new ApiError(503, 'receipt_storage_unavailable', 'Penyimpanan nota menunggu migrasi lengkap dan proteksi audit.'); }
 }
 export async function createSubmissionReceipt(context, db, actor, submissionId) {
-  ensureMethod(context.request, 'POST'); const a=await activeActor(db,actor); const submission=await visibleSubmission(db,a,submissionId); if (submission.created_by !== a.id) throw new ApiError(403, 'forbidden', 'Hanya pemilik pengajuan yang dapat mengunggah foto nota.'); await ensureReceiptWriteSchema(db);
+  ensureMethod(context.request, 'POST'); const a=await activeActor(db,actor); const submission=await visibleSubmission(db,a,submissionId);
+  if (submission.created_by !== a.id) throw new ApiError(403, 'forbidden', 'Hanya pemilik pengajuan yang dapat mengunggah foto nota.');
+  await ensureReceiptWriteSchema(db);
+  const enabled = dropboxEnabled(context.env); if (enabled) await ensureDropboxSchema(db);
   const key=context.request.headers.get('Idempotency-Key')||context.request.headers.get('X-Idempotency-Key'); if(!UUID.test(key||'')) throw new ApiError(400,'invalid_idempotency_key','Idempotency-Key UUID diperlukan.');
   const body=await readJson(context.request,REQUEST_MAX_BYTES); const filename=safeFilename(body.filename); const mime=body.mimeType;
-  if(mime!=='image/jpeg'&&mime!=='image/png')fail('invalid_mime_type'); const original=decodeBase64(body.dataBase64); const image=await parseImage(mime,original);
+  if(mime!=='image/jpeg'&&mime!=='image/png')fail('invalid_mime_type');
+  if (enabled && body.dropboxPublicConsent !== true) throw new ApiError(400, 'dropbox_public_consent_required', 'Persetujuan tautan publik Dropbox diperlukan.');
+  const original=decodeBase64(body.dataBase64); const image=await parseImage(mime,original);
   const digest=await crypto.subtle.digest('SHA-256', image.bytes); const sha=Array.from(new Uint8Array(digest), byte=>byte.toString(16).padStart(2,'0')).join(''); const payloadHash=await sha256Hex(`${submissionId}\n${sha}\n${mime}\n${filename}`);
-  const keyed=await query(db,`${receiptSelect} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key);
-  if(keyed){if(keyed.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.');return jsonResponse(rowPayload(keyed),200);}
-  const duplicate=await query(db,`${receiptSelect} WHERE r.submission_id = ? AND r.sha256 = ? LIMIT 1`,submissionId,sha);
-  if(duplicate)return resolveDuplicate(duplicate, a.id, key, payloadHash);
+  const select = enabled ? receiptSelectWithDropbox : receiptSelect;
+  const keyed=await query(db,`${select} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key);
+  if(keyed){
+    if(keyed.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.');
+    if (!enabled || keyed.dropbox_state === 'ready' || !keyed.dropbox_state) return jsonResponse(rowPayload(keyed),200);
+    return resumeDropbox(context, db, keyed, 200);
+  }
+  const duplicate=await query(db,`${enabled ? receiptSelectWithDropbox : receiptSelect} WHERE r.submission_id = ? AND r.sha256 = ? LIMIT 1`,submissionId,sha);
+  if(duplicate)return resolveDuplicate(context, db, duplicate, a.id, key, payloadHash, enabled);
   const id=crypto.randomUUID(), now=new Date().toISOString();
-  try { await run(db,`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash); }
-  catch(e){
-    if(/UNIQUE|constraint/i.test(String(e?.message||e))){
-      // Another request may have won the unique-key race between the initial
-      // lookup and INSERT. Resolve that winner by payload hash, not driver error.
-      const raceKey=await query(db,`${receiptSelect} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key);
-      if(raceKey){if(raceKey.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.');return jsonResponse(rowPayload(raceKey),200);}
-      const race=await query(db,`${receiptSelect} WHERE r.submission_id=? AND r.sha256=? LIMIT 1`,submissionId,sha);if(race)return resolveDuplicate(race, a.id, key, payloadHash);
-    }
+  try {
+    if (enabled) await db.batch([
+      db.prepare(`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash),
+      db.prepare(`INSERT INTO receipt_dropbox_metadata (receipt_id,dropbox_path,state,created_at) VALUES (?,?,?,?)`).bind(id,dropboxPath(id,mime),'pending',now)
+    ]);
+    else await run(db,`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash);
+  } catch(e){
+    if(/UNIQUE|constraint/i.test(String(e?.message||e))){ const raceKey=await query(db,`${select} WHERE r.uploaded_by = ? AND r.idempotency_key = ? LIMIT 1`,a.id,key); if(raceKey){if(raceKey.payload_hash!==payloadHash)throw new ApiError(409,'idempotency_conflict','Idempotency-Key sudah digunakan untuk data lain.'); return enabled && raceKey.dropbox_state==='pending' ? resumeDropbox(context,db,raceKey,200) : jsonResponse(rowPayload(raceKey),200);} const race=await query(db,`${receiptSelect} WHERE r.submission_id=? AND r.sha256=? LIMIT 1`,submissionId,sha);if(race)return resolveDuplicate(context,db,race,a.id,key,payloadHash,enabled);}
     dbError(e);
   }
-  const row=await query(db,`${receiptSelect} WHERE r.id = ? LIMIT 1`,id); return jsonResponse(rowPayload(row),201);
+  const row=await query(db,`${select} WHERE r.id = ? LIMIT 1`,id);
+  if (!enabled) return jsonResponse(rowPayload(row),201);
+  return resumeDropbox(context, db, row, 201);
+}
+async function resumeDropbox(context, db, row, status) {
+  try {
+    const result = await pushReceiptToDropbox(context.env, { ...row, bytes_blob: (await query(db,'SELECT bytes_blob FROM submission_receipts WHERE id=? LIMIT 1',row.id)).bytes_blob });
+    await run(db, `UPDATE receipt_dropbox_metadata SET file_id=?, public_url=?, state='ready', completed_at=? WHERE receipt_id=? AND state='pending'`, result.fileId, result.publicUrl, new Date().toISOString(), row.id);
+    const ready = await query(db, `${receiptSelectWithDropbox} WHERE r.id=? LIMIT 1`, row.id);
+    if (!ready || ready.dropbox_state !== 'ready' || !validateDropboxUrl(ready.dropbox_url)) throw new Error('Dropbox finalization unavailable');
+    return jsonResponse(rowPayload(ready),status);
+  } catch { throw new ApiError(503, 'receipt_storage_unavailable', 'Penyimpanan Dropbox sedang tidak tersedia. Coba lagi.'); }
 }
 export async function getSubmissionReceipt(context, db, actor, receiptId) {
-  ensureMethod(context.request,'GET'); const a=await activeActor(db,actor); const row=await query(db,`${receiptSelect} JOIN submissions s ON s.id=r.submission_id WHERE r.id=? AND (?='manager' OR s.created_by=?) LIMIT 1`,receiptId,a.role,a.id);
+  ensureMethod(context.request,'GET'); const a=await activeActor(db,actor); const enabled = dropboxEnabled(context.env); if (enabled) await ensureDropboxSchema(db); const row=await query(db,`${enabled ? receiptSelectWithDropbox : receiptSelect} JOIN submissions s ON s.id=r.submission_id WHERE r.id=? AND (?='manager' OR s.created_by=?) LIMIT 1`,receiptId,a.role,a.id);
   if(!row)throw new ApiError(404,'receipt_not_found','Lampiran tidak ditemukan.');
   if(context.metadataOnly)return jsonResponse(metadata(row));
   const blob=await query(db,'SELECT bytes_blob,mime_type,filename FROM submission_receipts WHERE id=? LIMIT 1',receiptId); if(!blob)throw new ApiError(404,'receipt_not_found','Lampiran tidak ditemukan.');

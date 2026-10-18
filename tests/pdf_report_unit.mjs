@@ -77,7 +77,8 @@ async function reportText(bytes) {
       for (const [, hex] of raw.matchAll(/<([A-F0-9]+)> Tj/gi)) lines.push(Buffer.from(hex, 'hex').toString('latin1'));
     }
   }
-  return { text: lines.join('\n'), count: document.getPageCount() };
+  const text = lines.join('\n').replace(/Rp\s+(?=\d)/g, 'Rp');
+  return { text, count: document.getPageCount() };
 }
 
 test('filtered PDF preserves explicit period, real account balances, concise scope labels, category totals and row counts', async () => {
@@ -90,13 +91,13 @@ test('filtered PDF preserves explicit period, real account balances, concise sco
     openingBalanceIdr: 2000, closingBalanceIdr: 1500, ledgerIsPartial: true }));
   assert.match(result.text, /Periode 01\/10\/2026 - 15\/10\/2026/);
   assert.match(result.text, /Filter: Jenis: Petty Cash/);
-  assert.match(result.text, /Saldo akun awal Rp2\.000/);
-  assert.match(result.text, /Saldo akun akhir Rp1\.500/);
-  assert.match(result.text, /Saldo hanya kas tercatat/);
-  assert.match(result.text, /Keluar terpilih Rp500/);
+  assert.match(result.text, /Biaya terpilih/);
+  assert.match(result.text, /-\nRp500\nRp1\.500/);
+  assert.match(result.text, /Total kas keseluruhan\nRp0\nRp500/);
+  assert.doesNotMatch(result.text, /Saldo akun awal|Saldo akun akhir|Keluar terpilih|Masuk terpilih/);
   assert.doesNotMatch(result.text, /transaksi lain di luar filter tidak ditampilkan/);
-  assert.match(result.text, /Baris laporan 2/);
-  assert.match(result.text, /Total pengajuan Rp10\.000/);
+  assert.match(result.text, /Deskripsi pengajuan/);
+  assert.match(result.text, /Lampiran/);
   assert.doesNotMatch(result.text, /Finance disetujui/);
   assert.match(result.text, /termasuk transaksi di luar filter/);
   assert.ok(result.text.includes(`Halaman ${result.count} dari ${result.count}`));
@@ -109,9 +110,10 @@ test('opening precedes ledger movements so opening credit is not counted twice',
     { id: 2, event_type: 'opening_balance', direction: 'credit', amount_idr: 1000, balance_after_idr: 1000, created_at: '2026-10-02T00:00:00Z' }
   ];
   const { text } = await reportText(await buildFinancialReport(data));
-  assert.match(text, /Saldo awal Rp0/);
-  assert.match(text, /Masuk Rp1\.000/);
-  assert.match(text, /Saldo akhir Rp1\.000/);
+  assert.match(text, /Saldo awal kas/);
+  assert.match(text, /Rp0\n-\nRp0/);
+  assert.match(text, /Rp1\.000\n-\nRp1\.000/);
+  assert.match(text, /Total kas keseluruhan\nRp1\.000\nRp0/);
 });
 
 test('report totals retain exact bigint and integer-string rupiah values', async () => {
@@ -121,8 +123,8 @@ test('report totals retain exact bigint and integer-string rupiah values', async
     submissions: [{ id: 'large-1', type: 'finance_request', status: 'approved', date: '2026-10-01', amount_idr: value.toString(), description: 'Nominal presisi' }],
     ledger: [{ id: 1, event_type: 'opening_balance', direction: 'credit', amount_idr: value, balance_after_idr: value, created_at: '2026-10-01T03:00:00Z' }]
   }));
-  assert.match(text, /Masuk Rp9\.007\.199\.254\.740\.993/);
-  assert.match(text, /Saldo akhir Rp9\.007\.199\.254\.740\.993/);
+  assert.match(text, /Rp9\.007\.199\.254\.740\.993/);
+  assert.match(text, /Total kas keseluruhan\nRp9\.007\.199\.254\.740\.993\nRp0/);
   assert.doesNotMatch(text, /Total diajukan/);
   assert.doesNotMatch(text, /9\.007\.199\.254\.740\.992/);
 });

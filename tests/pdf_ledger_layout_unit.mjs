@@ -19,7 +19,9 @@ async function textOf(bytes, persist = true) {
   }
   await writeFile(inputPath, bytes);
   const { stdout } = await execFileAsync('pdftotext', ['-layout', inputPath, '-'], { maxBuffer: 16 * 1024 * 1024 });
-  return stdout;
+  // Normalize accounting-style spacing only for legacy semantic assertions;
+  // pdf_approval_layout_unit.mjs separately verifies actual currency coordinates.
+  return stdout.replace(/Rp[ \t]+(-?)[ \t]*(\d[\d.]*)/g, (_, sign, digits) => `${sign}Rp${digits}`);
 }
 
 function syntheticLedger(count = 72) {
@@ -37,7 +39,7 @@ function syntheticLedger(count = 72) {
   }));
 }
 
-test('multipage cashflow ledger has headers only on page one, subtotals, grand total, and mixed-data watermark', async () => {
+test('multipage cashflow ledger has headers only on page one, no page subtotals, grand total, and mixed-data watermark', async () => {
   const bytes = await buildFinancialReport({
     snapshotAt: '2026-10-18T12:00:00.000Z',
     managerName: 'Manager Uji',
@@ -62,14 +64,14 @@ test('multipage cashflow ledger has headers only on page one, subtotals, grand t
     assert.doesNotMatch(pageText, /PANGSUMA FC|LAPORAN KEUANGAN|Tanggal cetak:|Manager:|Memuat data contoh|Periode |Filter:|Saldo hanya kas tercatat/);
     assert.doesNotMatch(pageText, /No\.|Tanggal\s+Keterangan|Masuk\s+Keluar\s+Saldo/);
   }
-  assert.ok((text.match(/Subtotal halaman/g) || []).length >= 2, 'each ledger page needs a labeled subtotal');
+  assert.doesNotMatch(text, /Subtotal halaman/, 'per-page subtotals are intentionally omitted');
   assert.equal((text.match(/Total kas keseluruhan/g) || []).length, 1, 'grand total must be distinct and singular');
-  assert.match(text, /Memuat data contoh/);
+  assert.match(text, /DATA DEMO/);
   assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
   assert.match(text, /Total kas keseluruhan[\s\S]*Rp1\.000\.000[\s\S]*Rp8\.875\.000/);
 });
 
-test('headerless continuation pages preserve every row, running balance and page subtotal exactly once', async () => {
+test('headerless continuation pages preserve every row, running balance and grand total exactly once', async () => {
   let balance = 0;
   const ledger = Array.from({ length: 96 }, (_, index) => {
     const incoming = index % 3 === 0;
@@ -88,25 +90,13 @@ test('headerless continuation pages preserve every row, running balance and page
   ledger.forEach((row, index) => {
     const line = rowLines[index];
     assert.match(line, new RegExp(`^\\s*${index + 1}\\s+01/10/2026\\s+${row.description}\\s+`));
-    const cells = line.trim().split(/\s+/).slice(-3);
+    const cells = line.trim().split(/\s+/).slice(-4, -1);
     assert.deepEqual(cells, [row.direction === 'in' ? money(row.amount_idr) : '-', row.direction === 'out' ? money(row.amount_idr) : '-', money(row.balance_after_idr)]);
   });
-  let totalIn = 0; let totalOut = 0;
-  for (const pageText of text.split('\f').slice(0, pages)) {
-    const lines = pageText.split('\n').filter(line => /ROW-\d{3}/.test(line));
-    const sums = lines.reduce((sum, line) => {
-      const row = ledger[Number(line.match(/ROW-(\d{3})/)[1]) - 1];
-      sum[row.direction === 'in' ? 0 : 1] += row.amount_idr;
-      return sum;
-    }, [0, 0]);
-    if (lines.length) {
-      const subtotals = [...pageText.matchAll(/Subtotal halaman\s+Rp([\d.]+)\s+Rp([\d.]+)/g)];
-      assert.equal(subtotals.length, 1);
-      assert.deepEqual(subtotals[0].slice(1).map(value => Number(value.replaceAll('.', ''))), sums);
-    }
-    totalIn += sums[0]; totalOut += sums[1];
-  }
-  assert.ok(text.includes(`Saldo akhir ${money(balance)}`));
+  assert.doesNotMatch(text, /Subtotal halaman/);
+  const totalIn = ledger.filter(row => row.direction === 'in').reduce((sum, row) => sum + row.amount_idr, 0);
+  const totalOut = ledger.filter(row => row.direction === 'out').reduce((sum, row) => sum + row.amount_idr, 0);
+  assert.ok(text.includes(`Total kas keseluruhan`));
   const grand = [...text.matchAll(/Total kas keseluruhan\s+Rp([\d.]+)\s+Rp([\d.]+)/g)];
   assert.equal(grand.length, 1);
   assert.deepEqual(grand[0].slice(1).map(value => Number(value.replaceAll('.', ''))), [totalIn, totalOut]);
@@ -121,11 +111,10 @@ test('split ledger descriptions do not repeat monetary amounts in continuation c
   const text = await textOf(bytes, false);
   assert.match(text, /LONG-START/);
   assert.match(text, /LONG-END/);
-  const firstPage = text.split('\f')[0];
-  assert.match(firstPage, /Subtotal halaman\s+Rp123\.456\s+Rp0/, 'subtotal must stay on the page containing its monetary row');
-  // Summary contains the same opening/closing value; the ledger row itself must
-  // still contribute only one additional occurrence beyond subtotal and grand total.
-  assert.equal((text.match(/Rp123\.456/g) || []).length, 6, 'amount is not repeated in continuation chunks');
+  assert.doesNotMatch(text, /Subtotal halaman/);
+  // The row contributes its inflow and running saldo, plus the grand total;
+  // continuation chunks must not repeat monetary amounts.
+  assert.equal((text.match(/Rp123\.456/g) || []).length, 3, 'amount is not repeated in continuation chunks');
 });
 
 test('caller cannot raise the fixed 150-page ceiling or receive a partial report', async () => {

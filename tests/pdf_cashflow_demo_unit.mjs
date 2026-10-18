@@ -18,7 +18,9 @@ async function pdftotext(bytes, name = 'cashflow.pdf') {
   const path = `${evidenceDir}/${name}`;
   await writeFile(path, bytes);
   const { stdout } = await execFileAsync('pdftotext', ['-layout', path, '-'], { maxBuffer: 32 * 1024 * 1024 });
-  return stdout;
+  // Normalize accounting-style spacing only for legacy semantic assertions;
+  // pdf_approval_layout_unit.mjs separately verifies actual currency coordinates.
+  return stdout.replace(/Rp[ \t]+(-?)[ \t]*(\d[\d.]*)/g, (_, sign, digits) => `${sign}Rp${digits}`);
 }
 
 function ledgerFixture(count = 48) {
@@ -76,24 +78,20 @@ test('direct renderer merges eligible submissions with 48 ledger rows and preser
   const pages = await assertPortraitA4(bytes);
   assert.ok(pages >= 1 && pages <= 150);
   assert.match(text, /LAPORAN KEUANGAN/);
-  assert.match(text, /Saldo awal\s+Rp0/);
-  assert.match(text, /Saldo akhir\s+Rp\d[\d.]*/);
-  assert.match(text, /Masuk\s+Rp[\d.]+/);
-  assert.match(text, /Keluar\s+Rp[\d.]+/);
-  assert.match(text, /Baris laporan 50/);
-  assert.match(text, /Total pengajuan/);
-  assert.match(text, /Finance Terkirim/);
-  assert.match(text, new RegExp(financeSent));
+  assert.match(text, /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo\s+Lampiran/);
+  assert.match(text, /Total kas keseluruhan\s+Rp[\d.]+\s+Rp[\d.]+/);
+  assert.doesNotMatch(text, /Saldo akun awal|Saldo akun akhir|Masuk terpilih|Keluar terpilih|Total pengajuan|Baris laporan/);
+  assert.match(text, /FINANCE-SENT-WITHOUT/);
   assert.match(text, /MANAGER-FINANCE-ELIGIBLE/);
-  assert.match(text, /Total pengajuan\s+Rp1\.000\.776\.999/);
+  assert.match(text, /Total kas keseluruhan\s+Rp1\.550\.550\s+Rp355\.575/);
   for (const row of ledger) assert.ok(text.includes(row.description), `missing ${row.description}`);
   assert.doesNotMatch(text, /Lampiran Audit|USER-PENDING-EXCLUDED|USER-REJECTED-EXCLUDED/);
   assert.doesNotMatch(text, new RegExp(auditSent));
-  const subtotals = [...text.matchAll(/Subtotal halaman\s+Rp([\d.]+)\s+Rp([\d.]+)/g)];
-  assert.ok(subtotals.length > 1);
-  const sum = index => subtotals.reduce((total, match) => total + BigInt(match[index].replaceAll('.', '')), 0n);
-  assert.equal(sum(1), BigInt(incoming));
-  assert.equal(sum(2), BigInt(outgoing));
+  assert.doesNotMatch(text, /Subtotal halaman/);
+  const grand = [...text.matchAll(/Total kas keseluruhan\s+Rp([\d.]+)\s+Rp([\d.]+)/g)];
+  assert.equal(grand.length, 1);
+  assert.equal(BigInt(grand[0][1].replaceAll('.', '')), BigInt(incoming));
+  assert.equal(BigInt(grand[0][2].replaceAll('.', '')), BigInt(outgoing));
   await writeFile(`${evidenceDir}/unified-50.txt`, text);
   await writeFile(`${evidenceDir}/unified-50.json`, JSON.stringify({ rows: 50, ledgerRows: ledger.length, opening, incoming, outgoing, closing, pages }, null, 2));
 });
@@ -102,11 +100,9 @@ test('partial ledger scope labels account balances and does not pretend selected
   const ledger = ledgerFixture(4).slice(0, 4);
   const bytes = await buildFinancialReport({ ledger: [ledger[2]], openingBalanceIdr: 1_000_000, closingBalanceIdr: ledger[3].balance_after_idr, ledgerIsPartial: true, snapshotAt: '2026-10-18T12:00:00.000Z' });
   const text = await pdftotext(bytes, 'ledger-partial.pdf');
-  assert.match(text, /Saldo akun awal\s+Rp1\.000\.000/);
-  assert.match(text, /Saldo akun akhir\s+Rp[\d.]+/);
-  assert.match(text, /Masuk terpilih|Keluar terpilih/);
-  assert.match(text, /Baris laporan 1/);
-  assert.doesNotMatch(text, /Saldo awal\s+Rp1\.000\.000/);
+  assert.match(text, /Total kas keseluruhan\s+Rp0\s+Rp[\d.]+/);
+  assert.match(text, /Lampiran/);
+  assert.doesNotMatch(text, /Saldo akun awal|Saldo akun akhir|Masuk terpilih|Keluar terpilih|Baris laporan/);
 });
 
 test('renderer directly accepts more than 550 rows while retaining sentinels and page cap', async () => {
@@ -115,7 +111,7 @@ test('renderer directly accepts more than 550 rows while retaining sentinels and
   const text = await pdftotext(bytes, 'ledger-direct-551.pdf');
   const pages = await assertPortraitA4(bytes);
   assert.ok(pages <= 150);
-  assert.match(text, /Baris laporan 551/);
+  assert.match(text, /DIRECT-550-START/);
   assert.match(text, /DIRECT-550-START/);
   assert.match(text, /DIRECT-550-END/);
   for (const row of ledger) assert.ok(text.includes(row.description), `missing ${row.description}`);
@@ -137,13 +133,12 @@ test('PDF endpoint merges eligible submissions with ledger and ignores excluded 
   assert.equal(response.status, 200, await response.clone().text());
   const text = await pdftotext(new Uint8Array(await response.arrayBuffer()), 'endpoint-unified.pdf');
   assert.match(text, /LAPORAN KEUANGAN/);
-  assert.match(text, /Baris laporan 50/);
   const incoming = ledger.filter(row => row.direction === 'credit').reduce((sum, row) => sum + row.amount_idr, 0);
   const outgoing = ledger.filter(row => row.direction === 'debit').reduce((sum, row) => sum + row.amount_idr, 0);
   assert.equal(incoming - outgoing, ledger.at(-1).balance_after_idr);
-  assert.ok(text.includes(`Saldo akhir Rp${ledger.at(-1).balance_after_idr.toLocaleString('id-ID')}`));
-  assert.match(text, /Total pengajuan/);
+  assert.ok(text.includes(`Total kas keseluruhan`));
+  assert.ok(text.includes(`Rp${ledger.at(-1).balance_after_idr.toLocaleString('id-ID')}`));
   assert.match(text, /FINANCE-SENT-WITHOUT-LEDGER|MANAGER-FINANCE-ELIGIBLE/);
-  assert.match(text, /Memuat data contoh/);
+  assert.match(text, /DATA DEMO/);
   assert.doesNotMatch(text, /Lampiran Audit|USER-PENDING-EXCLUDED|USER-REJECTED-EXCLUDED|AUDIT-SHOULD-BE-IGNORED/);
 });

@@ -23,7 +23,9 @@ async function extractPdf(bytes) {
       const [left, top, right, bottom] = word.slice(1).map(Number);
       assert.ok(left >= 29 && right <= 566 && top >= 8 && bottom <= 837, `Text outside page margins: ${word[0]}`);
     }
-    return stdout;
+    // Normalize accounting-style spacing only for legacy semantic assertions;
+  // pdf_approval_layout_unit.mjs separately verifies actual currency coordinates.
+  return stdout.replace(/Rp[ \t]+(-?)[ \t]*(\d[\d.]*)/g, (_, sign, digits) => `${sign}Rp${digits}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -51,10 +53,11 @@ test('cashflow report keeps filters, totals and ledger notes but excludes submis
   const { text } = await render({ submissions, ledger, audits, filterDescription: 'Status: disetujui; Pemohon: Dina', periodLabel: '01-06 Oktober 2026' });
   assert.match(text, /Tanggal cetak/);
   assert.match(text, /Status: disetujui; Pemohon: Dina/);
-  assert.match(text, /Saldo awal\s+Rp0/);
-  assert.match(text, /Saldo akhir\s+Rp1\.375\.000/);
-  assert.match(text, /Masuk[^\n]*Rp1\.500\.000/);
-  assert.match(text, /Keluar\s+Rp125\.000/);
+  assert.match(text, /Top up kas Oktober/);
+  assert.match(text, /Beli tinta printer/);
+  assert.match(text, /Rp500\.000/);
+  assert.match(text, /Total kas keseluruhan\s+Rp1\.500\.000\s+Rp125\.000/);
+  assert.doesNotMatch(text, /Saldo awal\s+Rp|Saldo akhir\s+Rp|Masuk\s+Rp|Keluar\s+Rp/);
   assert.match(text, /Total kas keseluruhan\s+Rp1\.500\.000\s+Rp125\.000/);
   assert.match(text, /Catatan nyata:/);
   assert.match(text, /Pengaju:\s+Dina/);

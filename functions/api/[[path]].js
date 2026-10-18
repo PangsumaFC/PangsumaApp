@@ -1417,6 +1417,37 @@ async function reports(context, db) {
   return jsonResponse({ ...metadata, items: rows.map(mapSubmission) });
 }
 
+async function attachReadyDropboxReceipts(context, db, data, snapshotAt) {
+  if (context.env?.DROPBOX_RECEIPTS_ENABLED !== 'true') return data;
+  const ids = [...new Set([
+    ...data.submissions.map(row => row.id),
+    ...data.ledger.map(row => row.submission_id)
+  ].filter(Boolean))];
+  const urls = new Map();
+  try {
+    for (let offset = 0; offset < ids.length; offset += 90) {
+      const batch = ids.slice(offset, offset + 90);
+      const result = await db.prepare(`SELECT r.submission_id, m.public_url
+        FROM receipt_dropbox_metadata m JOIN submission_receipts r ON r.id=m.receipt_id
+        WHERE r.submission_id IN (${batch.map(() => '?').join(',')})
+          AND m.state='ready' AND m.completed_at <= ?
+        ORDER BY r.submission_id, r.created_at, r.id LIMIT 901`).bind(...batch, snapshotAt).all();
+      for (const row of result.results || []) {
+        const list = urls.get(row.submission_id) || [];
+        if (list.length < 10 && !list.includes(row.public_url)) list.push(row.public_url);
+        urls.set(row.submission_id, list);
+      }
+    }
+  } catch {
+    throw new ApiError(503, 'receipt_storage_unavailable', 'Metadata lampiran Dropbox belum tersedia.');
+  }
+  return {
+    ...data,
+    submissions: data.submissions.map(row => ({ ...row, dropbox_receipt_urls: urls.get(row.id) || [] })),
+    ledger: data.ledger.map(row => ({ ...row, dropbox_receipt_urls: urls.get(row.submission_id) || [] }))
+  };
+}
+
 async function exportPdf(context, db) {
   ensureMethod(context.request, 'GET');
   const user = await requireUser(context.request, db);
@@ -1425,7 +1456,7 @@ async function exportPdf(context, db) {
   const { body: bytes, snapshotAt } = await runConsistentExport({
     db,
     gather: async (at) => {
-      const data = await fullFinancialReportData(db, at, filters);
+      const data = await attachReadyDropboxReceipts(context, db, await fullFinancialReportData(db, at, filters), at);
       return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name, maxPages: MAX_PDF_PAGES });
     }
   });

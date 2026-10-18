@@ -29,8 +29,12 @@ test('initial session attempt always ends the preloader in finally', () => {
 test('menu navigation renders before any background refresh can block it', () => {
   const bindEvents = block('bindEvents');
   const navigation = bindEvents.slice(bindEvents.indexOf("closest('[data-page]')"), bindEvents.indexOf("closest('[data-action]')"));
-  assert.match(navigation, /currentPage = page;\s*renderApp\(\);/);
+  assert.match(navigation, /navigateToPage\(page\);/);
   assert.doesNotMatch(navigation, /await|refreshOverview/);
+  const navigate = block('navigateToPage', 'handleNavigationPop');
+  assert.match(navigate, /currentPage = page;/);
+  assert.match(navigate, /renderApp\(\);/);
+  assert.doesNotMatch(navigate, /await|refreshOverview|setTimeout/);
 });
 
 test('explicit API buttons expose a compact crest busy affordance', () => {

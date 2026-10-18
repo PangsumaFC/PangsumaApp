@@ -35,7 +35,7 @@ function ledger(db, { submissionId = null, amount = 10, note = 'Kas', at = '2025
   assert.match(text, /LAPORAN KEUANGAN/);
   assert.match(text, /Eligible 0/); assert.match(text, /Eligible 500/);
   assert.doesNotMatch(text, /Ineligible pending/); assert.doesNotMatch(text, /AUDIT MUST NOT APPEAR/);
-  assert.match(text, /Baris laporan 502/); assert.match(text, /Total pengajuan/); assert.match(text, /Total kas keseluruhan/);
+  assert.equal((text.match(/Eligible \d+/g) || []).length, 501); assert.match(text, /Total kas keseluruhan/); assert.match(text, /Lampiran/); assert.doesNotMatch(text, /Baris laporan|Total pengajuan|Subtotal halaman/);
   assert.doesNotMatch(text, /Audit/); assert.doesNotMatch(text, /Kategori/);
 });
 
@@ -49,7 +49,7 @@ test('period uses ledger timestamps and includes linked current cash for an old 
   assert.equal(response.status, 200);
   const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
   assert.match(text, /Old date current cash/); assert.doesNotMatch(text, /Rejected metadata|Rejected cash/);
-  assert.match(text, /Periode 2025-02-01/); assert.match(text, /Baris laporan 1/);
+  assert.match(text, /Periode 2025-02-01/); assert.equal((text.match(/Old date current cash/g) || []).length, 1); assert.match(text, /Lampiran/);
 });
 
 test('export remains manager-only, authenticated, and GET-only', async () => {

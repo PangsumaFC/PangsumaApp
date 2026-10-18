@@ -1,6 +1,7 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, BlendMode } from 'pdf-lib';
 import { ApiError } from './http.js';
 import { unifiedReportRows } from './pdf-cashflow.js';
+import { managerSignatureJpeg, managerStampJpeg } from './pdf-approval-assets.js';
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -34,6 +35,30 @@ function amount(value) {
   const sign = n < 0 ? '-' : '';
   return `${sign}Rp${Math.abs(Math.round(n)).toLocaleString('id-ID')}`;
 }
+function moneyParts(value) {
+  const raw = String(value ?? '').trim();
+  if (raw === '-') return { dash: true, number: '' };
+  const negative = raw.startsWith('-');
+  const number = `${negative ? '-' : ''}${raw.replace(/^-?Rp/, '').replace(/^-/, '')}`;
+  return { dash: false, prefix: 'Rp', number };
+}
+function drawMoneyCell(page, value, x, yy, width, font, color, baseSize = 8.5, pad = 4) {
+  const parts = moneyParts(value);
+  const right = x + width - pad;
+  if (parts.dash) {
+    const size = baseSize;
+    page.drawText('-', { x: right - font.widthOfTextAtSize('-', size), y: yy, size, font, color });
+    return;
+  }
+  let size = baseSize;
+  const available = width - pad * 2;
+  const gap = 4;
+  while (size > 4 && font.widthOfTextAtSize(parts.prefix, size) + gap + font.widthOfTextAtSize(parts.number, size) > available) size -= 0.25;
+  const numberWidth = font.widthOfTextAtSize(parts.number, size);
+  page.drawText(parts.prefix, { x: x + pad, y: yy, size, font, color });
+  page.drawText(parts.number, { x: right - numberWidth, y: yy, size, font, color });
+}
+
 function dateWib(value) {
   if (!value) return '-';
   const d = new Date(value);
@@ -94,6 +119,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const signatureImage = await pdf.embedJpg(managerSignatureJpeg);
+  const stampImage = await pdf.embedJpg(managerStampJpeg);
   pdf.setTitle('Laporan Keuangan Pangsuma FC');
   pdf.setSubject('Buku kas ledger sesuai filter; bukan daftar pengajuan atau audit');
   pdf.setCreator('Pangsuma App');
@@ -123,7 +150,6 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
     page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
-    if (hasSimulation) page.drawText('Memuat data contoh', { x: PAGE_W - MARGIN - 210, y: PAGE_H - 74, size: 8, font: bold, color: rgb(0.72, 0.12, 0.05) });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
     filterLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 92 - index * 10, size: 7.5, font: regular, color: MUTED }));
     scopeLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 94 - filterLines.length * 10 - index * 10, size: 8, font: regular, color: MUTED }));
@@ -155,91 +181,117 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
 
   function ledgerTable(rows) {
     const columns = [
-      { key: 'no', label: 'No.', width: 28 }, { key: 'date', label: 'Tanggal', width: 68 },
-      { key: 'description', label: 'Keterangan', width: 174 }, { key: 'in', label: 'Masuk', width: 84, align: 'right' },
-      { key: 'out', label: 'Keluar', width: 84, align: 'right' }, { key: 'balance', label: 'Saldo', width: 97, align: 'right' },
+      { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
+      { key: 'description', label: 'Keterangan', width: 148 }, { key: 'in', label: 'Masuk', width: 76, align: 'right' },
+      { key: 'out', label: 'Keluar', width: 76, align: 'right' }, { key: 'balance', label: 'Saldo', width: 86, align: 'right' },
+      { key: 'attachment', label: 'Lampiran', width: 67 },
     ];
     const total = columns.reduce((sum, column) => sum + column.width, 0);
     const headerH = 24; const fontSize = 8.5; const pad = 4; const lineH = 11;
-    const pageSubtotal = { in: 0n, out: 0n, hasRows: false };
+    const drawGrid = (top, height) => {
+      const bottom = top - height;
+      page.drawLine({ start: { x: MARGIN, y: top + 4 }, end: { x: MARGIN + total, y: top + 4 }, thickness: 0.4, color: LINE });
+      page.drawLine({ start: { x: MARGIN, y: bottom + 4 }, end: { x: MARGIN + total, y: bottom + 4 }, thickness: 0.4, color: LINE });
+      let gx = MARGIN;
+      page.drawLine({ start: { x: gx, y: top + 4 }, end: { x: gx, y: bottom + 4 }, thickness: 0.4, color: LINE });
+      columns.forEach(column => { gx += column.width; page.drawLine({ start: { x: gx, y: top + 4 }, end: { x: gx, y: bottom + 4 }, thickness: 0.4, color: LINE }); });
+    };
     const drawFirstPageHeader = () => {
       ensure(headerH + 26);
       if (pdf.getPageCount() !== 1) return;
       page.drawRectangle({ x: MARGIN, y: y - headerH + 4, width: total, height: headerH, color: NAVY });
       let x = MARGIN;
       columns.forEach(column => { text(column.label, x + pad, y - 11, 8, bold, WHITE, { maxWidth: column.width - pad * 2 }); x += column.width; });
+      drawGrid(y, headerH);
       y -= headerH;
-    };
-    const drawPageSubtotal = () => {
-      if (!pageSubtotal.hasRows) return;
-      const height = 24;
-      if (y - height < 38) { footer(); newPage(); }
-      page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
-      let x = MARGIN;
-      columns.forEach(column => {
-        const value = column.key === 'description' ? 'Subtotal halaman' : column.key === 'in' ? amount(pageSubtotal.in) : column.key === 'out' ? amount(pageSubtotal.out) : '';
-        if (value) text(value, x + pad, y - 12, fontSize, bold, NAVY, { maxWidth: column.width - pad * 2, align: column.align });
-        x += column.width;
-      });
-      y -= height;
-      pageSubtotal.in = 0n; pageSubtotal.out = 0n; pageSubtotal.hasRows = false;
     };
     drawFirstPageHeader();
     rows.forEach((row, rowIndex) => {
-      const cells = columns.map(column => wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
+      // Monetary cells are a single accounting-style line; drawMoneyCell fits
+      // the complete signed number instead of wrapping or repeating currency.
+      const attachmentUrls = Array.isArray(row.attachment_urls) ? row.attachment_urls : (row.attachment_url ? [row.attachment_url] : []);
+      const cells = columns.map((column, index) => index >= 3 && index <= 5
+        ? [mark(row[column.key])]
+        : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map((_, i) => `Bukti ${i + 1}`) : ['-'])
+          : wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
       const lineCount = Math.max(...cells.map(cell => cell.length));
       let offset = 0;
       while (offset < lineCount) {
         const remaining = lineCount - offset;
-        const reserveSubtotal = true;
-        const availableLines = Math.max(1, Math.floor((y - 38 - (reserveSubtotal ? 24 : 0) - 8) / lineH));
+        const availableLines = Math.max(1, Math.floor((y - 38 - 8) / lineH));
         const count = Math.min(remaining, availableLines);
         const height = Math.max(22, count * lineH + 8);
-        // Keep 24pt reserved for this page's subtotal; continuation chunks never
-        // repeat monetary cells, but the subtotal must remain on the same page.
-        if (reserveSubtotal && y - height < 38 + 24) { drawPageSubtotal(); footer(); newPage(); continue; }
         if (y - height < 38) { footer(); newPage(); continue; }
         if (rowIndex % 2 === 0) page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: rgb(0.975, 0.985, 0.985) });
         let x = MARGIN;
         cells.forEach((cell, cellIndex) => {
           const column = columns[cellIndex];
           // A continuation chunk carries text only; monetary values are counted and printed once.
-          const slice = offset === 0 ? cell.slice(offset, offset + count) : (cellIndex >= 3 ? [] : cell.slice(offset, offset + count));
-          slice.forEach((line, lineIndex) => text(line, x + pad, y - 12 - lineIndex * lineH, fontSize, regular, INK, { maxWidth: column.width - pad * 2, align: column.align }));
+          const slice = offset === 0 ? cell.slice(offset, offset + count) : (cellIndex >= 3 && cellIndex <= 5 ? [] : cell.slice(offset, offset + count));
+          slice.forEach((line, lineIndex) => {
+            const lineY = y - 12 - lineIndex * lineH;
+            if (column.key === 'in' || column.key === 'out' || column.key === 'balance') drawMoneyCell(page, line, x, lineY, column.width, regular, INK, fontSize, pad);
+            else text(line, x + pad, lineY, fontSize, regular, column.key === 'attachment' && line !== '-' ? rgb(0.05, 0.25, 0.75) : INK, { maxWidth: column.width - pad * 2, align: column.align });
+            if (column.key === 'attachment' && line !== '-') {
+              const linkIndex = offset + lineIndex;
+              const url = attachmentUrls[linkIndex];
+              if (url) {
+                const labelWidth = regular.widthOfTextAtSize(line, fontSize);
+                const link = pdf.context.register(pdf.context.obj({
+                  Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
+                  Rect: [x + pad, lineY - 4, x + pad + labelWidth, lineY + fontSize + 2],
+                  Border: [0, 0, 0],
+                  A: pdf.context.obj({ Type: PDFName.of('Action'), S: PDFName.of('URI'), URI: PDFString.of(url) }),
+                }));
+                const annotations = page.node.get(PDFName.of('Annots'));
+                if (annotations) annotations.push(link);
+                else page.node.set(PDFName.of('Annots'), pdf.context.obj([link]));
+              }
+            }
+          });
           x += column.width;
         });
-        if (offset === 0) {
-          pageSubtotal.in += isIncoming(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : 0n;
-          pageSubtotal.out += isOutgoing(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : 0n;
-        }
-        pageSubtotal.hasRows = true;
-        page.drawLine({ start: { x: MARGIN, y: y - height + 4 }, end: { x: MARGIN + total, y: y - height + 4 }, thickness: 0.35, color: LINE });
+        drawGrid(y, height);
         y -= height; offset += count;
       }
     });
-    drawPageSubtotal();
     const height = 24;
     if (y - height < 38) { footer(); newPage(); }
     page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
     let x = MARGIN;
     columns.forEach(column => {
       const value = column.key === 'description' ? 'Total kas keseluruhan' : column.key === 'in' ? amount(incoming) : column.key === 'out' ? amount(outgoing) : '';
-      if (value) text(value, x + pad, y - 12, fontSize, bold, NAVY, { maxWidth: column.width - pad * 2, align: column.align });
+      if (value) { if (column.key === 'in' || column.key === 'out') drawMoneyCell(page, value, x, y - 12, column.width, bold, NAVY, fontSize, pad); else text(value, x + pad, y - 12, fontSize, bold, NAVY, { maxWidth: column.width - pad * 2, align: column.align }); }
       x += column.width;
     });
+    drawGrid(y, height);
     y -= height + 13;
   }
 
+  function drawFinalApproval() {
+    const blockHeight = 142;
+    const gap = 12;
+    const blockBottom = 48;
+    const blockTop = blockBottom + blockHeight;
+    // The approval block is anchored to the page bottom; reserve its full height
+    // plus the gap before drawing it, creating a continuation page when needed.
+    if (y < blockTop + gap) { footer(); newPage(); }
+    const blockX = MARGIN + 300;
+    const blockW = CONTENT_W - 300;
+    const centerX = blockX + blockW / 2;
+    page.drawText('Yg mengajukan,', { x: centerX - regular.widthOfTextAtSize('Yg mengajukan,', 8) / 2, y: blockTop - 12, size: 8, font: regular, color: MUTED });
+    const sigW = 150; const sigH = sigW * 396 / 1200;
+    const sigX = centerX - sigW / 2; const imageY = blockBottom + 60;
+    page.drawImage(signatureImage, { x: sigX, y: imageY, width: sigW, height: sigH });
+    const stampW = 58; const stampH = 58;
+    page.drawImage(stampImage, { x: sigX + sigW - stampW - 8, y: imageY - 4, width: stampW, height: stampH, blendMode: BlendMode.Multiply });
+    page.drawText('Rahmat Saputro', { x: centerX - bold.widthOfTextAtSize('Rahmat Saputro', 9) / 2, y: blockBottom + 42, size: 9, font: bold, color: NAVY });
+    page.drawText('Manager', { x: centerX - regular.widthOfTextAtSize('Manager', 8) / 2, y: blockBottom + 29, size: 8, font: regular, color: MUTED });
+    page.drawText('DATA DEMO', { x: centerX - bold.widthOfTextAtSize('DATA DEMO', 6.5) / 2, y: blockBottom + 8, size: 6.5, font: bold, color: rgb(0.72, 0.12, 0.05) });
+    y = blockBottom - gap;
+  }
+
   newPage();
-  ensure(94);
-  page.drawRectangle({ x: MARGIN, y: y - 80, width: CONTENT_W, height: 80, color: PALE });
-  text(`${ledgerIsPartial ? 'Saldo akun awal' : 'Saldo awal'} ${amount(openingBalance)}`, MARGIN + 10, y - 16, 9, regular, INK);
-  text(`${ledgerIsPartial ? 'Saldo akun akhir' : 'Saldo akhir'} ${amount(finalBalance)}`, MARGIN + 10, y - 34, 10, bold, NAVY);
-  text(`${ledgerIsPartial ? 'Masuk terpilih' : 'Masuk'} ${amount(incoming)}`, MARGIN + 280, y - 16, 9, regular, INK);
-  text(`${ledgerIsPartial ? 'Keluar terpilih' : 'Keluar'} ${amount(outgoing)}`, MARGIN + 280, y - 34, 9, regular, INK);
-  text(`Baris laporan ${unified.rows.length}`, MARGIN + 10, y - 52, 8.5, regular, INK);
-  text(`Total pengajuan ${amount(unified.totalSubmitted)}`, MARGIN + 10, y - 69, 9, bold, NAVY);
-  y -= 96;
   if (unified.rows.length) {
     ledgerTable(unified.rows.map((l, i) => ({
       no: i + 1,
@@ -247,10 +299,13 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       description: l.report_description,
       in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
       out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
-      balance: l.is_cash ? amount(l.balance_after_idr) : '-', direction: l.direction, amount_idr: l.amount_idr ?? l.amount,
+      balance: l.is_cash ? amount(l.balance_after_idr) : '-',
+      attachment_urls: l.dropbox_receipt_urls || l.report_attachment_urls || (l.dropbox_receipt_url ? [l.dropbox_receipt_url] : []),
+      direction: l.direction, amount_idr: l.amount_idr ?? l.amount,
     })));
   } else text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
   if (unicodeReplaced) { ensure(22); text('Karakter di luar font ditampilkan sebagai ?.', MARGIN, y, 7, regular, MUTED); }
+  drawFinalApproval();
   footer();
   const pages = pdf.getPages();
   pages.forEach((entry, index) => {

@@ -96,6 +96,71 @@ const state = {
 let currentPage = 'overview';
 let lastRenderedPage = '';
 let authEpoch = 0;
+// Navigation history is deliberately a small, session-scoped view state. Never
+// put report, finance, or identity data in the URL/history entry.
+let navigationSession = '';
+let navigationHandlingPop = false;
+const navigationPages = new Set(['overview', 'approvals', 'finance', 'users', 'my-reports', 'change-password', 'new-report', 'cash-info']);
+function navigationHistoryAvailable() {
+  return typeof window !== 'undefined' && window.history && typeof window.history.pushState === 'function' && typeof window.history.replaceState === 'function' && typeof window.addEventListener === 'function';
+}
+function navigationState(page = currentPage) {
+  return { pangsumaNavigation: true, session: navigationSession, page: navigationPages.has(page) ? page : 'overview' };
+}
+function navigationPageAllowed(page) {
+  if (!state.user || !navigationPages.has(page)) return false;
+  if (state.user.mustChangePassword) return page === 'change-password';
+  const allowed = state.user.role === 'manager'
+    ? ['overview', 'approvals', 'finance', 'users', 'change-password', 'new-report']
+    : ['overview', 'my-reports', 'change-password', 'new-report'];
+  return allowed.includes(page);
+}
+function resetNavigationSession(page = 'overview') {
+  navigationSession = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  if (!navigationHistoryAvailable()) return;
+  try { window.history.replaceState(navigationState(page), '', window.location.href); } catch {}
+}
+function navigateToPage(page, { replace = false, fromPop = false } = {}) {
+  if (!navigationPageAllowed(page)) return false;
+  const changed = currentPage !== page;
+  currentPage = page;
+  if (navigationHistoryAvailable() && !fromPop && changed) {
+    try {
+      const method = replace ? 'replaceState' : 'pushState';
+      window.history[method](navigationState(page), '', window.location.href);
+    } catch {}
+  }
+  renderApp();
+  return true;
+}
+function handleNavigationPop(event) {
+  if (navigationHandlingPop) { navigationHandlingPop = false; return; }
+  const reportDialog = typeof document !== 'undefined' ? document.querySelector('#reportActivityDialog[open]') : null;
+  if (reportDialog) {
+    if (!canCloseReportActivity(reportDialog)) {
+      if (navigationHistoryAvailable()) { navigationHandlingPop = true; try { window.history.forward(); } catch { navigationHandlingPop = false; } }
+      return;
+    }
+    reportDialog.close();
+    // The detail dialog is not a page: restore the underlying page entry after
+    // consuming Back, rather than unexpectedly navigating behind the dialog.
+    if (navigationHistoryAvailable()) { navigationHandlingPop = true; try { window.history.forward(); } catch { navigationHandlingPop = false; } }
+    return;
+  }
+  const entry = event?.state;
+  if (!state.user || !entry?.pangsumaNavigation || entry.session !== navigationSession || !navigationPages.has(entry.page)) {
+    // A pre-app/document entry is intentionally left to the browser (native
+    // Back/exit). Protected historical entries are not allowed to reopen.
+    if (state.user && navigationHistoryAvailable()) { try { window.history.replaceState(navigationState(currentPage), '', window.location.href); } catch {} }
+    return;
+  }
+  if (hasUnsavedDraft() && !window.confirm('Masih ada draf atau nota yang belum dikirim. Tetap berpindah halaman?')) {
+    if (navigationHistoryAvailable()) { navigationHandlingPop = true; try { window.history.forward(); } catch { navigationHandlingPop = false; } }
+    return;
+  }
+  navigateToPage(entry.page, { fromPop: true });
+}
+
 let reportTypePreset = 'petty_cash';
 let submissionIdempotencyKey = '';
 let cashTopupIdempotencyKey = '';
@@ -551,6 +616,7 @@ function displayPasskeyError(error) {
 
 async function completeLogin(result, form = null) {
   state.user = result.user;
+  resetNavigationSession(result.user.mustChangePassword ? 'change-password' : 'overview');
   if (state.user.mustChangePassword) {
     state.cashBalanceIdr = 0;
   state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
@@ -642,6 +708,7 @@ function showLogin(message = '') {
   if (typeof PwaFiles !== 'undefined') PwaFiles.cleanup();
   if (typeof BoundedHistory !== 'undefined') BoundedHistory.reset();
   authEpoch += 1;
+  resetNavigationSession('overview');
   usersPageLifecycle.cancel();
   historyPageLifecycles.forEach(lifecycle => lifecycle.cancel());
   historyPageLifecycles.clear();
@@ -1401,8 +1468,8 @@ async function performPasswordChange(event) {
     });
     state.user = result.user;
     await refreshOverview();
-    currentPage = 'overview';
-    renderApp();
+    if (typeof navigateToPage === 'function') navigateToPage('overview', { replace: true });
+    else { currentPage = 'overview'; renderApp(); }
     showToast('Password diperbarui.');
   } catch (error) {
     errorBox.textContent = friendlyError(error);
@@ -1467,8 +1534,9 @@ async function performNewSubmission(event) {
       if (error?.code === 'session_changed' || !state.user) return;
       refreshed = false;
     }
-    currentPage = state.user.role === 'manager' ? 'overview' : 'my-reports';
-    renderApp();
+    const successPage = state.user.role === 'manager' ? 'overview' : 'my-reports';
+    if (typeof navigateToPage === 'function') navigateToPage(successPage, { replace: true });
+    else { currentPage = successPage; renderApp(); }
     showToast(!refreshed ? 'Pengajuan sudah tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia, jangan kirim ulang.' : state.user.role === 'manager' ? 'Pengajuan otomatis disetujui dan masuk rekap.' : 'Pengajuan terkirim dan tersimpan di akun Anda.');
   } catch (error) {
     showToast(friendlyError(error));
@@ -1685,8 +1753,7 @@ async function handleAction(button) {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
     if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
-    currentPage = 'new-report';
-    renderApp();
+    navigateToPage('new-report');
   } else if (action === 'close-dialog') {
     if (button.closest('#userProfileDialog') && profileDraft?.saving) return;
     const dialog = button.closest('dialog');
@@ -1781,10 +1848,11 @@ async function logout() {
 }
 
 function bindEvents() {
+  if (navigationHistoryAvailable()) window.addEventListener('popstate', handleNavigationPop);
   if (typeof FinancialControls !== 'undefined') FinancialControls.configure({
     getUser: () => state.user, api, notify: showToast, newKey: newSubmissionKey,
     onRefresh: async () => { await refreshOverview(); renderApp(); },
-    navigate: page => { currentPage = page; renderApp(); },
+    navigate: page => { navigateToPage(page); },
     onChange: region => {
       if (state.user?.role !== 'manager') return;
       const finance = $('#financialControlsFinance'), overview = $('#financialControlsOverview');
@@ -1815,8 +1883,9 @@ function bindEvents() {
     if (pageButton && state.user) {
       const page = pageButton.dataset.page;
       if (state.user.mustChangePassword && page !== 'change-password') return;
-      currentPage = page;
-      renderApp();
+      // Keep the legacy capability fallback for VM/test hosts that do not
+      // provide History API; real browsers use the pushState path.
+      navigateToPage(page);
       $('#mainContent').focus({ preventScroll: true });
       if (page === 'users' && state.user?.role === 'manager') {
         void refreshUsersPage(1).then(() => { if (currentPage === page) renderApp(); })
@@ -2085,6 +2154,7 @@ async function initialize() {
     await refreshPasskeyControls();
     const result = await api('/session');
     state.user = result.user;
+    resetNavigationSession(state.user.mustChangePassword ? 'change-password' : 'overview');
     if (state.user.mustChangePassword) {
       state.cashBalanceIdr = 0;
       state.cashFlow = { incomingIdr: '0', outgoingIdr: '0' };
