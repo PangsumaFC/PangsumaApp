@@ -127,6 +127,10 @@ function navigateToPage(page, { replace = false, fromPop = false } = {}) {
   if (changed && profileDialog?.id === 'userProfileDialog' && !canCloseAppDialog(profileDialog)) return false;
   if (changed && profileDialog?.id === 'userProfileDialog') profileDialog.close();
   currentPage = page;
+  if (changed) usersPageLifecycle.cancel();
+  if (changed && page === 'users' && state.user?.role === 'manager') {
+    state.usersPage = { ...state.usersPage, loading: true, error: '' };
+  }
   if (navigationHistoryAvailable() && !fromPop && changed) {
     try {
       const method = replace ? 'replaceState' : 'pushState';
@@ -831,11 +835,17 @@ async function refreshOverview({ preserveHistory = false } = {}) {
     state.history[collection] = nextHistory[collection] || emptyHistory()[collection];
   }
   state.pendingSubmissions = Array.isArray(result.pendingSubmissions) ? result.pendingSubmissions : [];
-  state.users = Array.isArray(result.users) ? result.users : [];
-  if (!preserveHistory) state.usersPage = { page: 1, limit: 100, total: 0, hasMore: state.users.length >= 100 };
+  const retainUsersQuery = state.user?.role === 'manager' && (currentPage === 'users' || state.usersPage.query);
+  if (!retainUsersQuery) {
+    state.users = Array.isArray(result.users) ? result.users : [];
+    if (!preserveHistory) state.usersPage = { ...state.usersPage, page: 1, limit: 100, total: 0, hasMore: state.users.length >= 100, query: '' };
+  }
   state.summary = result.summary || {};
   configureBoundedHistory();
-  if (state.user?.role === 'manager') void loadCashInsights();
+  if (state.user?.role === 'manager') {
+    void loadCashInsights();
+    if (retainUsersQuery) await refreshUsersPage(state.usersPage.page || 1, false, state.usersPage.query || '');
+  }
 }
 
 
@@ -1037,11 +1047,13 @@ const historyPageLifecycles = new Map();
 async function refreshUsersPage(page = 1, append = false, query = state.usersPage.query || '') {
   if (!state.user || state.user.role !== 'manager') return false;
   const request = usersPageLifecycle.begin();
+  const requestEpoch = authEpoch;
+  const requestUserId = state.user?.id;
   state.usersPage = { ...state.usersPage, loading: true, error: '' };
   try {
     const search = String(query || '').trim().slice(0, 100);
     const result = await api(`/users?page=${page}&limit=100&q=${encodeURIComponent(search)}`);
-    if (!usersPageLifecycle.current(request)) return false;
+    if (!usersPageLifecycle.current(request) || requestEpoch !== authEpoch || state.user?.id !== requestUserId) return false;
     const rows = Array.isArray(result.users) ? result.users : [];
     state.users = rows;
     state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore), query: search, loading: false, error: '' };
@@ -1055,7 +1067,7 @@ async function refreshUsersPage(page = 1, append = false, query = state.usersPag
 
 function accountDraftKey() { return 'manager-account-form'; }
 function readAccountDraft() { return state.user?.role === 'manager' ? readDraft(accountDraftKey()) : null; }
-function persistAccountDraft() { const form = $('#userForm'); if (!state.user || state.user.role !== 'manager' || !form) return; const values = { name: String(form.name?.value || '').slice(0, 80), email: String(form.email?.value || '').slice(0, 180), position: String(form.position?.value || '').slice(0, 80) }; if (Object.values(values).some(Boolean)) writeDraft(accountDraftKey(), '', values); else clearDraft(accountDraftKey()); }
+function persistAccountDraft() { const form = $('#userForm'); if (!state.user || state.user.role !== 'manager' || !form) return; const fields = form.elements; const values = { name: String(fields.namedItem('name')?.value || '').slice(0, 80), email: String(fields.namedItem('email')?.value || '').slice(0, 180), position: String(fields.namedItem('position')?.value || '').slice(0, 80) }; if (Object.values(values).some(Boolean)) writeDraft(accountDraftKey(), '', values); else clearDraft(accountDraftKey()); }
 function restoreAccountDraft() { const draft = readAccountDraft(), form = $('#userForm'); if (!form || !draft) return; for (const field of ['name', 'email', 'position']) if (form.elements[field]) form.elements[field].value = draft[field] || ''; $('#addUserCard').hidden = false; }
 function accountDraftPresent() { const draft = readAccountDraft(); return Boolean(draft && Object.values(draft).some(Boolean)); }
 function usersPage() {
@@ -1072,12 +1084,12 @@ function usersPage() {
   }).join('');
   const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
   const query = String(state.usersPage.query || '');
-  const listStatus = state.usersPage.loading ? '<p class="field-help" role="status" aria-live="polite">Memuat daftar akun…</p>' : state.usersPage.error ? `<p class="field-error" role="alert">${escapeHTML(state.usersPage.error)}</p>` : '';
+  const listStatus = state.usersPage.loading ? '<p class="field-help" role="status" aria-live="polite">Memuat daftar akun…</p>' : state.usersPage.error ? `<p class="field-error" role="alert">${escapeHTML(state.usersPage.error)} <button class="secondary-button" type="button" data-action="retry-users">Coba lagi</button></p>` : '';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
     <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
-    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
+    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="100" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
-    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
 
 function myReportsPage() {
@@ -1816,6 +1828,8 @@ async function handleAction(button) {
   } else if (action === 'load-more-users' || action === 'previous-users') {
     const next = Math.max(1, Number(state.usersPage.page || 1) + (action === 'previous-users' ? -1 : 1));
     try { await refreshUsersPage(next, false, state.usersPage.query); renderApp(); } catch (error) { showToast(friendlyError(error)); }
+  } else if (action === 'retry-users') {
+    await refreshUsersPage(state.usersPage.page || 1, false, state.usersPage.query || ''); renderApp();
   } else if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
@@ -1994,7 +2008,7 @@ function bindEvents() {
 
   document.addEventListener('input', event => {
     if (event.target.closest?.('#userForm')) persistAccountDraft();
-    if (event.target.id === 'usersSearch') { state.usersPage.query = event.target.value.slice(0, 100); clearTimeout(usersSearchTimer); usersSearchTimer = setTimeout(() => { if (currentPage !== 'users') return; void refreshUsersPage(1, false, state.usersPage.query).then(ok => { if (ok && currentPage === 'users') renderApp(); }).catch(error => { if (error.code !== 'session_changed') { renderApp(); showToast(friendlyError(error)); } }); }, 300); }
+    if (event.target.id === 'usersSearch') { usersPageLifecycle.cancel(); state.usersPage.query = event.target.value.slice(0, 100); state.usersPage.loading = true; state.usersPage.error = ''; clearTimeout(usersSearchTimer); renderApp(); usersSearchTimer = setTimeout(() => { if (currentPage !== 'users') return; void refreshUsersPage(1, false, state.usersPage.query).then(ok => { if (ok && currentPage === 'users') renderApp(); }).catch(error => { if (error.code !== 'session_changed') { renderApp(); showToast(friendlyError(error)); } }); }, 300); }
     if (event.target.closest?.('#reportForm') && event.target.id !== 'reportType') persistReportDraft();
     if (event.target.closest?.('#cashTopupForm')) persistCashTopupDraft();
     if (event.target.id === 'loginIdentifier' || event.target.id === 'loginPassword') {

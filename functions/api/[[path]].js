@@ -1001,6 +1001,7 @@ async function users(context, db) {
     const rawPage = url.searchParams.get('page') || '1';
     const rawLimit = url.searchParams.get('limit') || '100';
     const search = String(url.searchParams.get('q') || '').trim().slice(0, 100);
+    const searchPattern = search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
     if (!/^\d+$/.test(rawPage) || !/^\d+$/.test(rawLimit)) throw new ApiError(400, 'invalid_pagination', 'Pagination tidak valid.');
     const page = Number(rawPage), requestedLimit = Number(rawLimit);
     const limit = Math.min(requestedLimit, 100);
@@ -1015,11 +1016,11 @@ async function users(context, db) {
                p.nickname, p.dashboard_position, p.quote, p.photo_mime, CASE WHEN p.photo IS NULL THEN 0 ELSE 1 END AS has_photo,
                COALESCE(p.version, 0) AS profile_version
         FROM users LEFT JOIN user_profiles p ON p.user_id = users.id
-        WHERE (? = '' OR users.name LIKE ? COLLATE NOCASE OR users.email LIKE ? COLLATE NOCASE)
+        WHERE (? = '' OR users.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR users.email LIKE ? ESCAPE '\\' COLLATE NOCASE)
         ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END, name COLLATE NOCASE, users.id
         LIMIT ? OFFSET ?
-      `).bind(search, `%${search}%`, `%${search}%`, limit, offset).all(),
-      db.prepare("SELECT COUNT(*) AS count FROM users WHERE (? = '' OR name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE)").bind(search, `%${search}%`, `%${search}%`).first()
+      `).bind(search, `%${searchPattern}%`, `%${searchPattern}%`, limit, offset).all(),
+      db.prepare("SELECT COUNT(*) AS count FROM users WHERE (? = '' OR name LIKE ? ESCAPE '\\' COLLATE NOCASE OR email LIKE ? ESCAPE '\\' COLLATE NOCASE)").bind(search, `%${searchPattern}%`, `%${searchPattern}%`).first()
     ]);
     const total = Number(count?.count || 0);
     return jsonResponse({ users: (result.results || []).map(mapListedUser), page, limit, total, hasMore: offset + limit < total });
