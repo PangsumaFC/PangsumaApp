@@ -50,10 +50,10 @@ test('multipage cashflow ledger has exact spreadsheet labels, repeated headers, 
   for (const label of ['No.', 'Tanggal', 'Keterangan', 'Masuk', 'Keluar', 'Saldo']) assert.ok(text.includes(label), `missing ${label}`);
   assert.ok((text.match(/No\./g) || []).length > 2, 'ledger header should repeat on continuation pages');
   assert.ok((text.match(/Subtotal halaman/g) || []).length >= 2, 'each ledger page needs a labeled subtotal');
-  assert.equal((text.match(/Total buku kas/g) || []).length, 1, 'grand total must be distinct and singular');
-  assert.match(text, /Memuat data SIMULASI/);
+  assert.equal((text.match(/Total kas keseluruhan/g) || []).length, 1, 'grand total must be distinct and singular');
+  assert.match(text, /Memuat data contoh/);
   assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
-  assert.match(text, /Total buku kas[\s\S]*Rp1\.000\.000[\s\S]*Rp8\.875\.000/);
+  assert.match(text, /Total kas keseluruhan[\s\S]*Rp1\.000\.000[\s\S]*Rp8\.875\.000/);
 });
 
 test('split ledger descriptions do not repeat monetary amounts in continuation chunks', async () => {
@@ -68,5 +68,10 @@ test('split ledger descriptions do not repeat monetary amounts in continuation c
   assert.match(firstPage, /Subtotal halaman\s+Rp123\.456\s+Rp0/, 'subtotal must stay on the page containing its monetary row');
   // Summary contains the same opening/closing value; the ledger row itself must
   // still contribute only one additional occurrence beyond subtotal and grand total.
-  assert.equal((text.match(/Rp123\.456/g) || []).length, 7, 'amount is not repeated in continuation chunks');
+  assert.equal((text.match(/Rp123\.456/g) || []).length, 6, 'amount is not repeated in continuation chunks');
+});
+
+test('caller cannot raise the fixed 150-page ceiling or receive a partial report', async () => {
+  const ledger = Array.from({ length: 151 }, (_, index) => ({ id: index + 1, direction: 'credit', amount_idr: 1, balance_after_idr: index + 1, created_at: '2026-10-01T01:00:00Z', description: `Row ${index} ` + 'long complete cash description '.repeat(400) }));
+  await assert.rejects(buildFinancialReport({ ledger, maxPages: 999 }), error => error.status === 413 && error.code === 'report_too_large' && /150 halaman/.test(error.message));
 });

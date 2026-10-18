@@ -131,7 +131,7 @@ def main():
         pdf = SCREENSHOTS / "filtered-workspace.pdf"
         dl.value.save_as(pdf)
         text = " ".join(subprocess.run(["pdftotext", str(pdf), "-"], check=True, capture_output=True, text=True).stdout.split())
-        assert "Workspace dana latihan" in text and today in text and "Petty Cash" in text
+        assert "Workspace dana latihan" in text and today in text and "Total pengajuan" in text
         assert "1" in text
 
         # Activity dialog is opened twice and must remain a single live dialog with real audit rows.

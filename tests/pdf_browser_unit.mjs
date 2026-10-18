@@ -76,7 +76,7 @@ test('browser auth and filtered export URL remain available without bridge', asy
 });
 
 test('no external login destination or handoff API remains', () => {
-  const html = fs.readFileSync(new URL('../site/pdf-browser.html', import.meta.url), 'utf8'); assert.match(html, /href="\/"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  const html = fs.readFileSync(new URL('../site/pdf-browser.html', import.meta.url), 'utf8'); assert.match(html, /href="\/"/); assert.doesNotMatch(html, /target="_blank"|rel="noopener noreferrer"/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|window\.open|https?:\/\//); assert.doesNotMatch(source, /canonicalUrl|copyCanonicalUrl/);
 });
 

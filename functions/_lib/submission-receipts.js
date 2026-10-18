@@ -131,7 +131,7 @@ async function ensureReceiptWriteSchema(db) {
   } catch { throw new ApiError(503, 'receipt_storage_unavailable', 'Penyimpanan nota menunggu migrasi lengkap dan proteksi audit.'); }
 }
 export async function createSubmissionReceipt(context, db, actor, submissionId) {
-  ensureMethod(context.request, 'POST'); const a=await activeActor(db,actor); await visibleSubmission(db,a,submissionId); await ensureReceiptWriteSchema(db);
+  ensureMethod(context.request, 'POST'); const a=await activeActor(db,actor); const submission=await visibleSubmission(db,a,submissionId); if (submission.created_by !== a.id) throw new ApiError(403, 'forbidden', 'Hanya pemilik pengajuan yang dapat mengunggah foto nota.'); await ensureReceiptWriteSchema(db);
   const key=context.request.headers.get('Idempotency-Key')||context.request.headers.get('X-Idempotency-Key'); if(!UUID.test(key||'')) throw new ApiError(400,'invalid_idempotency_key','Idempotency-Key UUID diperlukan.');
   const body=await readJson(context.request,REQUEST_MAX_BYTES); const filename=safeFilename(body.filename); const mime=body.mimeType;
   if(mime!=='image/jpeg'&&mime!=='image/png')fail('invalid_mime_type'); const original=decodeBase64(body.dataBase64); const image=await parseImage(mime,original);

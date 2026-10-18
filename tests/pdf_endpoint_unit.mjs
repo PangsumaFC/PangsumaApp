@@ -1,139 +1,60 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PDFDocument, decodePDFRawStream } from 'pdf-lib';
 import { onRequest } from '../functions/api/[[path]].js';
-import { PDFDocument } from 'pdf-lib';
+import { insertAudit, insertSubmission, request, seededFinancialDb } from './local_financial_db.mjs';
 
-const manager = {
-  id: 'manager-1', name: 'Manager One', email: 'manager@example.test', position: 'Manager',
-  role: 'manager', must_change_password: 0, nickname: '', dashboard_position: null,
-  quote: '', has_photo: 0, profile_version: 1, expires_at: '2099-01-01T00:00:00.000Z',
-  auth_method: 'password'
-};
-
-function makeRows(kind, count = 501) {
-  return Array.from({ length: count }, (_, index) => {
-    const id = count - index;
-    const minute = count - index;
-    const createdAt = `2025-01-01T${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}:00.000Z`;
-    if (kind === 'submission') return {
-      id: `submission-${id}`, type: 'finance_request', status: 'approved', amount_idr: 125000,
-      date: '2025-01-01', description: index === 0 ? '=SUM(A1:A2)' : `Submission ${id}`,
-      note: '', decision_reason: '', created_at: createdAt, created_by: 'user-1',
-      created_by_name: 'Staff One', created_by_position: 'Staff'
-    };
-    if (kind === 'ledger') return {
-      id, event_type: 'finance_request_approved', direction: 'out', amount_idr: 125000,
-      balance_after_idr: 875000, submission_id: `submission-${id}`,
-      note: index === 0 ? '+cmd' : `Ledger ${id}`, created_at: createdAt, actor_name: 'Manager One'
-    };
-    return {
-      id, action: 'submission_approved', entity_type: 'submission', entity_id: `submission-${id}`,
-      details_json: index === 0 ? '@audit-detail' : JSON.stringify({ id }), created_at: createdAt,
-      actor_name: 'Manager One'
-    };
-  });
-}
-
-function fakeDb({ user = manager, rows = {} } = {}) {
-  const calls = [];
-  const data = {
-    submission: rows.submission || makeRows('submission'),
-    ledger: rows.ledger || makeRows('ledger'),
-    audit: rows.audit || makeRows('audit')
-  };
-  const pageCalls = { submission: 0, ledger: 0, audit: 0 };
-  return {
-    calls,
-    prepare(sql) {
-      const bound = [];
-      calls.push({ sql, bound });
-      const statement = {
-        bind(...params) { bound.push(...params); return statement; },
-        async all() {
-          if (/FROM user_profiles LIMIT 0/.test(sql)) return { results: [] };
-          if (/FROM submissions s/.test(sql)) {
-            if (++pageCalls.submission > 3) throw new Error('submission pagination loop');
-            const start = bound.length === 1 ? 0 : data.submission.findIndex(row => row.created_at < bound[1] || (row.created_at === bound[1] && row.id < bound[3]));
-            return { results: data.submission.slice(start < 0 ? data.submission.length : start, start < 0 ? undefined : start + 500) };
-          }
-          if (/FROM cash_ledger l/.test(sql)) {
-            if (++pageCalls.ledger > 3) throw new Error('ledger pagination loop');
-            const start = bound.length === 1 ? 0 : data.ledger.findIndex(row => row.id < Number(bound[1]));
-            return { results: data.ledger.slice(start < 0 ? data.ledger.length : start, start < 0 ? undefined : start + 500) };
-          }
-          if (/FROM audit_events a/.test(sql)) {
-            if (++pageCalls.audit > 3) throw new Error('audit pagination loop');
-            const start = bound.length === 1 ? 0 : data.audit.findIndex(row => row.id < Number(bound[1]));
-            return { results: data.audit.slice(start < 0 ? data.audit.length : start, start < 0 ? undefined : start + 500) };
-          }
-          return { results: [] };
-        },
-        async first() {
-          if (/FROM sessions/.test(sql)) return user;
-          return null;
-        },
-        async run() { return { meta: { changes: 0 } }; }
-      };
-      return statement;
+async function pdfText(bytes) {
+  const pdf = await PDFDocument.load(bytes); const chunks = [];
+  for (const page of pdf.getPages()) {
+    const contents = page.node.Contents();
+    for (let i = 0; contents && i < contents.size(); i++) {
+      const raw = Buffer.from(decodePDFRawStream(pdf.context.lookup(contents.get(i))).decode()).toString();
+      for (const [, hex] of raw.matchAll(/<([A-F0-9]+)> Tj/gi)) chunks.push(Buffer.from(hex, 'hex').toString('latin1'));
     }
-  };
+  }
+  return chunks.join('\n');
+}
+function ledger(db, { submissionId = null, amount = 10, note = 'Kas', at = '2025-02-01T04:00:00.000Z' } = {}) {
+  db.db.prepare(`INSERT INTO cash_ledger (event_type,direction,amount_idr,balance_after_idr,submission_id,actor_id,note,created_at)
+    VALUES ('petty_cash_approval','debit',?,?,?,'manager-1',?,?)`).run(amount, 1000000 - amount, submissionId, note, at);
 }
 
-function request(path = '/export.pdf', cookie = '__Host-pangsuma_session=local-test-token', method = 'GET') {
-  return new Request(`https://local.test/api${path}`, {
-    method,
-    headers: cookie ? { Cookie: cookie } : {}
-  });
-}
-
-async function call(db, cookie) {
-  return onRequest({ request: request('/export.pdf', cookie), env: { DB: db } });
-}
-
-for (const largeSection of ['submission', 'ledger', 'audit']) {
-  test(`manager export paginates every row beyond 500 ${largeSection} records with all financial sections`, async () => {
-    const sizes = Object.fromEntries(['submission','ledger','audit'].map(kind => [kind, kind === largeSection ? 501 : 1]));
-    const db = fakeDb({ rows: Object.fromEntries(Object.entries(sizes).map(([kind,count]) => [kind, makeRows(kind,count)])) });
-    const response = await call(db);
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('content-type'), 'application/pdf');
-    assert.match(response.headers.get('content-disposition'), /^attachment; filename="pangsuma-laporan-keuangan-\d{4}-\d{2}-\d{2}\.pdf"$/);
-    assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
-    assert.equal(response.headers.get('pragma'), 'no-cache');
-    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    assert.deepEqual(Array.from(bytes.slice(0, 5)), Array.from(Buffer.from('%PDF-')));
-    const pdf = await PDFDocument.load(bytes); assert.ok(pdf.getPageCount() >= 1);
-    const sql = db.calls.map(call => call.sql);
-    for (const [kind,pattern] of [['submission', /FROM submissions s/],['ledger', /FROM cash_ledger l/],['audit', /FROM audit_events a/]]) {
-      assert.equal(sql.filter(query => pattern.test(query)).length, kind === largeSection ? 2 : 1);
-    }
-    if (largeSection === 'submission') {
-      const cursorCall = db.calls.find(call => /FROM submissions s/.test(call.sql) && call.bound.length === 4);
-      assert.deepEqual(cursorCall.bound.slice(1), ['2025-01-01T00:02:00.000Z','2025-01-01T00:02:00.000Z','submission-2']);
-    } else {
-      const pattern = largeSection === 'ledger' ? /FROM cash_ledger l/ : /FROM audit_events a/;
-      const cursorCall = db.calls.find(call => pattern.test(call.sql) && call.bound.length === 2);
-      assert.equal(cursorCall.bound[1], 2);
-    }
-  });
-}
-test('PDF export rejects unsupported methods', async () => {
-  const db = fakeDb();
-  const response = await onRequest({ request: request('/export.pdf', '__Host-pangsuma_session=local-test-token', 'POST'), env: { DB: db } });
-  assert.equal(response.status, 405);
+ test('manager PDF collects >500 eligible submissions and ledger rows, merges linked rows, and ignores audit', async () => {
+  const { db, managerToken } = await seededFinancialDb();
+  for (let i = 0; i < 501; i++) {
+    const id = `10000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+    insertSubmission(db, { id, createdBy: i % 3 === 0 ? 'manager-1' : 'user-a', type: 'finance_request', status: i % 3 === 0 ? 'pending' : 'approved', date: '2025-02-01', description: `Eligible ${i}`, note: `Note ${i}`, amount: 10 + i, createdAt: `2025-02-01T04:${String(Math.floor(i / 10)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z` });
+    ledger(db, { submissionId: id, amount: 10 + i, note: `Ledger ${i}`, at: `2025-02-01T05:${String(Math.floor(i / 10)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z` });
+  }
+  insertSubmission(db, { id: '20000000-0000-4000-8000-000000000001', createdBy: 'user-b', type: 'finance_request', status: 'pending', date: '2025-02-01', description: 'Ineligible pending', amount: 999 });
+  insertAudit(db, { entityId: 'audit-only', details: { marker: 'AUDIT MUST NOT APPEAR' } });
+  const response = await onRequest({ request: request('/export.pdf', managerToken), env: { DB: db } });
+  assert.equal(response.status, 200);
+  const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
+  assert.match(text, /LAPORAN KEUANGAN/);
+  assert.match(text, /Eligible 0/); assert.match(text, /Eligible 500/);
+  assert.doesNotMatch(text, /Ineligible pending/); assert.doesNotMatch(text, /AUDIT MUST NOT APPEAR/);
+  assert.match(text, /Baris laporan 502/); assert.match(text, /Total pengajuan/); assert.match(text, /Total kas keseluruhan/);
+  assert.doesNotMatch(text, /Audit/); assert.doesNotMatch(text, /Kategori/);
 });
 
-test('manager-only export denies a regular user', async () => {
-  const db = fakeDb({ user: { ...manager, role: 'user' } });
-  const response = await call(db);
-  assert.equal(response.status, 403);
-  assert.deepEqual((await response.json()).error.code, 'manager_required');
+test('period uses ledger timestamps and includes linked current cash for an old submission; specific filters use metadata', async () => {
+  const { db, managerToken } = await seededFinancialDb();
+  insertSubmission(db, { id: '30000000-0000-4000-8000-000000000001', createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2027-01-01', description: 'Old date current cash', amount: 400 });
+  insertSubmission(db, { id: '30000000-0000-4000-8000-000000000002', createdBy: 'user-a', type: 'petty_cash', status: 'rejected', date: '2025-02-01', description: 'Rejected metadata', amount: 700 });
+  ledger(db, { submissionId: '30000000-0000-4000-8000-000000000001', amount: 400, note: 'Current period cash', at: '2025-02-01T04:00:00.000Z' });
+  ledger(db, { submissionId: '30000000-0000-4000-8000-000000000002', amount: 700, note: 'Rejected cash', at: '2025-02-01T05:00:00.000Z' });
+  const response = await onRequest({ request: request('/export.pdf?start=2025-02-01&end=2025-02-01&type=petty_cash&status=approved&applicant=Alpha', managerToken), env: { DB: db } });
+  assert.equal(response.status, 200);
+  const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
+  assert.match(text, /Old date current cash/); assert.doesNotMatch(text, /Rejected metadata|Rejected cash/);
+  assert.match(text, /Periode 2025-02-01/); assert.match(text, /Baris laporan 1/);
 });
 
-test('export requires authentication when the session is absent', async () => {
-  const db = fakeDb();
-  const response = await call(db, '');
-  assert.equal(response.status, 401);
-  assert.equal((await response.json()).error.code, 'authentication_required');
+test('export remains manager-only, authenticated, and GET-only', async () => {
+  const { db, managerToken, userAToken } = await seededFinancialDb();
+  assert.equal((await onRequest({ request: request('/export.pdf', userAToken), env: { DB: db } })).status, 403);
+  assert.equal((await onRequest({ request: request('/export.pdf', null), env: { DB: db } })).status, 401);
+  assert.equal((await onRequest({ request: request('/export.pdf', managerToken, { method: 'POST' }), env: { DB: db } })).status, 405);
 });

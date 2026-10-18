@@ -873,7 +873,7 @@ function financePage() {
   const openingConfigured = Boolean(state.cashFlow?.openingConfigured);
   const pdfFallback = isPangsumaApkWrapper()
     ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
-    : `<details class="pdf-fallback" id="managerPdfFallback" hidden><summary>Unduh ulang PDF</summary><p class="field-help">Unduhan utama gagal. Coba unduh ulang dari aplikasi.</p><button type="button" class="secondary-button" id="managerPdfFallbackLink">Coba lagi</button></details>`;
+    : '';
   const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button>${pdfFallback}</div>`;
   const cashActions = `<div class="heading-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.')}
@@ -1483,35 +1483,22 @@ function isPangsumaApkWrapper() {
 }
 async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
-  // The confirmed APK bridge supports CSV only, not native PDF downloads.
   const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
-  const userAgent = navigator.userAgent || '';
   if (isPangsumaApkWrapper()) {
+    // The confirmed APK bridge supports CSV only, not native PDF downloads.
     if (typeof PwaFiles !== 'undefined' && typeof PwaFiles.showApkDownloadStatus === 'function') {
       const requestEpoch = authEpoch;
       return PwaFiles.showApkDownloadStatus({
-        isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager' });
+        isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager'
+      });
     }
     showToast('Unduh PDF langsung memerlukan APK yang diperbarui.');
     return;
   }
-  // Installed PWAs use the same Chrome UA as tabs. Detect display mode, not UA.
-  const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
-    || window.matchMedia?.('(display-mode: fullscreen)')?.matches === true
-    || navigator.standalone === true;
-  if (isStandalone && typeof PwaFiles !== 'undefined') {
-    const requestEpoch = authEpoch;
-    return PwaFiles.prepare({
-      url: reportUrl, filename: `pangsuma-laporan-keuangan-${todayISO()}.pdf`,
-      isCurrent: () => requestEpoch === authEpoch && state.user?.role === 'manager',
-      onUnauthorized: response => {
-        if (response.status === 401 && requestEpoch === authEpoch) showLogin('Sesi Anda berakhir. Silakan masuk kembali.');
-      }
-    });
-  }
+  const userAgent = navigator.userAgent || '';
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
-  if (isStandalone || isMobileAppleBrowser) {
+  if (isMobileAppleBrowser) {
     const anchor = document.createElement('a');
     anchor.href = reportUrl;
     anchor.download = `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
@@ -1527,7 +1514,7 @@ async function downloadPdf(button) {
     const response = await fetch(reportUrl, { credentials: 'same-origin', cache: 'no-store' });
     if (!response.ok) {
       let payload = {};
-      try { payload = await response.json(); } catch { payload = {}; }
+      try { payload = await response.json(); } catch {}
       const error = payload?.error || {};
       if (response.status === 401 && error.code === 'authentication_required' && state.user && requestEpoch === authEpoch) {
         showLogin('Sesi Anda berakhir. Silakan masuk kembali.');
@@ -1548,16 +1535,13 @@ async function downloadPdf(button) {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-    const fallback = document.querySelector?.('#managerPdfFallback');
-    if (fallback) fallback.hidden = true;
-    showToast('Rekap siap; periksa unduhan browser untuk file PDF.');
+    showToast('PDF berhasil disiapkan untuk diunduh.');
   } catch (error) {
-    if (error.code !== 'session_changed') { showToast(friendlyError(error)); const fallback = typeof document?.querySelector === 'function' ? document.querySelector('#managerPdfFallback') : null; if (fallback) { fallback.hidden = false; fallback.open = true; } }
+    if (error.code !== 'session_changed') showToast(friendlyError(error));
   } finally {
     if (button.isConnected) setButtonBusy(button, false);
   }
 }
-
 function configureBoundedHistory() {
   if (typeof BoundedHistory === 'undefined') return;
   const configuredEpoch = authEpoch;
@@ -1824,17 +1808,9 @@ function bindEvents() {
       if (state.user?.role !== 'manager' || currentPage !== 'finance') return;
       const region = $('#managerReportsRegion');
       if (region) region.innerHTML = ManagerReportFilters.render();
-      const fallback = $('#managerPdfFallbackLink');
-      if (fallback) fallback.href = ManagerReportFilters.pdfUrl();
     }
   });
   document.addEventListener('click', async event => {
-    const pdfFallback = event.target.closest('#managerPdfFallbackLink');
-    if (pdfFallback) {
-      event.preventDefault();
-      await downloadPdf(pdfFallback);
-      return;
-    }
     const pageButton = event.target.closest('[data-page]');
     if (pageButton && state.user) {
       const page = pageButton.dataset.page;

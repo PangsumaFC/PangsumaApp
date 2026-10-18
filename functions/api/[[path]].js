@@ -34,6 +34,7 @@ import { getFinancialSettings, updateFinancialSettings, getFinancialAlerts, find
 import { getPaginatedReports } from '../_lib/report-pagination.js';
 import { getReportActivity } from '../_lib/report-activity.js';
 import { getCashInsights } from '../_lib/cash-insights.js';
+import { unifiedReportRows } from '../_lib/pdf-cashflow.js';
 import {
   parseReportFilters,
   buildSubmissionFilterSql,
@@ -1293,155 +1294,121 @@ async function exportCsv(context, db) {
 
 // Read every page rather than exporting only the dashboard's first 100 rows.
 async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilters()) {
-  const submissions = [], ledger = [], audits = [];
-  const submissionFilter = buildSubmissionFilterSql(filters);
-  // Ledger/audit preflight joins submissions as `s` and creator as `c`; do not
-  // reuse the report query's creator alias here or valid applicant/search filters
-  // fail before collection. Actual submission SQL below intentionally keeps its
-  // existing `creator` join alias.
-  const joinedSubmissionFilter = buildSubmissionFilterSql(filters, { alias: 's', creatorAlias: 'c' });
+  const ledger = [];
+  const submissions = [];
   const hasSpecific = hasSubmissionSpecificFilter(filters);
-  let renderedTextChars = 0, collectedRows = 0;
-  const totalRowsError = () => new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_TOTAL_ROWS.toLocaleString('id-ID')} baris gabungan). Persempit filter lalu coba lagi.`);
-  const accountRenderedText = (rows, kind) => {
-    collectedRows += rows.length;
-    if (collectedRows > MAX_PDF_TOTAL_ROWS) throw totalRowsError();
-    const fields = kind === 'submission'
-      ? ['description', 'note', 'decision_reason', 'created_by_name', 'created_by_position']
-      : kind === 'ledger'
-        ? ['description', 'note', 'created_by_name', 'actor_name']
-        : ['details_json', 'action', 'actor_name', 'entity_type', 'entity_id'];
-    for (const row of rows) {
-      for (const field of fields) renderedTextChars += String(row?.[field] ?? '').length;
-      if (renderedTextChars > MAX_PDF_RENDERED_TEXT_CHARS) {
-        throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_RENDERED_TEXT_CHARS.toLocaleString('id-ID')} karakter teks). Persempit filter lalu coba lagi.`);
-      }
-    }
-  };
-  // Probe only cap+1 rows: this answers the guard while bounding preflight
-  // work, instead of COUNT(*) scanning/materializing an unbounded export.
-  const countResult = async (sql, params) => {
-    const rows = (await db.prepare(sql.replace(/SELECT COUNT\(\*\) AS count/i, 'SELECT 1 AS present') + ` LIMIT ${MAX_PDF_ROWS_PER_SECTION + 1}`).bind(...params).all()).results || [];
-    return rows.length;
-  };
-  const submissionCount = await countResult(`
-    SELECT COUNT(*) AS count
-    FROM submissions AS r JOIN users AS c ON c.id = r.created_by
-    WHERE r.created_at <= ? AND ${buildSubmissionFilterSql(filters, { alias: 'r', creatorAlias: 'c' }).where}
-  `, [snapshotAt, ...buildSubmissionFilterSql(filters, { alias: 'r', creatorAlias: 'c' }).params]);
-  const countLedgerWhere = ['l.created_at <= ?'];
-  const countLedgerParams = [snapshotAt];
-  if (filters.startDate) { countLedgerWhere.push('l.created_at >= ?'); countLedgerParams.push(wibBoundary(filters.startDate)); }
-  if (filters.endDate) { countLedgerWhere.push('l.created_at < ?'); countLedgerParams.push(wibBoundary(filters.endDate, true)); }
-  if (hasSpecific) {
-    countLedgerWhere.push('l.submission_id IS NOT NULL AND s.id IS NOT NULL', joinedSubmissionFilter.where);
-    countLedgerParams.push(...joinedSubmissionFilter.params);
-  }
-  const ledgerCount = await countResult(`
-    SELECT COUNT(*) AS count FROM cash_ledger AS l
-    LEFT JOIN submissions AS s ON s.id = l.submission_id
-    LEFT JOIN users AS c ON c.id = s.created_by
-    WHERE ${countLedgerWhere.join(' AND ')}
-  `, countLedgerParams);
-  const countAuditWhere = ['a.created_at <= ?'];
-  const countAuditParams = [snapshotAt];
-  if (filters.startDate) { countAuditWhere.push('a.created_at >= ?'); countAuditParams.push(wibBoundary(filters.startDate)); }
-  if (filters.endDate) { countAuditWhere.push('a.created_at < ?'); countAuditParams.push(wibBoundary(filters.endDate, true)); }
-  if (hasSpecific) {
-    countAuditWhere.push("a.entity_type = 'submission' AND s.id IS NOT NULL", joinedSubmissionFilter.where);
-    countAuditParams.push(...joinedSubmissionFilter.params);
-  }
-  const auditCount = await countResult(`
-    SELECT COUNT(*) AS count FROM audit_events AS a
-    LEFT JOIN submissions AS s ON a.entity_type = 'submission' AND s.id = a.entity_id
-    LEFT JOIN users AS c ON c.id = s.created_by
-    WHERE ${countAuditWhere.join(' AND ')}
-  `, countAuditParams);
-  if (Math.max(submissionCount, ledgerCount, auditCount) > MAX_PDF_ROWS_PER_SECTION) {
-    throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_ROWS_PER_SECTION.toLocaleString('id-ID')} baris per bagian). Persempit filter lalu coba lagi.`);
-  }
-  if (submissionCount + ledgerCount + auditCount > MAX_PDF_TOTAL_ROWS) throw totalRowsError();
-  let cursor = null;
-  while (true) {
-    const rows = (await db.prepare(`
-      SELECT s.*, creator.name AS created_by_name, creator.position AS created_by_position,
-             creator.role AS created_by_role, resolver.name AS resolved_by_name
-      FROM submissions s
-      JOIN users creator ON creator.id = s.created_by
-      LEFT JOIN users resolver ON resolver.id = s.resolved_by
-      WHERE s.created_at <= ? AND ${submissionFilter.where} ${cursor ? 'AND (s.created_at < ? OR (s.created_at = ? AND s.id < ?))' : ''}
-      ORDER BY s.created_at DESC, s.id DESC LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...(cursor ? [snapshotAt, ...submissionFilter.params, cursor.created_at, cursor.created_at, cursor.id] : [snapshotAt, ...submissionFilter.params])).all()).results || [];
-    submissions.push(...rows);
-    accountRenderedText(rows, 'submission');
-    if (submissions.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
-    if (rows.length < EXPORT_PAGE_SIZE) break;
-    cursor = rows[rows.length - 1];
-  }
-  cursor = null;
+  const filtered = Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q);
+  const submissionFilter = buildSubmissionFilterSql({ ...filters, startDate: '', endDate: '' }, { alias: 's', creatorAlias: 'creator' });
+  const actionable = 'Persempit filter: pilih rentang lebih pendek, pemohon, jenis, atau status lalu coba lagi.';
+  const tooLarge = message => new ApiError(413, 'report_too_large', `${message} ${actionable}`);
+
+  // First collect the cash rows. Date boundaries for cash always use ledger.created_at.
   const ledgerWhere = ['l.created_at <= ?'];
   const ledgerParams = [snapshotAt];
   if (filters.startDate) { ledgerWhere.push('l.created_at >= ?'); ledgerParams.push(wibBoundary(filters.startDate)); }
   if (filters.endDate) { ledgerWhere.push('l.created_at < ?'); ledgerParams.push(wibBoundary(filters.endDate, true)); }
   if (hasSpecific) {
-    ledgerWhere.push('l.submission_id IS NOT NULL AND s.id IS NOT NULL', submissionFilter.where);
+    ledgerWhere.push('l.submission_id IS NOT NULL', submissionFilter.where);
     ledgerParams.push(...submissionFilter.params);
   }
+  // A correlated EXISTS avoids a large IN list (D1 limits bound parameters).
+  // Cash follows its recording date; non-cash submissions follow their stated date.
+  const periodClauses = [];
+  const periodParams = [];
+  const linkedClauses = ['sl.submission_id = s.id', 'sl.created_at <= ?'];
+  const linkedParams = [snapshotAt];
+  if (filters.startDate) {
+    periodClauses.push('s.date >= ?'); periodParams.push(filters.startDate);
+    linkedClauses.push('sl.created_at >= ?'); linkedParams.push(wibBoundary(filters.startDate));
+  }
+  if (filters.endDate) {
+    periodClauses.push('s.date <= ?'); periodParams.push(filters.endDate);
+    linkedClauses.push('sl.created_at < ?'); linkedParams.push(wibBoundary(filters.endDate, true));
+  }
+  const dateScope = periodClauses.length ? periodClauses.join(' AND ') : '1=1';
+  const eligibility = "(creator.role = 'manager' OR s.status IN ('approved', 'sent'))";
+  const submissionWhere = ['s.created_at <= ?', eligibility, submissionFilter.where,
+    `(${dateScope} OR EXISTS (SELECT 1 FROM cash_ledger sl WHERE ${linkedClauses.join(' AND ')}))`];
+  const submissionParams = [snapshotAt, ...submissionFilter.params, ...periodParams, ...linkedParams];
+  // Probe at most cap+1 records, never materialize an unbounded preflight.
+  const preflight = async (sql, params) => {
+    const rows = (await db.prepare(sql + ` LIMIT ${MAX_PDF_ROWS_PER_SECTION + 1}`).bind(...params).all()).results || [];
+    if (rows.length > MAX_PDF_ROWS_PER_SECTION) {
+      throw tooLarge(`Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_ROWS_PER_SECTION.toLocaleString('id-ID')} baris per sumber).`);
+    }
+  };
+  await preflight(`SELECT 1 AS present FROM cash_ledger AS l
+    LEFT JOIN submissions AS s ON s.id = l.submission_id
+    LEFT JOIN users AS creator ON creator.id = s.created_by
+    WHERE ${ledgerWhere.join(' AND ')}`, ledgerParams);
+  await preflight(`SELECT 1 AS present FROM submissions AS s
+    JOIN users AS creator ON creator.id = s.created_by
+    WHERE ${submissionWhere.join(' AND ')}`, submissionParams);
+  let ledgerCursor = null;
   while (true) {
     const rows = (await db.prepare(`
-      SELECT l.*, u.name AS actor_name, s.description AS description, s.date AS submission_date,
-             creator.name AS created_by_name
+      SELECT l.*, s.description AS description, s.note AS submission_note,
+             s.type AS submission_type, s.status AS submission_status,
+             s.amount_idr AS submission_amount_idr, s.date AS submission_date,
+             s.created_by AS submission_created_by, creator.name AS created_by_name,
+             creator.role AS created_by_role
       FROM cash_ledger l
-      LEFT JOIN users u ON u.id = l.actor_id
       LEFT JOIN submissions s ON s.id = l.submission_id
       LEFT JOIN users creator ON creator.id = s.created_by
-      WHERE ${ledgerWhere.join(' AND ')} ${cursor ? 'AND l.id < ?' : ''}
+      WHERE ${ledgerWhere.join(' AND ')} ${ledgerCursor ? 'AND l.id < ?' : ''}
       ORDER BY l.id DESC LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...(cursor ? [...ledgerParams, cursor.id] : ledgerParams)).all()).results || [];
+    `).bind(...(ledgerCursor ? [...ledgerParams, ledgerCursor.id] : ledgerParams)).all()).results || [];
     ledger.push(...rows);
-    accountRenderedText(rows, 'ledger');
-    if (ledger.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
+    if (ledger.length > MAX_PDF_ROWS_PER_SECTION || ledger.length > MAX_PDF_TOTAL_ROWS) throw tooLarge('Laporan berubah menjadi terlalu besar selama dibuat.');
     if (rows.length < EXPORT_PAGE_SIZE) break;
-    cursor = rows[rows.length - 1];
+    ledgerCursor = rows[rows.length - 1];
   }
-  let openingBalanceIdr = null, closingBalanceIdr = null;
+  let submissionCursor = null;
+  while (true) {
+    const cursorClause = submissionCursor ? 'AND (s.created_at < ? OR (s.created_at = ? AND s.id < ?))' : '';
+    const cursorParams = submissionCursor ? [submissionCursor.created_at, submissionCursor.created_at, submissionCursor.id] : [];
+    const rows = (await db.prepare(`
+      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+             s.decision_reason, s.created_at, s.updated_at, s.created_by,
+             creator.name AS created_by_name, creator.position AS created_by_position,
+             creator.role AS created_by_role, resolver.name AS resolved_by_name,
+             sender.name AS sent_by_name
+      FROM submissions s
+      JOIN users creator ON creator.id = s.created_by
+      LEFT JOIN users resolver ON resolver.id = s.resolved_by
+      LEFT JOIN users sender ON sender.id = s.sent_by
+      WHERE ${submissionWhere.join(' AND ')} ${cursorClause}
+      ORDER BY s.created_at DESC, s.id DESC LIMIT ${EXPORT_PAGE_SIZE}
+    `).bind(...submissionParams, ...cursorParams).all()).results || [];
+    submissions.push(...rows);
+    if (submissions.length > MAX_PDF_ROWS_PER_SECTION) throw tooLarge('Laporan berubah menjadi terlalu besar selama dibuat.');
+    if (rows.length < EXPORT_PAGE_SIZE) break;
+    submissionCursor = rows[rows.length - 1];
+  }
+
+  // Unified row budget counts a petty submission and its ledger movement once;
+  // metadata is still returned in full for the renderer to perform the merge.
+  const unified = unifiedReportRows({ submissions, ledger });
+  if (unified.rows.length > MAX_PDF_TOTAL_ROWS) throw tooLarge('Laporan berubah menjadi terlalu besar (maksimal 1.000 baris gabungan).');
+  const renderedTextChars = unified.rows.reduce((sum, row) => sum + String(row.report_description ?? '').length, 0);
+  if (renderedTextChars > MAX_PDF_RENDERED_TEXT_CHARS) {
+    throw tooLarge(`Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_RENDERED_TEXT_CHARS.toLocaleString('id-ID')} karakter teks).`);
+  }
+
+  let openingBalanceIdr = 0;
   if (filters.startDate) {
     const before = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE created_at < ? AND created_at <= ? ORDER BY id DESC LIMIT 1`).bind(wibBoundary(filters.startDate), snapshotAt).first();
     openingBalanceIdr = before?.balance_after_idr ?? 0;
-  } else if (hasSpecific) {
-    const initial = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE event_type = 'opening_balance' AND amount_idr > 0 AND created_at <= ? ORDER BY id ASC LIMIT 1`).bind(snapshotAt).first();
-    openingBalanceIdr = initial?.balance_after_idr ?? 0;
   }
-  if (filters.startDate || hasSpecific) {
-    const latest = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE created_at <= ? ${filters.endDate ? 'AND created_at < ?' : ''} ORDER BY id DESC LIMIT 1`).bind(...(filters.endDate ? [snapshotAt, wibBoundary(filters.endDate, true)] : [snapshotAt])).first();
-    closingBalanceIdr = latest?.balance_after_idr ?? 0;
-  }
-  cursor = null;
-  const auditWhere = ['a.created_at <= ?'];
-  const auditParams = [snapshotAt];
-  if (filters.startDate) { auditWhere.push('a.created_at >= ?'); auditParams.push(wibBoundary(filters.startDate)); }
-  if (filters.endDate) { auditWhere.push('a.created_at < ?'); auditParams.push(wibBoundary(filters.endDate, true)); }
-  if (hasSpecific) {
-    auditWhere.push("a.entity_type = 'submission' AND s.id IS NOT NULL", submissionFilter.where);
-    auditParams.push(...submissionFilter.params);
-  }
-  while (true) {
-    const rows = (await db.prepare(`
-      SELECT a.*, COALESCE(u.name, 'Sistem') AS actor_name
-      FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
-      LEFT JOIN submissions s ON a.entity_type = 'submission' AND s.id = a.entity_id
-      LEFT JOIN users creator ON creator.id = s.created_by
-      WHERE ${auditWhere.join(' AND ')} ${cursor ? 'AND a.id < ?' : ''}
-      ORDER BY a.id DESC LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...(cursor ? [...auditParams, cursor.id] : auditParams)).all()).results || [];
-    audits.push(...rows);
-    accountRenderedText(rows, 'audit');
-    if (audits.length > MAX_PDF_ROWS_PER_SECTION) throw new ApiError(413, 'report_too_large', 'Laporan berubah menjadi terlalu besar selama dibuat. Persempit filter lalu coba lagi.');
-    if (rows.length < EXPORT_PAGE_SIZE) break;
-    cursor = rows[rows.length - 1];
-  }
-  const orderedLedger = [...ledger].sort((a, b) => Number(a.id) - Number(b.id));
-  return { snapshotAt, submissions, ledger: orderedLedger, audits, filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered: Boolean(filters.startDate || filters.type || filters.status || filters.applicant || filters.q), ledgerIsPartial: hasSpecific, openingBalanceIdr, closingBalanceIdr };
+  const closing = await db.prepare(`SELECT balance_after_idr FROM cash_ledger WHERE created_at <= ? ${filters.endDate ? 'AND created_at < ?' : ''} ORDER BY id DESC LIMIT 1`).bind(...(filters.endDate ? [snapshotAt, wibBoundary(filters.endDate, true)] : [snapshotAt])).first();
+  const closingBalanceIdr = closing?.balance_after_idr ?? 0;
+  return {
+    snapshotAt,
+    submissions: submissions.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.created_at || '').localeCompare(String(b.created_at || ''))),
+    ledger: ledger.sort((a, b) => Number(a.id) - Number(b.id)),
+    filterDescription: reportFilterDescription(filters), periodLabel: reportPeriodLabel(filters), filtered,
+    ledgerIsPartial: hasSpecific, openingBalanceIdr, closingBalanceIdr
+  };
 }
 async function reports(context, db) {
   const user = await requireUser(context.request, db);

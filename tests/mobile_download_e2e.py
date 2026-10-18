@@ -36,9 +36,11 @@ def assert_pdf(path: Path, expected_text: set[str]) -> None:
     assert raw.startswith(b"%PDF-"), "download must be a PDF"
     completed = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True)
     text = completed.stdout
-    for heading in ("RINGKASAN", "Buku Kas", "Lampiran Audit"):
+    for heading in ("LAPORAN KEUANGAN", "Total pengajuan", "Total kas keseluruhan"):
         # Check actual rendered content, not only MIME or the file extension.
         assert heading in text, (heading, text[:1000])
+    assert "Lampiran Audit" not in text
+    assert "Pengajuan Petty Cash" not in text
     text = " ".join(text.split())
     for value in ("Rp500.000", "Rp125.000", "Rp375.000"):
         assert value in text, (value, text[:1500])
@@ -49,15 +51,10 @@ def assert_pdf(path: Path, expected_text: set[str]) -> None:
 def download_once(page: Page, path: Path, standalone: bool = False) -> None:
     page.locator('[data-page="finance"]:visible').first.click()
     page.locator('[data-action="download-pdf"]:visible').wait_for(timeout=10_000)
-    fallback = page.locator('.pdf-fallback')
-    assert fallback.count() == 1
-    expect(fallback).to_be_hidden()
-    assert page.locator('#managerPdfFallbackLink').count() == 1
-    if standalone:
-        page.locator('[data-action="download-pdf"]:visible').click()
-        expect(page.locator('#pwaPdfDownload')).to_have_attribute('href', __import__('re').compile('^blob:'))
+    assert page.locator('.pdf-fallback,#managerPdfFallbackLink').count() == 0
     with page.expect_download(timeout=15_000) as pending:
-        page.locator('#pwaPdfDownload' if standalone else '[data-action="download-pdf"]:visible').click()
+        page.locator('[data-action="download-pdf"]:visible').click()
+    assert page.locator('#pwaPdfDialog').count() == 0
     download = pending.value
     assert download.failure() is None
     download.save_as(path)
@@ -168,6 +165,7 @@ def main() -> None:
                 user_agent=user_agent,
                 timezone_id="Asia/Jakarta",
             )
+            context.add_init_script('window.__openCalls=0;window.__clipboardCalls=0;window.open=()=>{window.__openCalls++;};Object.defineProperty(navigator,"clipboard",{configurable:true,get:()=>({writeText:()=>{window.__clipboardCalls++;return Promise.resolve();}})});')
             if label in ('webview', 'masked-bridge'):
                 context.add_init_script('window.__csvBridgeCalls = 0; window.__openCalls = 0; window.__clipboardCalls = 0; window.open = function() { window.__openCalls++; }; window.PangsumaFileBridge = {saveCsv: function() { window.__csvBridgeCalls++; }}; Object.defineProperty(navigator, "clipboard", {configurable: true, get: () => ({writeText: () => { window.__clipboardCalls++; return Promise.resolve(); }})});')
             if label == 'standalone':
@@ -190,27 +188,24 @@ def main() -> None:
             session = api(page, "/api/session")
             assert session["status"] == 200 and session["data"].get("user", {}).get("role") == "manager", session
             assert not page.locator("#loginGate").is_visible()
-            if label == 'standalone':
-                page.locator('#pwaPdfDialog .pwa-files-close').click()
-            # The legacy direct anchor is gone: the fallback is a hidden retry
-            # control, and the primary download above remains the behavioral path.
-            expect(page.locator('.pdf-fallback')).to_be_hidden()
+            assert page.locator('.pdf-fallback,#managerPdfFallbackLink,#pwaPdfBrowserLink,#pwaPdfCopyBrowserLink').count() == 0
             region = page.locator('#managerReportsRegion')
             region.locator('.report-filter-advanced summary').click()
             region.locator('[name="q"]').fill('PDF fixture petty cash')
             region.locator('[name="jenis"]').select_option('petty_cash')
             region.locator('[type="submit"]').click()
             expect(region.locator('.manager-filtered-results .item-row')).to_have_count(1)
-            if label == 'standalone':
-                page.locator('[data-action="download-pdf"]:visible').click()
-                expect(page.locator('#pwaPdfDownload')).to_have_attribute('href', __import__('re').compile('^blob:'))
             with page.expect_download(timeout=15_000) as filtered_pending:
-                page.locator('#pwaPdfDownload' if label == 'standalone' else '[data-action="download-pdf"]:visible').click()
+                page.locator('[data-action="download-pdf"]:visible').click()
             filtered_path = SCREENSHOTS / f'mobile-{label}-filtered.pdf'
             filtered_pending.value.save_as(filtered_path)
             filtered_text = subprocess.run(['pdftotext', str(filtered_path), '-'], check=True, capture_output=True, text=True).stdout
             assert 'PDF fixture petty cash' in ' '.join(filtered_text.split())
             assert 'Mobile PDF fixture finance' not in ' '.join(filtered_text.split())
+            assert page.evaluate('window.__openCalls') == 0
+            assert page.evaluate('window.__clipboardCalls') == 0
+            assert len(context.pages) == 1
+            page.screenshot(path=str(SCREENSHOTS / f'{label}-direct-download.png'), full_page=True)
             print(f"MOBILE_PDF_DOWNLOAD_PASS ua={label} saved=1 direct_saved=1 magic=1 headings=1 content=1 session_preserved=1", flush=True)
             context.close()
 

@@ -20,15 +20,11 @@ test('Finance search and pagination controls are touch-sized and keyboard-visibl
   assert.match(theme, /report-filter-search input:focus-visible/);
 });
 
-test('PDF fallback is hidden by default and never advertises external browser or clipboard handoff', () => {
-  assert.ok(app.includes('id=\"managerPdfFallback\" hidden'));
-  assert.match(app, /fallback\.hidden = false/);
-  assert.match(app, /fallback\.hidden = true/);
+test('PDF download has no external browser or clipboard fallback UI', () => {
+  assert.doesNotMatch(app, /managerPdfFallback|pdf-fallback/);
+  assert.doesNotMatch(app, /Coba buka di Chrome atau Safari|navigator\.clipboard/);
   assert.match(app, /ManagerReportFilters\.pdfUrl\(\)/);
-  assert.doesNotMatch(app, /Coba buka di Chrome atau Safari/);
-  assert.doesNotMatch(app, /navigator\.clipboard/);
 });
-
 test('Receipt list retry is actionable and does not clear pending upload state', () => {
   assert.ok(evidence.includes('class=\"receipt-retry\"'));
   assert.match(evidence, /if \(!ctx\.listLoading\) void loadReceipts\(ctx\)/);

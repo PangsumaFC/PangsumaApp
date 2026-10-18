@@ -1,8 +1,9 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { ApiError } from './http.js';
+import { unifiedReportRows } from './pdf-cashflow.js';
 
-const PAGE_W = 841.89;
-const PAGE_H = 595.28;
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
 const MARGIN = 30;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const NAVY = rgb(0.035, 0.12, 0.22);
@@ -56,10 +57,6 @@ function statusLabel(value) {
   const key = String(value ?? '').toLowerCase();
   return ({ pending: 'Menunggu', approved: 'Disetujui', sent: 'Terkirim', rejected: 'Ditolak', cancelled: 'Dibatalkan' }[key] || (key ? safeText(value) : '-'));
 }
-function roleLabel(value) {
-  const key = String(value ?? '').toLowerCase();
-  return key === 'manager' ? 'Manager' : 'User';
-}
 
 function wrap(text, font, size, maxWidth) {
   const value = safeText(text);
@@ -92,37 +89,41 @@ function wrap(text, font, size, maxWidth) {
   return lines.length ? lines : ['-'];
 }
 
-export async function buildFinancialReport({ submissions = [], ledger = [], audits = [], snapshotAt, managerName, filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false, maxPages = MAX_PDF_PAGES } = {}) {
+export async function buildFinancialReport({ submissions = [], ledger = [], snapshotAt, managerName, filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false, maxPages = MAX_PDF_PAGES } = {}) {
   const pageLimit = Math.min(MAX_PDF_PAGES, Math.max(1, Math.trunc(Number(maxPages)) || MAX_PDF_PAGES));
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   pdf.setTitle('Laporan Keuangan Pangsuma FC');
-  pdf.setSubject('Petty Cash, Request Finance, dan jejak audit');
+  pdf.setSubject('Buku kas ledger sesuai filter; bukan daftar pengajuan atau audit');
   pdf.setCreator('Pangsuma App');
   const snapshot = snapshotAt || new Date().toISOString();
-  const dates = [...submissions.map(row => row.date ? `${row.date}T00:00:00+07:00` : row.created_at), ...ledger.map(row => row.created_at), ...audits.map(row => row.created_at)].map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
+  const unified = unifiedReportRows({ submissions, ledger });
+  const dates = unified.rows.map(row => row.report_at).map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
   const earliest = dates.length ? dates.reduce((a, b) => a < b ? a : b) : new Date(snapshot);
   const latest = dates.length ? dates.reduce((a, b) => a > b ? a : b) : new Date(snapshot);
   const periodDate = date => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
   const period = periodLabel || `Periode ${periodDate(earliest)} - ${periodDate(latest)} | Seluruh riwayat`;
   const filterLines = filterDescription ? wrap(`Filter: ${filterDescription}`, regular, 7.5, CONTENT_W) : [];
-  const headerBottom = 100 + filterLines.length * 10;
-  let page; let y; let pendingHeading = ''; let unicodeReplaced = sanitize(filterDescription).replaced;
+  const scope = 'Saldo hanya kas tercatat; Finance masuk total pengajuan. Tanggal: pencatatan kas / tanggal pengajuan.' + (ledgerIsPartial ? ' Saldo akun termasuk transaksi di luar filter.' : '');
+  const scopeLines = wrap(scope, regular, 8, CONTENT_W);
+  const headerBottom = 103 + filterLines.length * 10 + scopeLines.length * 10;
+  let page; let y; let unicodeReplaced = sanitize(filterDescription).replaced;
   const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
     if (pdf.getPageCount() >= pageLimit) {
-      throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${pageLimit} halaman). Persempit filter lalu coba lagi.`);
+      throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${pageLimit} halaman). Pilih rentang tanggal lebih pendek atau persempit pemohon, jenis, atau status lalu coba lagi.`);
     }
     page = pdf.addPage([PAGE_W, PAGE_H]);
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
-    page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 19, font: bold, color: NAVY });
-    page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 240, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
-    page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 240, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
-    if (hasSimulation) page.drawText('Memuat data SIMULASI', { x: PAGE_W - MARGIN - 240, y: PAGE_H - 74, size: 8, font: bold, color: rgb(0.72, 0.12, 0.05) });
+    page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
+    page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
+    page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
+    if (hasSimulation) page.drawText('Memuat data contoh', { x: PAGE_W - MARGIN - 210, y: PAGE_H - 74, size: 8, font: bold, color: rgb(0.72, 0.12, 0.05) });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
     filterLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 92 - index * 10, size: 7.5, font: regular, color: MUTED }));
+    scopeLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 94 - filterLines.length * 10 - index * 10, size: 8, font: regular, color: MUTED }));
     y = PAGE_H - headerBottom;
   }
   function footer() {
@@ -138,107 +139,31 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
     const xx = opts.align === 'right' && width ? x + width - measured : x;
     page.drawText(valueText, { x: xx, y: yy, size, font, color, maxWidth: width });
   }
-  function heading(label) { pendingHeading = label; }
-  function table({ columns, rows, totals }) {
-    const headerH = 22; const fontSize = 7.4; const pad = 5; const lineH = 9.4;
-    const total = columns.reduce((a, c) => a + c.width, 0);
-    if (total > CONTENT_W + 0.01) throw new Error(`Table width ${total} exceeds content width ${CONTENT_W}`);
-    if (pendingHeading) {
-      const lines = rows.length ? Math.max(...columns.map(column => wrap(mark(rows[0][column.key]), regular, fontSize, column.width - pad * 2).length)) : 0;
-      const firstHeight = rows.length ? Math.max(22, lines * lineH + 8) : 27;
-      ensure(27 + headerH + Math.min(firstHeight, PAGE_H - headerBottom - 38 - 27 - headerH));
-      text(pendingHeading, MARGIN, y, 12, bold, NAVY);
-      page.drawRectangle({ x: MARGIN, y: y - 7, width: 38, height: 2, color: TEAL });
-      y -= 27; pendingHeading = '';
-    }
-    function drawHeader() {
-      ensure(headerH + 26);
-      page.drawRectangle({ x: MARGIN, y: y - headerH + 4, width: total, height: headerH, color: NAVY });
-      let x = MARGIN;
-      columns.forEach(c => { text(c.label, x + pad, y - 11, 7, bold, WHITE, { maxWidth: c.width - pad * 2 }); x += c.width; });
-      y -= headerH;
-    }
-    drawHeader();
-    rows.forEach((row, rowIndex) => {
-      const cells = columns.map(c => wrap(mark(row[c.key]), regular, fontSize, c.width - pad * 2));
-      const rowHeight = Math.max(22, Math.max(...cells.map(c => c.length)) * lineH + 8);
-      if (rowIndex > 0 && rowHeight <= PAGE_H - headerBottom - headerH - 38 && y - rowHeight < 38) {
-        footer(); newPage(); drawHeader();
-      }
-      let offset = 0;
-      while (offset < Math.max(...cells.map(c => c.length))) {
-        const remaining = Math.max(...cells.map(c => c.length)) - offset;
-        const availableLines = Math.max(1, Math.floor((y - 38 - 8) / lineH));
-        const count = Math.min(remaining, Math.max(1, availableLines));
-        const h = Math.max(22, count * lineH + 8);
-        if (y - h < 38) { footer(); newPage(); drawHeader(); continue; }
-        if (rowIndex % 2 === 0) page.drawRectangle({ x: MARGIN, y: y - h + 4, width: total, height: h, color: rgb(0.975, 0.985, 0.985) });
-        let x = MARGIN;
-        cells.forEach((cell, ci) => {
-          const col = columns[ci]; const slice = cell.slice(offset, offset + count);
-          slice.forEach((line, li) => text(line, x + pad, y - 12 - li * lineH, fontSize, regular, INK, { maxWidth: col.width - pad * 2, align: col.align }));
-          x += col.width;
-        });
-        page.drawLine({ start: { x: MARGIN, y: y - h + 4 }, end: { x: MARGIN + total, y: y - h + 4 }, thickness: 0.35, color: LINE });
-        y -= h; offset += count;
-      }
-    });
-    if (totals) {
-      const cells = columns.map(c => totals[c.key] === undefined ? [] : wrap(mark(totals[c.key]), bold, fontSize, c.width - pad * 2));
-      const height = Math.max(24, Math.max(...cells.map(c => c.length)) * lineH + 8);
-      if (y - height < 38) { footer(); newPage(); drawHeader(); }
-      page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
-      let x = MARGIN;
-      columns.forEach((c, i) => {
-        cells[i].forEach((line, li) => text(line, x + pad, y - 12 - li * lineH, fontSize, bold, NAVY, { maxWidth: c.width - pad * 2, align: c.align }));
-        x += c.width;
-      });
-      y -= height;
-    }
-    y -= 13;
-  }
-
-  const subs = [...(Array.isArray(submissions) ? submissions : [])].sort((a, b) => {
-    const ad = new Date(a.date || a.created_at || 0).getTime(); const bd = new Date(b.date || b.created_at || 0).getTime();
-    return (ad - bd) || String(a.id ?? '').localeCompare(String(b.id ?? ''));
-  });
   const ledgers = [...(Array.isArray(ledger) ? ledger : [])].sort((a, b) => num(a.id) - num(b.id));
-  const auditRows = [...(Array.isArray(audits) ? audits : [])].sort((a, b) => (new Date(a.created_at || a.date || 0) - new Date(b.created_at || b.date || 0)) || num(a.id) - num(b.id));
-  const petty = subs.filter(s => String(s.type || '').toLowerCase() === 'petty_cash');
-  const finance = subs.filter(s => String(s.type || '').toLowerCase() !== 'petty_cash');
-  const totalFor = (list, statuses) => list.filter(s => statuses.includes(String(s.status).toLowerCase())).reduce((a, s) => a + integerIdr(s.amount_idr ?? s.amount), 0n);
-  const totalSubmitted = list => list.reduce((a, s) => a + integerIdr(s.amount_idr ?? s.amount), 0n);
-  const financeApproved = totalFor(finance, ['approved']); const financeSent = totalFor(finance, ['sent']);
-  const opening = ledgers.find(l => l.event_type === 'opening_balance' && num(l.amount_idr) > 0) || ledgers.find(l => l.event_type === 'opening_balance');
-  const openingBalance = openingBalanceIdr !== null ? integerIdr(openingBalanceIdr) : integerIdr(opening?.balance_after_idr ?? (opening ? opening.amount_idr : 0));
+  const signed = row => isIncoming(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : isOutgoing(row.direction) ? -integerIdr(row.amount_idr ?? row.amount) : 0n;
+  // Opening is before the first displayed movement. The opening_balance ledger
+  // entry itself remains visible and contributes to incoming exactly once.
+  const openingBalance = openingBalanceIdr !== null ? integerIdr(openingBalanceIdr)
+    : ledgers.length ? integerIdr(ledgers[0].balance_after_idr) - signed(ledgers[0]) : 0n;
   const incoming = ledgers.filter(l => isIncoming(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
   const outgoing = ledgers.filter(l => isOutgoing(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
   const finalBalance = closingBalanceIdr !== null ? integerIdr(closingBalanceIdr) : ledgers.length ? integerIdr(ledgers[ledgers.length - 1].balance_after_idr) : openingBalance;
-  const hasSimulation = [
-    ...subs.flatMap(row => [row.description, row.note]),
-    ...ledgers.flatMap(row => [row.description, row.note]),
-  ].some(value => /simulasi/i.test(String(value ?? '')));
+  const hasSimulation = unified.hasSimulation;
 
   function ledgerTable(rows) {
     const columns = [
-      { key: 'no', label: 'No.', width: 38 }, { key: 'date', label: 'Tanggal', width: 92 },
-      { key: 'description', label: 'Keterangan', width: 330 }, { key: 'in', label: 'Masuk', width: 100, align: 'right' },
-      { key: 'out', label: 'Keluar', width: 100, align: 'right' }, { key: 'balance', label: 'Saldo', width: 111, align: 'right' },
+      { key: 'no', label: 'No.', width: 28 }, { key: 'date', label: 'Tanggal', width: 68 },
+      { key: 'description', label: 'Keterangan', width: 174 }, { key: 'in', label: 'Masuk', width: 84, align: 'right' },
+      { key: 'out', label: 'Keluar', width: 84, align: 'right' }, { key: 'balance', label: 'Saldo', width: 97, align: 'right' },
     ];
     const total = columns.reduce((sum, column) => sum + column.width, 0);
-    const headerH = 22; const fontSize = 7.4; const pad = 5; const lineH = 9.4;
+    const headerH = 24; const fontSize = 8.5; const pad = 4; const lineH = 11;
     const pageSubtotal = { in: 0n, out: 0n, hasRows: false };
-    if (pendingHeading) {
-      ensure(27 + headerH);
-      text(pendingHeading, MARGIN, y, 12, bold, NAVY);
-      page.drawRectangle({ x: MARGIN, y: y - 7, width: 38, height: 2, color: TEAL });
-      y -= 27; pendingHeading = '';
-    }
     const drawHeader = () => {
       ensure(headerH + 26);
       page.drawRectangle({ x: MARGIN, y: y - headerH + 4, width: total, height: headerH, color: NAVY });
       let x = MARGIN;
-      columns.forEach(column => { text(column.label, x + pad, y - 11, 7, bold, WHITE, { maxWidth: column.width - pad * 2 }); x += column.width; });
+      columns.forEach(column => { text(column.label, x + pad, y - 11, 8, bold, WHITE, { maxWidth: column.width - pad * 2 }); x += column.width; });
       y -= headerH;
     };
     const drawPageSubtotal = () => {
@@ -262,7 +187,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
       let offset = 0;
       while (offset < lineCount) {
         const remaining = lineCount - offset;
-        const reserveSubtotal = pageSubtotal.hasRows || offset === 0;
+        const reserveSubtotal = true;
         const availableLines = Math.max(1, Math.floor((y - 38 - (reserveSubtotal ? 24 : 0) - 8) / lineH));
         const count = Math.min(remaining, availableLines);
         const height = Math.max(22, count * lineH + 8);
@@ -282,8 +207,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
         if (offset === 0) {
           pageSubtotal.in += isIncoming(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : 0n;
           pageSubtotal.out += isOutgoing(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : 0n;
-          pageSubtotal.hasRows = true;
         }
+        pageSubtotal.hasRows = true;
         page.drawLine({ start: { x: MARGIN, y: y - height + 4 }, end: { x: MARGIN + total, y: y - height + 4 }, thickness: 0.35, color: LINE });
         y -= height; offset += count;
       }
@@ -294,7 +219,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
     page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
     let x = MARGIN;
     columns.forEach(column => {
-      const value = column.key === 'description' ? 'Total buku kas' : column.key === 'in' ? amount(incoming) : column.key === 'out' ? amount(outgoing) : '';
+      const value = column.key === 'description' ? 'Total kas keseluruhan' : column.key === 'in' ? amount(incoming) : column.key === 'out' ? amount(outgoing) : '';
       if (value) text(value, x + pad, y - 12, fontSize, bold, NAVY, { maxWidth: column.width - pad * 2, align: column.align });
       x += column.width;
     });
@@ -302,41 +227,25 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
   }
 
   newPage();
-  ensure(108);
-  page.drawRectangle({ x: MARGIN, y: y - 96, width: CONTENT_W, height: 96, color: PALE });
-  text('RINGKASAN', MARGIN + 14, y - 17, 8, bold, TEAL);
-  text(`${ledgerIsPartial ? 'Saldo akun awal' : 'Saldo awal'} ${amount(openingBalance)}`, MARGIN + 14, y - 35, 9, regular, INK);
-  text(`${ledgerIsPartial ? 'Saldo akun akhir' : 'Saldo akhir'} ${amount(finalBalance)}`, MARGIN + 14, y - 53, 11, bold, NAVY);
-  const stats = [`${ledgerIsPartial ? 'Masuk terpilih' : openingBalanceIdr !== null ? 'Masuk periode' : 'Masuk + saldo awal'} ${amount(incoming)}`, `${ledgerIsPartial ? 'Keluar terpilih' : 'Keluar'} ${amount(outgoing)}`, `Finance disetujui ${amount(financeApproved)}`, `Finance terkirim ${amount(financeSent)}`];
-  stats.forEach((s, i) => text(s, MARGIN + 260 + (i % 2) * 245, y - 35 - Math.floor(i / 2) * 18, 8, regular, INK));
-  text(`Petty Cash: ${petty.length} pengajuan | Total diajukan ${amount(totalSubmitted(petty))}`, MARGIN + 14, y - 74, 8, regular, INK);
-  text(`Request Finance: ${finance.length} pengajuan | Total diajukan ${amount(totalSubmitted(finance))}`, MARGIN + 14, y - 88, 8, regular, INK);
-  text(`Baris ledger ${ledgers.length} | Audit ${auditRows.length}`, MARGIN + 505, y - 88, 8, regular, INK);
-  y -= 112;
-
-  if (ledgers.length) {
-    heading(ledgerIsPartial ? 'Petty Cash - Buku Kas Terpilih (Saldo Akun)' : 'Petty Cash - Buku Kas');
-    ledgerTable(ledgers.map((l, i) => ({ no: i + 1, date: dateWib(l.created_at ?? l.date), description: [l.description || l.note || (l.event_type === 'opening_balance' ? 'Saldo awal Petty Cash' : l.event_type), l.description && l.note && l.note !== l.description ? l.note : '', l.created_by_name ? `Pengaju: ${l.created_by_name}` : '', l.actor_name ? `Pencatat: ${l.actor_name}` : '', `Ledger #${l.id}${l.submission_id ? ` | Pengajuan ${l.submission_id}` : ''}`].filter(Boolean).join(' | '), in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', balance: amount(l.balance_after_idr), direction: l.direction, amount_idr: l.amount_idr ?? l.amount })));
-  }
-
-  function submissionTable(rows) {
-    table({ columns: [
-      { key: 'id', label: 'No.', width: 80 }, { key: 'date', label: 'Tanggal', width: 62 }, { key: 'status', label: 'Status', width: 80 },
-      { key: 'applicant', label: 'Pengaju / Jabatan', width: 170 }, { key: 'amount', label: 'Nominal', width: 102, align: 'right' }, { key: 'reason', label: 'Keterangan / Catatan / Keputusan', width: 287 }
-    ], rows: rows.map((s, index) => ({ id: index + 1, date: shortDate(s.date || s.created_at), status: statusLabel(s.status), applicant: `${s.created_by_name || s.applicant_name || s.created_by || '-'} / ${roleLabel(s.created_by_role || s.role)}${s.created_by_position || s.position ? ` / ${s.created_by_position || s.position}` : ''}`, amount: amount(s.amount_idr ?? s.amount), reason: [s.description, s.note, s.decision_reason].filter(Boolean).join(' | ') || '-' })), totals: { applicant: 'Total pengajuan', amount: amount(totalSubmitted(rows)) } });
-  }
-  if (petty.length) { heading('Pengajuan Petty Cash'); submissionTable(petty); }
-  if (finance.length) { heading('Request Finance'); submissionTable(finance); }
-
-  if (auditRows.length) {
-    heading('Lampiran Audit');
-    table({ columns: [
-      { key: 'id', label: 'ID', width: 45 }, { key: 'date', label: 'Waktu (WIB)', width: 100 }, { key: 'action', label: 'Aksi', width: 145 },
-      { key: 'actor', label: 'Aktor', width: 115 }, { key: 'entity', label: 'Entitas', width: 105 }, { key: 'details', label: 'Rincian', width: 271 }
-    ], rows: auditRows.map(a => ({ id: a.id ?? '-', date: dateWib(a.created_at ?? a.date), action: a.action || '-', actor: a.actor_name || a.actor || 'Sistem', entity: `${a.entity_type || '-'} #${a.entity_id || '-'}`, details: typeof a.details_json === 'string' ? a.details_json : JSON.stringify(a.details_json ?? {}) })) });
-  }
-
-  if (!subs.length && !ledgers.length && !auditRows.length) text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
+  ensure(94);
+  page.drawRectangle({ x: MARGIN, y: y - 80, width: CONTENT_W, height: 80, color: PALE });
+  text(`${ledgerIsPartial ? 'Saldo akun awal' : 'Saldo awal'} ${amount(openingBalance)}`, MARGIN + 10, y - 16, 9, regular, INK);
+  text(`${ledgerIsPartial ? 'Saldo akun akhir' : 'Saldo akhir'} ${amount(finalBalance)}`, MARGIN + 10, y - 34, 10, bold, NAVY);
+  text(`${ledgerIsPartial ? 'Masuk terpilih' : 'Masuk'} ${amount(incoming)}`, MARGIN + 280, y - 16, 9, regular, INK);
+  text(`${ledgerIsPartial ? 'Keluar terpilih' : 'Keluar'} ${amount(outgoing)}`, MARGIN + 280, y - 34, 9, regular, INK);
+  text(`Baris laporan ${unified.rows.length}`, MARGIN + 10, y - 52, 8.5, regular, INK);
+  text(`Total pengajuan ${amount(unified.totalSubmitted)}`, MARGIN + 10, y - 69, 9, bold, NAVY);
+  y -= 96;
+  if (unified.rows.length) {
+    ledgerTable(unified.rows.map((l, i) => ({
+      no: i + 1,
+      date: shortDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(l.report_at))),
+      description: l.report_description,
+      in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
+      out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-',
+      balance: l.is_cash ? amount(l.balance_after_idr) : '-', direction: l.direction, amount_idr: l.amount_idr ?? l.amount,
+    })));
+  } else text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
   if (unicodeReplaced) { ensure(22); text('Karakter di luar font ditampilkan sebagai ?.', MARGIN, y, 7, regular, MUTED); }
   footer();
   const pages = pdf.getPages();

@@ -59,10 +59,10 @@ test('same-key receipt races reject different metadata or bytes, preserve one ro
 });
 
 for (const section of ['submissions', 'ledger', 'audits']) {
-  test(`PDF ${section} section rejects oversized snapshot before collection`, async () => {
+  test(`PDF handles oversized ${section}: guards report sources, excludes audit dump`, async () => {
     const f = await fixture();
     if (section === 'submissions') {
-      for (let i = 0; i < 1001; i++) insertSubmission(f.db, { id: `pdf-sub-${i}`, createdBy: 'user-a', date: '2025-01-15', createdAt: `2025-01-15T04:${String(i % 60).padStart(2, '0')}:00.000Z`, description: `Long description ${'x'.repeat(120)}` });
+      for (let i = 0; i < 1001; i++) insertSubmission(f.db, { id: `pdf-sub-${i}`, createdBy: 'user-a', status: 'approved', date: '2025-01-15', createdAt: `2025-01-15T04:${String(i % 60).padStart(2, '0')}:00.000Z`, description: `Long description ${'x'.repeat(120)}` });
     } else if (section === 'ledger') {
       for (let i = 0; i < 1001; i++) f.db.db.prepare("INSERT INTO cash_ledger(event_type,direction,amount_idr,balance_after_idr,note,created_at,actor_id) VALUES ('cash_topup','credit',1,1,?,?,'manager-1')").run(`Long ledger note ${'x'.repeat(120)}`, `2025-01-01T00:${String(i % 60).padStart(2, '0')}:00.000Z`);
     } else {
@@ -71,7 +71,12 @@ for (const section of ['submissions', 'ledger', 'audits']) {
     const originalPrepare = f.db.prepare.bind(f.db); const collections = [];
     f.db.prepare = sql => { if (/ORDER BY (?:s.created_at DESC, s.id|l.id|a.id) DESC LIMIT 500/.test(sql)) collections.push(sql); return originalPrepare(sql); };
     const result = await call(f.db, '/export.pdf', f.managerToken);
-    assert.equal(collections.length, 0, 'oversized section must fail before any export page collection');
+    if (section === 'audits') {
+      assert.equal(result.response.status, 200);
+      assert.ok(!collections.some(sql => /FROM audit_events/.test(sql)));
+      return;
+    }
+    assert.equal(collections.length, 0, 'oversized report source must fail before collection');
     assert.equal(result.response.status, 413, `${section}: ${JSON.stringify(result.body)}`);
     assert.equal(result.body.error.code, 'report_too_large');
     assert.match(result.response.headers.get('cache-control') || '', /no-store/);
@@ -89,23 +94,18 @@ for (const [label, sameBytes] of [['identical replay', true], ['different image 
     assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM cash_ledger').get().n, before);
   });
 }
-for (const race of [false, true]) {
-  test(`same key is uploader-scoped through ${race ? 'insert-race' : 'existing SHA'} duplicate path`, async () => {
-    const f = await fixture(); const id = uuid(); insertSubmission(f.db, { id, createdBy: 'user-a' });
-    const key = uuid(), path = `/submissions/${id}/receipts`, bytes = png(44);
-    const first = await call(f.db, path, f.userAToken, { method:'POST', body:receiptBody(bytes, 'user.png'), headers:{'Idempotency-Key':key} });
-    assert.equal(first.response.status, 201);
-    // Manager may see this submission but uses an independent idempotency scope.
-    const original = f.db.prepare.bind(f.db); let hidden = false;
-    if (race) f.db.prepare = sql => {
-      if (!hidden && /WHERE r.submission_id = \? AND r.sha256 = \?/.test(sql)) {
-        hidden = true; const statement = { bind() { return statement; }, async first() { return null; } }; return statement;
-      }
-      return original(sql);
-    };
-    const second = await call(f.db, path, f.managerToken, { method:'POST', body:receiptBody(bytes, 'manager.png'), headers:{'Idempotency-Key':key} });
-    assert.equal(second.response.status, 200, JSON.stringify(second.body));
-    assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM submission_receipts').get().n, 1);
-    if (race) assert.equal(hidden, true);
-  });
-}
+test('manager reads user evidence but cannot upload, including existing SHA and key replay paths', async () => {
+  const f = await fixture(); const id = uuid(); insertSubmission(f.db, { id, createdBy: 'user-a' });
+  const key = uuid(), path = `/submissions/${id}/receipts`, bytes = png(44);
+  const first = await call(f.db, path, f.userAToken, { method: 'POST', body: receiptBody(bytes, 'user.png'), headers: { 'Idempotency-Key': key } });
+  assert.equal(first.response.status, 201);
+  for (const replayKey of [key, uuid()]) {
+    const blocked = await call(f.db, path, f.managerToken, { method: 'POST', body: receiptBody(bytes, 'manager.png'), headers: { 'Idempotency-Key': replayKey } });
+    assert.equal(blocked.response.status, 403);
+    assert.equal(blocked.body.error.code, 'forbidden');
+  }
+  const visible = await call(f.db, path, f.managerToken);
+  assert.equal(visible.response.status, 200);
+  assert.equal(visible.body.items.length, 1);
+  assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM submission_receipts').get().n, 1);
+});

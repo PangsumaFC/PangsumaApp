@@ -48,16 +48,18 @@ test('wrap uses measured font widths for long unbroken legal descriptions', asyn
 
 test('a very tall row is split over pages instead of overflowing', async () => {
   const data = fixture(1);
-  data.submissions[0].description = 'Uraian legal '.repeat(1200);
+  data.ledger[0].note = 'Uraian legal '.repeat(1200);
   const bytes = await buildFinancialReport(data);
   const doc = await PDFDocument.load(bytes);
   assert.ok(doc.getPageCount() > 2, `expected split pages, got ${doc.getPageCount()}`);
 });
 
-test('buildFinancialReport paginates large exports and keeps all sections', async () => {
-  const bytes = await buildFinancialReport(fixture(550));
+test('buildFinancialReport paginates large exports and keeps all ledger rows', async () => {
+  const data = fixture(0);
+  data.ledger = Array.from({ length: 550 }, (_, i) => ({ id: i + 1, created_at: '2025-05-01T03:00:00Z', direction: 'in', amount_idr: 100, balance_after_idr: (i + 1) * 100, note: `Ledger ${i + 1}` }));
+  const bytes = await buildFinancialReport(data);
   const doc = await PDFDocument.load(bytes);
-  assert.ok(doc.getPageCount() > 20, `expected many pages, got ${doc.getPageCount()}`);
+  assert.ok(doc.getPageCount() > 15, `expected many pages, got ${doc.getPageCount()}`);
   assert.ok(bytes.length > 10000);
 });
 
@@ -90,24 +92,26 @@ test('filtered PDF preserves explicit period, real account balances, concise sco
   assert.match(result.text, /Filter: Jenis: Petty Cash/);
   assert.match(result.text, /Saldo akun awal Rp2\.000/);
   assert.match(result.text, /Saldo akun akhir Rp1\.500/);
-  assert.match(result.text, /Buku Kas Terpilih \(Saldo Akun\)/);
+  assert.match(result.text, /Saldo hanya kas tercatat/);
   assert.match(result.text, /Keluar terpilih Rp500/);
   assert.doesNotMatch(result.text, /transaksi lain di luar filter tidak ditampilkan/);
-  assert.match(result.text, /Baris ledger 1 \| Audit 0/);
-  assert.match(result.text, /Petty Cash: 1 pengajuan/);
-  assert.match(result.text, /Request Finance: 0 pengajuan/);
-  assert.match(result.text, /Pencatat: Manager Uji/);
+  assert.match(result.text, /Baris laporan 2/);
+  assert.match(result.text, /Total pengajuan Rp10\.000/);
+  assert.doesNotMatch(result.text, /Finance disetujui/);
+  assert.match(result.text, /termasuk transaksi di luar filter/);
   assert.ok(result.text.includes(`Halaman ${result.count} dari ${result.count}`));
 });
 
-test('positive opening balance is used instead of the original zero sentinel', async () => {
+test('opening precedes ledger movements so opening credit is not counted twice', async () => {
   const data = fixture(0);
   data.ledger = [
     { id: 1, event_type: 'opening_balance', direction: 'credit', amount_idr: 0, balance_after_idr: 0, created_at: '2026-10-01T00:00:00Z' },
     { id: 2, event_type: 'opening_balance', direction: 'credit', amount_idr: 1000, balance_after_idr: 1000, created_at: '2026-10-02T00:00:00Z' }
   ];
   const { text } = await reportText(await buildFinancialReport(data));
-  assert.match(text, /Saldo awal Rp1\.000/);
+  assert.match(text, /Saldo awal Rp0/);
+  assert.match(text, /Masuk Rp1\.000/);
+  assert.match(text, /Saldo akhir Rp1\.000/);
 });
 
 test('report totals retain exact bigint and integer-string rupiah values', async () => {
@@ -117,23 +121,25 @@ test('report totals retain exact bigint and integer-string rupiah values', async
     submissions: [{ id: 'large-1', type: 'finance_request', status: 'approved', date: '2026-10-01', amount_idr: value.toString(), description: 'Nominal presisi' }],
     ledger: [{ id: 1, event_type: 'opening_balance', direction: 'credit', amount_idr: value, balance_after_idr: value, created_at: '2026-10-01T03:00:00Z' }]
   }));
-  assert.match(text, /Finance disetujui Rp9\.007\.199\.254\.740\.993/);
+  assert.match(text, /Masuk Rp9\.007\.199\.254\.740\.993/);
   assert.match(text, /Saldo akhir Rp9\.007\.199\.254\.740\.993/);
-  assert.match(text, /Total diajukan Rp9\.007\.199\.254\.740\.993/);
+  assert.doesNotMatch(text, /Total diajukan/);
   assert.doesNotMatch(text, /9\.007\.199\.254\.740\.992/);
 });
 
-test('automatic report period follows audit dates rather than print date for audit-only input', async () => {
+test('audit-only input does not affect cashflow period or print audit details', async () => {
   const { text } = await reportText(await buildFinancialReport({
     snapshotAt: '2026-10-18T03:00:00Z',
     audits: [{ id: 1, created_at: '2026-09-02T03:00:00Z', action: 'cash.reconciled', details_json: 'Audit periode September' }]
   }));
-  assert.match(text, /Periode 02 Sep 2026 - 02 Sep 2026/);
+  assert.match(text, /Periode 18 Okt 2026 - 18 Okt 2026/);
+  assert.doesNotMatch(text, /Audit periode September/);
   assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
 });
 
 test('font substitution has a concise conditional data-integrity marker, not a generic disclaimer', async () => {
   const data = fixture(1);
+  data.ledger[0].note = 'Unicode 日本語';
   const { text } = await reportText(await buildFinancialReport(data));
   assert.match(text, /Karakter di luar font ditampilkan sebagai \?\./);
   assert.doesNotMatch(text, /Data asli tidak diubah/);

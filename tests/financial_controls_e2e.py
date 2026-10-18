@@ -239,11 +239,11 @@ def main():
         expect(region.locator('.manager-filtered-results [data-action="report-detail"]').first).to_have_attribute("data-id", first_ids[0])
         assert region.locator('.manager-filtered-results .item-row [data-action="report-detail"]').evaluate_all("els => els.map(e => e.dataset.id)") == first_ids
 
-        # PDF fallback must preserve the active filter but export the full bounded
+        # The sole primary PDF action preserves the active filter and full bounded
         # result set, not only the currently visible page.
         fallback = page.locator("#managerPdfFallbackLink")
-        assert fallback.count() == 1
-        assert page.locator("#managerPdfFallback").get_attribute("hidden") is not None
+        assert fallback.count() == 0
+        assert page.locator("#managerPdfFallback").count() == 0
         href = page.evaluate("() => ManagerReportFilters.pdfUrl()")
         params = parse_qs(urlparse(href).query)
         assert params.get("q") == [query] and "cursor" not in params

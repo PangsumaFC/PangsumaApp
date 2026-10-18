@@ -23,14 +23,11 @@ function downloadHarness({ standalone = false, iosStandalone = false, role = 'ma
   return { calls, run: () => context.downloadPdf({ isConnected: true }) };
 }
 for (const options of [{ standalone: true }, { iosStandalone: true }]) {
-  test(`PWA attachment is dispatched before any await or temporary blob: ${JSON.stringify(options)}`, async () => {
+  test(`PWA uses the same authenticated Blob download flow as a tab: ${JSON.stringify(options)}`, async () => {
     const h = downloadHarness(options);
-    const pending = h.run();
-    assert.deepEqual(h.calls.downloads, [{ href: '/api/export.pdf?q=Latihan&jenis=petty_cash', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
-    assert.equal(h.calls.fetch, 0);
-    await pending;
-    assert.ok(h.calls.toasts.length > 0, 'handoff must be visible without claiming a saved file');
-    assert.ok(!h.calls.toasts.some(message => /berhasil disimpan|sudah tersimpan/i.test(message)));
+    await h.run();
+    assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
+    assert.equal(h.calls.fetch, 1);
   });
 }
 test('regular Chrome tab retains authenticated blob flow', async () => {
@@ -38,13 +35,11 @@ test('regular Chrome tab retains authenticated blob flow', async () => {
   assert.equal(h.calls.fetch, 1);
   assert.equal(h.calls.downloads[0].href, 'blob:temporary');
 });
-test('installed PWA uses the recoverable PDF dialog rather than the legacy silent handoff', async () => {
+test('installed PWA does not use a mode-only PDF dialog', async () => {
   const h = downloadHarness({ standalone: true, helper: true }); await h.run();
-  assert.equal(h.calls.prepared.length, 1);
-  assert.equal(h.calls.prepared[0].url, '/api/export.pdf?q=Latihan&jenis=petty_cash');
-  assert.equal(h.calls.prepared[0].isCurrent(), true);
-  assert.deepEqual(h.calls.downloads, []);
-  assert.equal(h.calls.fetch, 0);
+  assert.equal(h.calls.prepared.length, 0);
+  assert.equal(h.calls.fetch, 1);
+  assert.deepEqual(h.calls.downloads, [{ href: 'blob:temporary', download: 'pangsuma-laporan-keuangan-2026-10-18.pdf' }]);
 });
 test('standalone User cannot request a Manager export', async () => {
   const h = downloadHarness({ standalone: true, role: 'user' }); await h.run();

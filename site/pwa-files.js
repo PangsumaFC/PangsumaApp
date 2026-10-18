@@ -104,27 +104,12 @@
     download.textContent = 'Simpan PDF';
     download.setAttribute('download', filename);
     download.setAttribute('aria-disabled', 'true');
-    var share = document.createElement('button');
-    share.id = 'pwaPdfShare';
-    share.type = 'button';
-    share.className = 'pwa-files-share';
-    share.textContent = 'Bagikan / simpan ke…';
-    share.hidden = true;
-    var browser = document.createElement('a');
-    browser.className = 'pwa-files-browser';
-    browser.textContent = 'Buka lewat browser';
-    browser.href = directUrl;
-    browser.target = '_blank';
-    browser.rel = 'noopener';
-    var instructions = document.createElement('p');
-    instructions.className = 'pwa-files-instructions';
-    instructions.textContent = 'Pilih “Simpan PDF” untuk menyimpan file. Jika tidak muncul, buka melalui browser atau gunakan tombol bagikan.';
     var retry = document.createElement('button');
     retry.type = 'button'; retry.className = 'pwa-files-retry'; retry.textContent = 'Coba lagi'; retry.hidden = true;
     var closeButton = document.createElement('button');
     closeButton.type = 'button'; closeButton.className = 'pwa-files-close'; closeButton.textContent = 'Tutup';
-    actions.append(download, share, browser, retry, closeButton);
-    dialog.append(title, status, actions, instructions);
+    actions.append(download, retry, closeButton);
+    dialog.append(title, status, actions);
     document.body.appendChild(dialog);
 
     var objectUrl = null;
@@ -164,17 +149,6 @@
     closeButton.addEventListener('click', close);
     retry.addEventListener('click', retryFetch);
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
-    share.addEventListener('click', function () {
-      // Deliberately no await before share: this call remains in the fresh click gesture.
-      if (!blob || !root.navigator || typeof root.navigator.share !== 'function') return;
-      var file = typeof root.File === 'function' ? new root.File([blob], filename, { type: 'application/pdf' }) : null;
-      if (!file) return;
-      try {
-        var result = root.navigator.share({ files: [file], title: filename });
-        if (result && typeof result.catch === 'function') result.catch(function () { setStatus('Bagikan dibatalkan atau gagal. Pilih “Simpan PDF” untuk mencoba lagi.', true); });
-      } catch (_) { setStatus('Bagikan dibatalkan atau gagal. Pilih “Simpan PDF” untuk mencoba lagi.', true); }
-    });
-
     function load() {
       if (closed) return;
       if (controller) controller.abort();
@@ -206,10 +180,7 @@
           objectUrl = root.URL.createObjectURL(blob);
           download.href = objectUrl;
           download.removeAttribute('aria-disabled');
-          var shareable = false;
-          try { shareable = !!(root.navigator && typeof root.navigator.share === 'function' && typeof root.navigator.canShare === 'function' && typeof root.File === 'function' && root.navigator.canShare({ files: [new root.File([blob], filename, { type: 'application/pdf' })] })); } catch (_) { shareable = false; }
-          share.hidden = !shareable;
-          setStatus('PDF siap. Pilih tindakan di bawah; file belum dianggap tersimpan.', false);
+          setStatus('PDF siap. Pilih Simpan PDF untuk mengunduh file.', false);
         })
         .catch(function (error) { if (!closed && !(error && error.name === 'AbortError')) showError(error); });
     }

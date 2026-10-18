@@ -50,16 +50,13 @@ function response({ status = 200, type = 'application/pdf', bytes = '%PDF-1.7\nb
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function byId(node, id) { if (node.id === id) return node; for (const child of node.children || []) { const found = byId(child, id); if (found) return found; } }
 
-test('prepare fetches same-origin PDF and exposes download and share actions', async () => {
-  const h = harness(response()); const before = h.document.activeElement;
-  await h.context.PwaFiles.prepare({ url: '/api/export.pdf?x=1', filename: 'laporan:final', isCurrent: () => true }); await tick();
-  assert.equal(h.context.fetchArgs[0], 'https://app.example.test/api/export.pdf?x=1'); assert.equal(h.context.fetchArgs[1].credentials, 'same-origin');
-  const dialog = h.document.body.children[0]; const download = dialog.query('.pwa-files-download'); const share = dialog.query('.pwa-files-share');
-  assert.equal(download.textContent, 'Simpan PDF'); assert.equal(download.download, 'laporan-final.pdf'); assert.equal(download.href, 'blob:test-pdf'); assert.equal(share.hidden, false);
-  share.dispatch('click'); assert.equal(h.shared.length, 1); assert.equal(h.shared[0].files[0].name, 'laporan-final.pdf');
-  dialog.query('.pwa-files-close')?.dispatch('click'); assert.deepEqual(h.revoked, ['blob:test-pdf']); assert.equal(before.focused, true);
+test('prepare fetches same-origin PDF and exposes only the local download action', async () => {
+  const h = harness(response()); await h.context.PwaFiles.prepare({ url: '/api/export.pdf', filename: 'laporan-final.pdf' }); await tick();
+  const dialog = h.document.body.children[0]; const download = dialog.query('.pwa-files-download');
+  assert.equal(download.textContent, 'Simpan PDF'); assert.equal(download.download, 'laporan-final.pdf'); assert.equal(download.href, 'blob:test-pdf');
+  assert.equal(dialog.query('.pwa-files-browser'), undefined); assert.equal(dialog.query('.pwa-files-share'), undefined);
+  assert.equal(h.shared.length, 0); assert.equal(h.copied.length, 0); assert.equal(h.opens, 0);
 });
-
 test('unauthorized response calls parent callback and supports user-gesture retry', async () => {
   let calls = 0; let unauthorized = 0; const h = harness(response({ status: 401, type: 'application/json', bytes: '{}' }));
   await h.context.PwaFiles.prepare({ url: '/api/export.pdf', filename: 'x.pdf', onUnauthorized: () => unauthorized++, onError: () => calls++ }); await tick();
