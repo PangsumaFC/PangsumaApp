@@ -191,7 +191,22 @@ function readDraft(kind, type = '') { try { const raw = sessionStorage.getItem(d
 function writeDraft(kind, type, value) { try { sessionStorage.setItem(draftKey(kind, type), JSON.stringify(value)); } catch {} }
 function clearDraft(kind, type = '') { try { sessionStorage.removeItem(draftKey(kind, type)); } catch {} }
 function reportDraft(type = reportTypePreset) { return readDraft('report', type) || {}; }
-function persistReportDraft() { const form = $('#reportForm'); if (!state.user || !form) return; const type = String(form.type?.value || reportTypePreset); writeDraft('report', type, { type, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(type).submittedFingerprint || '' }); }
+function validReportType(type) { return type === 'petty_cash' || type === 'finance_request'; }
+function restoreReportType() {
+  const saved = readDraft('report-selection');
+  if (validReportType(saved?.type)) return saved.type;
+  // Upgrade older sessions without selection metadata without deleting either draft.
+  return readDraft('report', 'finance_request') && !readDraft('report', 'petty_cash') ? 'finance_request' : 'petty_cash';
+}
+function rememberReportType(type) {
+  if (state.user && validReportType(type)) writeDraft('report-selection', '', { type });
+}
+function persistReportDraft(type = reportTypePreset) {
+  const form = $('#reportForm');
+  if (!state.user || !form || !validReportType(type)) return;
+  writeDraft('report', type, { type, amountIdr: String(form.amountIdr?.value || '').slice(0, 20), date: String(form.date?.value || '').slice(0, 10), description: String(form.description?.value || '').slice(0, 150), note: String(form.note?.value || '').slice(0, 500), idempotencyKey: submissionIdempotencyKey || '', submittedFingerprint: reportDraft(type).submittedFingerprint || '' });
+  rememberReportType(type);
+}
 function persistCashTopupDraft() { if (!state.user || !$('#cashTopupForm')) return; writeDraft('cash-topup', '', { amountIdr: String($('#cashTopupAmount')?.value || '').slice(0, 20), note: String($('#cashTopupNote')?.value || '').slice(0, 500), idempotencyKey: cashTopupIdempotencyKey || '', fingerprint: cashTopupFingerprint || '' }); }
 
 function hasUnsavedDraft() {
@@ -616,6 +631,8 @@ function displayPasskeyError(error) {
 
 async function completeLogin(result, form = null) {
   state.user = result.user;
+  reportTypePreset = restoreReportType();
+  submissionIdempotencyKey = '';
   resetNavigationSession(result.user.mustChangePassword ? 'change-password' : 'overview');
   if (state.user.mustChangePassword) {
     state.cashBalanceIdr = 0;
@@ -1042,7 +1059,7 @@ function myReportsPage() {
 function reportForm() {
   const type = reportTypePreset;
   const draft = reportDraft(type);
-  if (draft.idempotencyKey) submissionIdempotencyKey = draft.idempotencyKey;
+  submissionIdempotencyKey = draft.idempotencyKey || '';
   return `${pageHeading('Buat pengajuan', 'Isi kebutuhan Anda. Nominal dan status akan tersimpan di server.')}
     <form id="reportForm" class="form-card surface"><div class="form-grid">
       <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${state.user?.role === 'manager' ? (type === 'petty_cash' ? 'Otomatis disetujui; saldo petty cash langsung berkurang saat dikirim dan harus mencukupi.' : 'Otomatis disetujui dan langsung masuk daftar menunggu Finance.') : (type === 'petty_cash' ? 'Saldo petty cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.')}</div></div>
@@ -1962,8 +1979,14 @@ function bindEvents() {
   });
 
   document.addEventListener('change', event => {
-    if (event.target.id !== 'reportType' || !event.target.closest('#reportForm')) return;
+    if (!event.target.closest('#reportForm')) return;
+    if (event.target.id !== 'reportType') { persistReportDraft(); return; }
+    if (!validReportType(event.target.value)) return;
+    // The select already contains the new type, but the other fields still
+    // belong to the previous one. Save them under the previous type only.
+    persistReportDraft(reportTypePreset);
     reportTypePreset = String(event.target.value);
+    rememberReportType(reportTypePreset);
     submissionIdempotencyKey = reportDraft(reportTypePreset).idempotencyKey || '';
     renderApp();
     $('#reportType')?.focus({ preventScroll: true });
@@ -2154,6 +2177,8 @@ async function initialize() {
     await refreshPasskeyControls();
     const result = await api('/session');
     state.user = result.user;
+    reportTypePreset = restoreReportType();
+    submissionIdempotencyKey = '';
     resetNavigationSession(state.user.mustChangePassword ? 'change-password' : 'overview');
     if (state.user.mustChangePassword) {
       state.cashBalanceIdr = 0;
