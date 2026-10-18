@@ -66,8 +66,8 @@ const navByRole = {
   ],
   user: [
     { id: 'overview', label: 'Beranda', icon: 'overview' },
-    { id: 'my-reports', label: 'Laporan saya', icon: 'report' },
-    { id: 'change-password', label: 'Ganti password', icon: 'users' }
+    { id: 'new-report', label: 'Buat laporan', icon: 'plus' },
+    { id: 'my-reports', label: 'Laporan saya', icon: 'report' }
   ]
 };
 
@@ -146,10 +146,12 @@ function transactionInFlight() {
 }
 
 function setUpdateBanner(build = '') {
-  availableBuild = build && build !== APP_BUILD ? String(build) : '';
+  const candidate = String(build || '');
+  availableBuild = /^\d{4}\.\d{2}\.\d{2}\.\d+$/.test(candidate)
+    && candidate.localeCompare(APP_BUILD, 'en', { numeric: true }) > 0 ? candidate : '';
   const banner = $('#appUpdateBanner');
   if (!banner) return;
-  const visible = Boolean(availableBuild && state.user?.role === 'manager');
+  const visible = Boolean(availableBuild);
   banner.hidden = !visible;
   if (visible) $('#appUpdateVersion').textContent = `Versi ${availableBuild} tersedia.`;
 }
@@ -281,7 +283,7 @@ function renderCashInsightsRegion(force = false) {
   const form = $('#cashMinimumForm');
   if (!force && form && !form.hidden) return;
   const region = $('.cash-insights-region');
-  if (region && currentPage === 'overview' && state.user?.role === 'manager') region.outerHTML = cashInsightsRegion();
+  if (region && currentPage === 'finance' && state.user?.role === 'manager') region.outerHTML = cashInsightsRegion();
 }
 async function loadCashInsights() {
   if (!state.user || state.user.role !== 'manager' || state.user.mustChangePassword || cashInsightsRequestBusy) return;
@@ -679,7 +681,7 @@ function renderNav() {
     return;
   }
   mobile.className = 'mobile-nav is-user';
-  mobile.innerHTML = `${navButton(items[0])}<button class="mobile-add" type="button" data-action="open-report-choice" aria-label="Buat pengajuan baru">${icons.plus}</button>${navButton(items[1])}`;
+  mobile.innerHTML = `${navButton(items[0])}<button class="mobile-add" type="button" data-page="new-report" aria-label="Buat laporan baru">${icons.plus}</button>${navButton(items[2])}`;
 }
 
 function pageHeading(title, description = '', action = '') {
@@ -734,6 +736,9 @@ function submissionCard(item, options = {}) {
       : !enoughCash ? 'Saldo petty cash belum mencukupi.' : '';
     actions = `<div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}" ${cannotApprove ? 'disabled' : ''} ${disableHint ? `aria-describedby="hint-${escapeHTML(item.id)}" title="${escapeHTML(disableHint)}"` : ''}>${approveLabel}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}" ${own ? 'disabled' : ''}>Tolak</button></div>${disableHint ? `<p class="action-hint" id="hint-${escapeHTML(item.id)}">${escapeHTML(disableHint)}</p>` : ''}`;
   }
+  if (options.financeActions && state.user?.role === 'manager' && item.type === 'finance_request' && item.status === 'approved') {
+    actions = `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim ke Finance</button></div>`;
+  }
   const detail = `<button class="text-button" type="button" data-action="report-detail" data-id="${escapeHTML(item.id)}">Detail</button>`;
   return `<article class="item-row"><div class="item-copy">${owner}<div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div>${item.note ? `<p class="item-note">${escapeHTML(item.note)}</p>` : ''}</div><div class="item-side">${amount}${options.showStatus !== false ? status : ''}${detail}</div>${item.decisionReason ? `<p class="decision-reason"><strong>Alasan:</strong> ${escapeHTML(item.decisionReason)}</p>` : ''}${actions}</article>`;
 }
@@ -759,30 +764,24 @@ function submissionTimeline(item) {
   return `<ol class="submission-timeline" aria-label="Timeline ${escapeHTML(item.description)}">${steps.map(([status, label, timestamp]) => `<li class="timeline-step ${status}"><span class="timeline-dot" aria-hidden="true"></span><span><strong>${label}</strong>${timestamp ? `<small>${escapeHTML(dateTimeLong(timestamp))}</small>` : ''}${status === 'rejected' && item.decisionReason ? `<small class="timeline-reason">${escapeHTML(item.decisionReason)}</small>` : ''}</span></li>`).join('')}</ol>`;
 }
 function managerOverview() {
-  const pending = state.submissions.filter(item => item.status === 'pending');
-  const today = todayISO();
-  const todayItems = state.submissions.filter(item => item.date === today);
   const recent = state.submissions.slice(0, 3);
   const financeWaiting = state.summary.financeWaiting ?? 0;
   const pendingCount = state.summary.pending ?? 0;
   const todayCount = state.summary.today ?? 0;
   return `${welcomePanel()}
-    <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div><div class="balance-actions"><button class="primary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button><button class="secondary-button" type="button" data-page="finance">Lihat Finance</button></div></section>
-    ${cashInsightsRegion()}
+    <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div></section>
     <div id="financialControlsOverview">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderOverview() : ''}</div>
-    <div class="section-row manager-action-row"><div><h2>Pengajuan Anda</h2><p>Pengajuan Manager otomatis disetujui.</p></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
-    <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount), 'approvals')}${metricCard('finance', 'Menunggu Finance', String(financeWaiting), 'finance')}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
-    <div class="manager-layout"><section class="manager-queue manager-queue-primary"><div class="section-row"><div><h2>Antrean tindakan</h2><p>${pendingCount} pengajuan menunggu keputusan</p></div><button class="text-button" type="button" data-page="approvals">Lihat semua</button></div>${pending.length ? `<div class="list-stack">${pending.slice(0, 3).map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Antrian kosong', 'Pengajuan baru akan tampil setelah dikirim User.')}</section><section class="manager-ledger"><div class="section-row"><div><h2>Aktivitas hari ini</h2><p>${todayCount} pengajuan pada ${dateLong(today)}</p></div><button class="text-button" type="button" data-page="approvals">Lihat persetujuan</button></div>${todayItems.length ? `<div class="list-stack">${todayItems.slice(0, 3).map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan hari ini', 'Aktivitas akan tampil di sini setelah User mengirim laporan.')}</section></div>
-    ${recent.length ? `<section class="recent-section"><div class="section-row"><div><h2>Pengajuan terbaru</h2></div></div><div class="list-stack">${recent.map(item => submissionCard(item, { includeOwner: true })).join('')}</div></section>` : ''}`;
+    <div class="section-row manager-action-row"><h2>Ringkasan operasional</h2><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
+    <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount))}${metricCard('finance', 'Menunggu Finance', String(financeWaiting))}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
+    <section class="recent-section"><div class="section-row"><h2>Pengajuan terbaru</h2></div>${recent.length ? `<div class="list-stack">${recent.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Belum ada pengajuan')}</section>`;
 }
 function userOverview() {
   const own = state.submissions;
   const total = state.summary.total ?? 0;
   const pending = state.summary.pending ?? 0;
   return `${welcomePanel()}
-    <section class="user-primary-action" aria-labelledby="userActionTitle"><div><p class="archive-kicker">Pusat pengajuan</p><h2 id="userActionTitle">Butuh dana operasional?</h2><p>Kirim kebutuhan, pantau status.</p></div><button class="primary-button home-report-cta" type="button" data-action="open-report-choice">Buat pengajuan</button></section>
-    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(total), 'my-reports')}${metricCard('review', 'Menunggu', String(pending), 'my-reports')}</div>
-    <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><div><h2 id="userStatusTitle">Status laporan Anda</h2></div><button class="text-button" type="button" data-page="my-reports">Lihat semua</button></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => `${submissionCard(item)}${submissionTimeline(item)}`).join('')}</div>` : emptyState('Belum ada laporan', 'Gunakan tombol “Buat pengajuan” saat Anda siap mengirim kebutuhan.')}</section>`;
+    <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(total))}${metricCard('review', 'Menunggu', String(pending))}</div>
+    <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><h2 id="userStatusTitle">Laporan terbaru</h2></div>${own.length ? `<div class="list-stack">${own.slice(0, 3).map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada laporan', 'Pilih Buat laporan di navigasi untuk mengirim kebutuhan.')}</section>`;
 }
 function managerApprovals() {
   const pending = state.submissions.filter(item => item.status === 'pending');
@@ -797,18 +796,13 @@ function managerApprovals() {
 }
 
 function financePage() {
-  const finance = state.submissions.filter(item => item.type === 'finance_request');
-  const waiting = finance.filter(item => item.status === 'approved');
-  const sent = finance.filter(item => item.status === 'sent');
   const ledgers = state.cashLedger;
   const openingConfigured = Boolean(state.cashFlow?.openingConfigured);
-  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-report-choice">Buat pengajuan</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details></div>`;
+  const headingActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf">Unduh laporan keuangan PDF</button><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}<details class="pdf-fallback"><summary>File tidak muncul?</summary><p class="field-help">Coba buka di Chrome atau Safari, atau <a id="managerPdfFallbackLink" href="${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf'}" download>unduh langsung PDF</a>.</p></details></div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.', headingActions)}
-    <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : ''}</div>
+    <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div>
+    <details class="audit-panel" data-panel="cash-insights"><summary>Rincian saldo dan tren petty cash</summary>${cashInsightsRegion()}</details>
     <div id="financialControlsFinance">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderFinance() : ''}</div>
-    <div class="metric-row" aria-label="Ringkasan Finance">${metricCard('finance', 'Total request', String(state.summary.financeTotal ?? finance.length))}${metricCard('review', 'Belum dikirim', String(state.summary.financeWaiting ?? waiting.length))}${metricCard('wallet', 'Terkirim', String(state.summary.financeSent ?? sent.length))}</div>
-    <div class="section-row"><div><h2>Request Finance</h2></div></div>${finance.length ? `<div class="list-stack">${finance.map(item => { const label = item.status === 'sent' ? 'Terkirim' : item.status === 'approved' ? 'Menunggu Finance' : item.status === 'rejected' ? 'Ditolak' : 'Menunggu Manager'; const statusClass = item.status === 'sent' ? 'status-ok' : item.status === 'rejected' ? 'status-neutral' : 'status-wait'; return `<article class="item-row"><div class="item-copy"><span class="item-owner">${escapeHTML(item.createdByName || 'User')}</span><div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div></div><div class="item-side"><div class="item-amount">${money(item.amountIdr)}</div><span class="status ${statusClass}">${label}</span></div>${item.status === 'approved' ? `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim ke Finance</button></div>` : ''}</article>`; }).join('')}</div>` : emptyState('Belum ada Request Finance', 'Permintaan baru akan muncul setelah User mengirim pengajuan.')}
-    ${historyControls('submissions', 'pengajuan')}
     <details class="audit-panel" data-panel="cash-ledger"><summary>Ledger petty cash (${state.history.cashLedger.loaded} dari ${state.history.cashLedger.total})</summary>${ledgers.length ? `<ol class="audit-list">${ledgers.map(ledgerRow).join('')}</ol>` : `<p class="field-help">Belum ada transaksi saldo.</p>`}${historyControls('cashLedger', 'transaksi ledger')}</details>`;
 }
 
@@ -1046,6 +1040,19 @@ function profilePhotoMime(file) {
   if (type) return aliases[type] || type;
   return extensionMime;
 }
+async function resolveProfilePhotoMime(file) {
+  const mime = profilePhotoMime(file);
+  // Android gallery/cloud providers can omit both a usable MIME and extension.
+  // Sniff only generic metadata; the full image decoder and server still validate
+  // every byte. Never reinterpret an explicitly unsupported MIME (e.g. SVG).
+  if (!['', 'application/octet-stream', 'binary/octet-stream', 'image/*'].includes(mime)) return mime;
+  const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
+  if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => header[index] === byte)) return 'image/png';
+  const tag = offset => String.fromCharCode(...header.slice(offset, offset + 4));
+  if (tag(0) === 'RIFF' && tag(8) === 'WEBP') return 'image/webp';
+  return mime;
+}
 async function prepareProfilePhoto(file) {
   if (!file || !profileDraft || profileDraft.loading || profileDraft.saving || profileDraft.conflicted) return;
   const draft = profileDraft;
@@ -1058,9 +1065,10 @@ async function prepareProfilePhoto(file) {
   $('#profilePhotoStatus').textContent = 'Menyiapkan foto…';
   let image;
   try {
-    const mime = profilePhotoMime(file);
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(mime)) throw new Error('Pilih foto JPG, PNG, WebP, HEIC, atau HEIF. Format lain belum didukung.');
     if (file.size > 10 * 1024 * 1024) throw new Error('Foto melebihi 10 MB. Pilih foto yang lebih kecil.');
+    const mime = await resolveProfilePhotoMime(file);
+    if (profileDraft !== draft || selection !== profileSelection) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(mime)) throw new Error('Pilih foto JPG, PNG, WebP, HEIC, atau HEIF. Format lain belum didukung.');
     // Never trust Image.onload alone: malformed WebP headers can fire it.
     const decodeFile = file.type === mime ? file : file.slice(0, file.size, mime);
     image = await decodeProfilePhoto(decodeFile, mime);
@@ -1356,28 +1364,27 @@ async function performNewSubmission(event) {
 
 async function downloadPdf(button) {
   if (state.user?.role !== 'manager') return;
-  // Keep the native attachment click in the original user gesture on mobile
-  // browsers whose download manager owns the response. Android WebView can
-  // create blob URLs but does not reliably hand a programmatic blob click to
-  // its download manager, so the native attachment link avoids that limitation.
-  // A plain location navigation can render PDFs inline in WebKit even when
-  // Content-Disposition is attachment, so retain an explicit download attribute.
-  // Desktop and full Android browsers keep the Blob path and its in-app error
-  // handling.
+  // Installed PWAs use the same Chrome UA as tabs. Detect display mode, not UA
+  // alone, and dispatch the authenticated attachment during the original gesture.
+  // Do not create a short-lived Blob URL or open an unauthenticated external tab.
   const reportUrl = typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.pdfUrl() : '/api/export.pdf';
+  const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
+    || window.matchMedia?.('(display-mode: fullscreen)')?.matches === true
+    || navigator.standalone === true;
   const userAgent = navigator.userAgent || '';
   const isMobileAppleBrowser = /iPhone|iPad|iPod/.test(userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(userAgent));
   const isAndroidWebView = /Android/i.test(userAgent)
     && (/;\s*wv\)/i.test(userAgent) || /\bwv\b/i.test(userAgent)
       || !/Chrome\/\d+/i.test(userAgent));
-  if (isMobileAppleBrowser || isAndroidWebView) {
+  if (isStandalone || isMobileAppleBrowser || isAndroidWebView) {
     const anchor = document.createElement('a');
     anchor.href = reportUrl;
     anchor.download = `pangsuma-laporan-keuangan-${todayISO()}.pdf`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
+    showToast('Permintaan PDF diteruskan ke perangkat. Periksa notifikasi atau folder Unduhan; jika belum muncul, gunakan tautan unduh langsung.');
     return;
   }
   const requestEpoch = authEpoch;
@@ -1506,13 +1513,6 @@ async function handleAction(button) {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
     if (!['user', 'manager'].includes(state.user?.role) || state.user.mustChangePassword) return;
-    $('#reportChoiceDescription').textContent = state.user?.role === 'manager'
-      ? 'Pengajuan otomatis disetujui. Petty cash langsung mengurangi saldo yang tersedia; Request Finance langsung menunggu Finance.'
-      : 'Saldo petty cash berkurang setelah disetujui Manager. Request Finance masuk setelah persetujuan.';
-    openDialog('reportChoice');
-  } else if (action === 'choose-report-type') {
-    reportTypePreset = button.dataset.type === 'finance_request' ? 'finance_request' : 'petty_cash';
-    $('#reportChoice').close();
     currentPage = 'new-report';
     renderApp();
   } else if (action === 'close-dialog') {
@@ -1521,10 +1521,6 @@ async function handleAction(button) {
     button.closest('dialog')?.close();
   } else if (action === 'edit-user-profile') {
     openUserProfile(id);
-  } else if (action === 'choose-profile-photo') {
-    // The user taps the native file input covering its label. Do not synthesize
-    // click/showPicker: mobile WebKit/WebView can ignore those without an error.
-    return;
   } else if (action === 'remove-profile-photo') {
     if (!profileDraft || profileDraft.saving || profileDraft.processing) return;
     profileDraft.photoDataUrl = null;
@@ -1550,7 +1546,8 @@ async function handleAction(button) {
     openDialog('rejectDialog');
     $('#rejectReason').focus();
   } else if (action === 'send-finance') {
-    const item = state.submissions.find(entry => entry.id === id);
+    const item = (typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.findItem?.(id) : null)
+      || state.submissions.find(entry => entry.id === id);
     if (!item || item.type !== 'finance_request' || item.status !== 'approved') return;
     setConfirm('send', 'Tandai terkirim ke Finance?', `${item.description} · ${money(item.amountIdr)}. Status akan berubah menjadi terkirim dan tercatat.`, 'Tandai terkirim', false, { id, successMessage: 'Status Request Finance diperbarui.' });
   } else if (action === 'open-add-user') {
@@ -1633,7 +1630,7 @@ function bindEvents() {
 
   if (typeof ManagerReportFilters !== 'undefined') ManagerReportFilters.configure({
     getUser: () => state.user, api,
-    renderCard: item => submissionCard(item, { includeOwner: true }),
+    renderCard: item => submissionCard(item, { includeOwner: true, financeActions: true }),
     onError: showToast,
     onChange: () => {
       if (state.user?.role !== 'manager' || currentPage !== 'finance') return;
@@ -1720,6 +1717,12 @@ function bindEvents() {
     if (event.target.matches?.('.welcome-avatar img, .user-initial img')) event.target.remove();
   }, true);
   $('#profilePhoto').addEventListener('change', event => prepareProfilePhoto(event.target.files?.[0]));
+  $('#profilePhoto').addEventListener('cancel', () => {
+    if (!profileDraft || profileDraft.processing || profileDraft.saving) return;
+    $('#profilePhotoStatus').textContent = profileDraft.photoDataUrl !== undefined
+      ? 'Pilihan dibatalkan. Perubahan foto sebelumnya tetap tersedia; tekan Simpan profil untuk menerapkan.'
+      : 'Pemilihan foto dibatalkan. Profil belum diubah; Anda dapat memilih foto lagi.';
+  });
   $('#userProfileDialog').addEventListener('cancel', event => {
     if (profileDraft?.saving) event.preventDefault();
   });
@@ -1745,9 +1748,6 @@ function bindEvents() {
 
   $('#logoutButton').addEventListener('click', logout);
   $('#passkeyLoginButton').addEventListener('click', () => performPasskeyLogin());
-  $('#reportChoice').addEventListener('click', event => {
-    if (event.target === event.currentTarget) event.currentTarget.close();
-  });
   $('#installButton').addEventListener('click', async () => {
     if (installPrompt) {
       installPrompt.prompt();

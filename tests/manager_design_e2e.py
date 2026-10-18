@@ -28,6 +28,11 @@ def main():
             assert page.locator('.mobile-nav.is-manager .nav-button').count() == 3
             assert page.locator('body').evaluate('(el) => el.scrollWidth <= window.innerWidth')
             assert page.locator('.profile-settings-link').count() == 0
+            expect(page.locator('.recent-section')).to_have_count(1)
+            expect(page.locator('.manager-action-queue')).to_have_count(0)
+            assert page.locator('.item-actions').count() == 0
+            ids = page.locator('.item-row [data-action=report-detail]').evaluate_all('(els) => els.map(e => e.dataset.id)')
+            assert len(ids) == len(set(ids)), ids
             page.locator('.account-users-button').click()
             expect(page.locator('#appContent')).to_contain_text('Pengguna')
             page.get_by_role('button', name='Ganti password', exact=True).click()

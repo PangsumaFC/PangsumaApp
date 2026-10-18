@@ -11,6 +11,13 @@ from playwright.sync_api import expect, sync_playwright
 from profile_flow_e2e import BASE, MANAGER, SCREENSHOTS, api, credential, http, login, rotate_first_login
 
 
+def finance_insights(page):
+    page.locator('[data-page="finance"]:visible').first.click()
+    details = page.locator('[data-panel="cash-insights"]')
+    if details.get_attribute("open") is None:
+        details.locator('summary').first.click()
+
+
 def main():
     password = os.environ["LOCAL_MANAGER_PASSWORD"]
     status, data, _ = http("/api/bootstrap", {"managerCredential": credential(password)},
@@ -38,15 +45,16 @@ def main():
         assert top["status"] == 201, top
         page.evaluate("""async () => { await refreshOverview(); renderApp(); }""")
         expect(page.locator("body")).to_contain_text("300.000")
+        finance_insights(page)
         equation = page.locator(".cash-health-equation")
         expect(equation).to_contain_text("300.000")
         assert equation.locator("dd").count() >= 4
 
-        # Open the actual choice dialog and fill the actual shared report form.
+        # One form owns type selection; no repeated choice dialog.
+        page.locator('[data-page="overview"]:visible').first.click()
         page.locator('[data-action="open-report-choice"]:visible').first.click()
-        choice = page.locator("#reportChoice")
-        expect(choice).to_be_visible()
-        choice.locator('[data-action="choose-report-type"][data-type="petty_cash"]').click()
+        expect(page.locator("#reportForm")).to_be_visible()
+        page.locator("#reportType").select_option("petty_cash")
         form = page.locator("#reportForm")
         expect(form).to_be_visible()
         form.locator('[name="amountIdr"]').fill("1250")
@@ -63,7 +71,7 @@ def main():
         ctx.set_offline(False)
         page.reload(wait_until="networkidle")
         page.locator('[data-action="open-report-choice"]:visible').first.click()
-        page.locator('#reportChoice [data-action="choose-report-type"][data-type="petty_cash"]').click()
+        page.locator("#reportType").select_option("petty_cash")
         form = page.locator("#reportForm")
         expect(form.locator('[name="description"]')).to_have_value("Workspace dana latihan")
 
@@ -96,7 +104,7 @@ def main():
         assert len([e for e in after["cashLedger"] if e.get("submission_id") == own[0]["id"]]) == 1
         page.reload(wait_until="networkidle")
         page.locator('[data-action="open-report-choice"]:visible').first.click()
-        page.locator('#reportChoice [data-action="choose-report-type"][data-type="petty_cash"]').click()
+        page.locator("#reportType").select_option("petty_cash")
         expect(page.locator('#reportForm [name="description"]')).to_have_value("")
         page.locator('[data-page="finance"]:visible').first.click()
         region = page.locator("#managerReportsRegion")
@@ -141,7 +149,7 @@ def main():
         page.locator('#reportActivityDialog [data-action="close-dialog"]').click()
 
         # Health threshold is device-only and trend rows expose exact finite totals.
-        page.locator('[data-page="overview"]:visible').first.click()
+        finance_insights(page)
         health = page.locator(".cash-health-card")
         expect(health).to_be_visible()
         health.locator('[data-action="configure-cash-minimum"]').click()
@@ -150,6 +158,7 @@ def main():
         expect(health).to_contain_text("500.000")
         expect(page.locator(".cash-minimum-status")).to_contain_text("Di bawah batas minimum")
         page.reload(wait_until="networkidle")
+        finance_insights(page)
         expect(page.locator("#cashMinimumInput")).to_have_value("500000")
         page.locator("details").filter(has_text="Lihat grafik dan rincian harian").evaluate_all("els => els.forEach(e => e.open = true)")
         for row in page.locator(".cash-daily-table tbody tr").all():

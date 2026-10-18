@@ -17,6 +17,12 @@ def create_request(page, kind, description, amount=1000):
     return result["data"]["submission"]["id"]
 
 
+def capture(page, path):
+    page.wait_for_function("() => getComputedStyle(document.getElementById('toast')).opacity === '0'")
+    page.evaluate("document.activeElement?.blur(); document.getElementById('mainContent').scrollTop = 0; window.scrollTo(0, 0)")
+    page.screenshot(path=str(path), full_page=True)
+
+
 def main():
     manager_password = os.environ["LOCAL_MANAGER_PASSWORD"]
     status, data, _ = http("/api/bootstrap", {"managerCredential": credential(manager_password)},
@@ -60,6 +66,7 @@ def main():
 
         own = create_request(user, "finance_request", "User finance pending")
         petty = create_request(user, "petty_cash", "User petty pending", 500)
+        finance_approved = create_request(user, "finance_request", "User finance approved")
         reject_id = create_request(user, "finance_request", "User finance rejected")
         # One real manager-owned request verifies self-decision protection.
         manager_own = create_request(manager, "finance_request", "Manager own request")
@@ -68,6 +75,8 @@ def main():
 
         approved = api(manager, f"/api/submissions/{own}/approve", "POST", {})
         assert approved["status"] == 200 and approved["data"]["submission"]["status"] == "approved", approved
+        finance_ok = api(manager, f"/api/submissions/{finance_approved}/approve", "POST", {})
+        assert finance_ok["status"] == 200, finance_ok
         sent = api(manager, f"/api/submissions/{own}/send", "POST", {})
         assert sent["status"] == 200 and sent["data"]["submission"]["status"] == "sent", sent
         rejected = api(manager, f"/api/submissions/{reject_id}/reject", "POST", {"reason": "Bukti belum lengkap"})
@@ -77,19 +86,26 @@ def main():
         # User dashboard: one visible primary CTA (plus mobile nav is the same action).
         user.reload(wait_until="networkidle")
         user.locator("#loginGate").wait_for(state="hidden", timeout=15_000)
-        expect(user.locator(".user-primary-action .primary-button")).to_have_count(1)
-        expect(user.locator(".user-primary-action")).to_contain_text("Kirim kebutuhan, pantau status.")
+        expect(user.locator(".user-primary-action")).to_have_count(0)
+        expect(user.locator(".user-status-section")).to_have_count(1)
+        assert user.locator(".user-status-section .item-row").count() <= 3
         assert user.locator(".mobile-nav.is-user .mobile-add").count() == 1
         assert user.locator(".account-users-button").is_hidden()
         expect(user.locator(".account-password-button")).to_be_visible()
-        expect(user.locator(".submission-timeline").filter(has_text="Terkirim ke Finance")).to_have_count(1)
-        expect(user.locator(".submission-timeline").filter(has_text="Ditolak").first).to_contain_text("Bukti belum lengkap")
-        for width in (390, 320):
+        expect(user.locator(".user-status-section")).to_contain_text("Bukti belum lengkap")
+        user.locator("[data-page=\"new-report\"]:visible").first.click()
+        expect(user.locator("#reportForm")).to_be_visible()
+        user.locator("#reportType").select_option("finance_request")
+        expect(user.locator("#reportType")).to_have_value("finance_request")
+        user.locator("#reportType").select_option("petty_cash")
+        expect(user.locator("#reportType")).to_have_value("petty_cash")
+        user.locator("[data-page=\"overview\"]:visible").first.click()
+        for width in (390, 320, 768, 1280):
             user.set_viewport_size({"width": width, "height": 844})
             user.wait_for_timeout(100)
             measured = user.evaluate("() => ({w: document.documentElement.clientWidth, s: document.documentElement.scrollWidth})")
             assert measured["s"] <= measured["w"] + 1, measured
-            user.screenshot(path=str(SCREENSHOTS / f"dashboard-user-{width}.png"), full_page=True)
+            capture(user, SCREENSHOTS / f"dashboard-user-{width}.png")
 
         # Offline notice is visibility-only and must disappear again without clearing data.
         before = user.locator("#appContent").inner_text()
@@ -104,12 +120,33 @@ def main():
         manager.locator("#loginGate").wait_for(state="hidden", timeout=15_000)
         expect(manager.locator(".balance-panel")).to_be_visible()
         expect(manager.locator(".metric").filter(has_text="Menunggu persetujuan")).to_contain_text("1")
-        for width in (390, 320):
+        expect(manager.locator(".recent-section")).to_have_count(1)
+        expect(manager.locator(".manager-action-queue")).to_have_count(0)
+        assert manager.locator(".item-actions").count() == 0
+        ids = manager.locator(".item-row [data-action=report-detail]").evaluate_all("els => els.map(e => e.dataset.id)")
+        assert len(ids) == len(set(ids)), ids
+        manager.locator("[data-page=finance]:visible").first.click()
+        expect(manager.locator("[data-panel=\"cash-insights\"]")).to_have_count(1)
+        send = manager.locator(f'[data-action="send-finance"][data-id="{finance_approved}"]')
+        expect(send).to_be_visible(timeout=15_000)
+        expect(manager.locator(f'[data-action="send-finance"][data-id="{own}"]')).to_have_count(0)
+        manager.evaluate("state.submissions = []")  # Filter page need not exist in the summary/history page.
+        send.click()
+        expect(manager.locator("#confirmDialog")).to_be_visible()
+        manager.locator("#confirmForm button[type=submit]").click()
+        expect(manager.locator("#confirmDialog")).to_be_hidden()
+        expect(manager.locator(f'[data-action="send-finance"][data-id="{finance_approved}"]')).to_have_count(0)
+        assert api(manager, "/api/overview")["data"]["summary"]["financeWaiting"] == 1
+        assert manager.locator('.item-side').evaluate_all("els => els.every(e => e.getBoundingClientRect().width >= 144)")
+        assert manager.locator('.item-amount').evaluate_all("els => els.every(e => e.getBoundingClientRect().height < 32)")
+        capture(manager, SCREENSHOTS / "dashboard-manager-finance-1280.png")
+        manager.locator("[data-page=overview]:visible").first.click()
+        for width in (390, 320, 768, 1280):
             manager.set_viewport_size({"width": width, "height": 844})
             manager.wait_for_timeout(100)
             measured = manager.evaluate("() => ({w: document.documentElement.clientWidth, s: document.documentElement.scrollWidth})")
             assert measured["s"] <= measured["w"] + 1, measured
-            manager.screenshot(path=str(SCREENSHOTS / f"dashboard-manager-{width}.png"), full_page=True)
+            capture(manager, SCREENSHOTS / f"dashboard-manager-{width}.png")
         assert not errors, errors
         browser.close()
     print(f"DASHBOARD_DESIGN_E2E_PASS screenshots={SCREENSHOTS}", flush=True)

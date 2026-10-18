@@ -5,22 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
   <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
-  <meta name="app-build" content="2026.10.18.4">
+  <meta name="app-build" content="2026.10.18.5">
   <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.4">
-  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.18.4">
-  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.18.4">
-  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.18.4">
-  <script src="/password-crypto.js?v=2026.10.18.4" defer></script>
-  <script src="/report-filters.js?v=2026.10.18.4" defer></script>
-  <script src="/financial-controls.js?v=2026.10.18.4" defer></script>
-  <script src="/report-evidence.js?v=2026.10.18.4" defer></script>
-  <script src="/bounded-history.js?v=2026.10.18.4" defer></script>
-  <script src="/mobile-viewport.js?v=2026.10.18.4" defer></script>
-  <script src="/app.js?v=2026.10.18.4" defer></script>
+  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.18.5">
+  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.18.5">
+  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.18.5">
+  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.18.5">
+  <script src="/password-crypto.js?v=2026.10.18.5" defer></script>
+  <script src="/report-filters.js?v=2026.10.18.5" defer></script>
+  <script src="/financial-controls.js?v=2026.10.18.5" defer></script>
+  <script src="/report-evidence.js?v=2026.10.18.5" defer></script>
+  <script src="/bounded-history.js?v=2026.10.18.5" defer></script>
+  <script src="/mobile-viewport.js?v=2026.10.18.5" defer></script>
+  <script src="/app.js?v=2026.10.18.5" defer></script>
 </head>
 <body class="logged-out" aria-busy="true">
   <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
@@ -89,7 +89,7 @@
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
-          <p class="field-help">Versi 2026.10.18.4</p>
+          <p class="field-help">Versi 2026.10.18.5</p>
           <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
             <p class="passkey-divider">Atau masuk tanpa password</p>
             <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
@@ -148,32 +148,12 @@
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
         <div id="appContent" aria-live="off"></div>
-        <p class="field-help">Versi 2026.10.18.4</p>
+        <p class="field-help">Versi 2026.10.18.5</p>
       </div>
     </main>
   </div>
   <nav class="mobile-nav" id="mobileNav" aria-label="Navigasi mobile"></nav>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <dialog class="report-choice" id="reportChoice" aria-labelledby="reportChoiceTitle" aria-describedby="reportChoiceDescription">
-    <div class="choice-panel">
-      <div class="choice-heading">
-        <div><p class="choice-kicker">Pengajuan baru</p><h2 id="reportChoiceTitle">Pilih jenis laporan</h2></div>
-        <button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup pilihan laporan"><span aria-hidden="true">×</span></button>
-      </div>
-      <p class="choice-description" id="reportChoiceDescription">Saldo petty cash berkurang setelah disetujui Manager. Request Finance masuk setelah persetujuan.</p>
-      <div class="choice-options">
-        <button class="choice-option" type="button" data-action="choose-report-type" data-type="petty_cash">
-          <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15a1.5 1.5 0 0 1 1.5 1.5v11H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h13M4 7v2m11 4h5.5v4H15a2 2 0 0 1 0-4Z" stroke-linejoin="round"/><path d="M16.5 15h.1" stroke-linecap="round"/></svg></span>
-          <span class="choice-copy"><strong>Petty cash</strong><small>Pengeluaran mengurangi saldo setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
-        </button>
-        <button class="choice-option" type="button" data-action="choose-report-type" data-type="finance_request">
-          <span class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h8l4 4v13H6z" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6m-6 3.5h6" stroke-linecap="round"/></svg></span>
-          <span class="choice-copy"><strong>Request Finance</strong><small>Masuk ke daftar Finance setelah disetujui.</small></span><span class="choice-chevron" aria-hidden="true">›</span>
-        </button>
-      </div>
-    </div>
-  </dialog>
 
   <dialog class="app-dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmDescription">
     <form class="dialog-panel" id="confirmForm">
@@ -197,7 +177,7 @@
       <div class="dialog-heading"><h2 id="userProfileTitle">Atur profil dashboard</h2><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup pengaturan profil">×</button></div>
       <p class="dialog-description" id="userProfileDescription"></p>
       <div class="profile-preview" id="profilePreview" aria-label="Pratinjau foto"></div>
-      <div class="profile-photo-actions"><label class="secondary-button profile-gallery-picker" data-action="choose-profile-photo">Upload dari galeri<input id="profilePhoto" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" aria-label="Pilih foto profil dari galeri" aria-describedby="profilePhotoHelp"></label><button class="text-button" type="button" data-action="remove-profile-photo">Hapus foto</button></div>
+      <div class="profile-photo-actions"><label class="profile-photo-label" for="profilePhoto">Foto profil</label><input id="profilePhoto" name="photo" type="file" accept="image/*" aria-label="Pilih foto profil dari galeri" aria-describedby="profilePhotoHelp"><button class="text-button" type="button" data-action="remove-profile-photo">Hapus foto</button></div>
       <p class="field-help" id="profilePhotoHelp">JPG, PNG, WebP, HEIC, atau HEIF, maksimal 10 MB. HEIC/HEIF perlu didukung decoder gambar browser; foto dipotong persegi dan diperkecil sebelum disimpan.</p>
       <p class="field-help" id="profilePhotoStatus" role="status" aria-live="polite"></p>
       <div class="form-grid">

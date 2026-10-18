@@ -48,12 +48,26 @@ test('cancelling discard preserves draft and accepting reloads exactly once', as
     assert.equal(h.calls.confirmed, 1);
   }
 });
-test('version detection bypasses cache, never reloads and only displays the banner to Manager', async () => {
+test('version detection bypasses cache and notifies Manager, User, and logged-out PWA without reloading', async () => {
   for (const role of ['manager', 'user']) {
     const h = harness({ role });
     assert.equal(await h.context.checkForAppUpdate(), true);
     assert.equal(h.calls.fetched[0].options.cache, 'no-store');
     assert.equal(h.calls.reloaded, 0);
-    assert.equal(h.banner.hidden, role !== 'manager');
+    assert.equal(h.banner.hidden, false);
+    assert.match(h.label.textContent, /2026\.10\.18\.4/);
   }
+  const loggedOut = harness();
+  loggedOut.context.state.user = null;
+  assert.equal(await loggedOut.context.checkForAppUpdate(), true);
+  assert.equal(loggedOut.banner.hidden, false);
+  assert.equal(loggedOut.calls.reloaded, 0);
+  loggedOut.context.setUpdateBanner('2026.10.18.3');
+  assert.equal(loggedOut.banner.hidden, true);
+  for (const build of ['2026.10.18.2', '2026.09.30.99', 'not-a-build', '']) {
+    loggedOut.context.setUpdateBanner(build);
+    assert.equal(loggedOut.banner.hidden, true, build);
+  }
+  loggedOut.context.setUpdateBanner('2026.10.18.10');
+  assert.equal(loggedOut.banner.hidden, false, 'numeric build 10 must be newer than 3');
 });

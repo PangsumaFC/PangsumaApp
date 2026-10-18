@@ -76,8 +76,9 @@
     const a = state.alerts, lines = [];
     if (a?.cash?.configured && a.cash.isLow) lines.push(`Saldo di bawah ambang ${rupiah(a.cash.thresholdIdr)}`);
     if (a?.pending?.configured && a.pending.overdueCount) lines.push(`${a.pending.overdueCount} laporan melewati ${a.pending.maxDays} hari`);
-    const text = !a ? 'Memuat peringatan…' : !a.cash?.configured && !a.pending?.configured ? 'Peringatan belum diatur' : lines.join(' · ') || 'Tidak ada peringatan aktif';
-    return `<section class="fc-overview" aria-label="Peringatan keuangan"><p class="fc-alert" role="status">${esc(text)}</p>${state.alertError ? `<p role="alert" class="fc-error">${esc(state.alertError)}</p><button type="button" class="fc-secondary" data-fc-action="retry-alerts">Coba lagi</button>` : ''}${a?.pending?.items?.length ? `<details class="fc-alert-details"><summary>Laporan melewati batas (${esc(a.pending.overdueCount)})</summary><ul>${a.pending.items.map(item => `<li><strong>${esc(item.description)}</strong> · ${esc(rupiah(item.amountIdr))} · ${esc(item.waitingDays)} hari · ${esc(item.createdByName)}</li>`).join('')}</ul>${a.pending.hasMore ? '<p class="fc-muted">Daftar ini menampilkan 25 laporan tertua. Gunakan Persetujuan untuk menelusuri laporan lainnya.</p>' : ''}<button type="button" data-fc-action="approvals" class="fc-link">Buka Persetujuan</button></details>` : ''}</section>`;
+    if (a && !lines.length && !state.alertError) return '';
+    const text = !a ? 'Memuat peringatan…' : lines.join(' · ');
+    return `<section class="fc-overview" aria-label="Peringatan keuangan">${text ? `<p class="fc-alert" role="status">${esc(text)}</p>` : ''}${state.alertError ? `<p role="alert" class="fc-error">${esc(state.alertError)}</p><button type="button" class="fc-secondary" data-fc-action="retry-alerts">Coba lagi</button>` : ''}</section>`;
   }
   function renderRows() {
     if (!state.items.length) return '<p class="fc-muted">Belum ada rekonsiliasi untuk periode ini.</p>';

@@ -22,6 +22,7 @@ def main():
         rotate_first_login(page, password)
         before = api(page, '/api/overview')['data']
         assert before['cashBalanceIdr'] == 0
+        page.locator('[data-page="finance"]:visible').first.click()
         page.locator('[data-action="open-cash-topup"]:visible').first.click()
         page.locator('#cashTopupAmount').fill('250000')
         page.locator('#cashTopupNote').fill('Transfer pemilik untuk operasional lokal')
@@ -54,6 +55,7 @@ def main():
             else:
                 route.continue_()
         page.route('**/api/cash/topups', lose_first_response)
+        page.locator('[data-page="finance"]:visible').first.click()
         page.locator('[data-action="open-cash-topup"]:visible').first.click()
         page.locator('#cashTopupAmount').fill('50000')
         page.locator('#cashTopupNote').fill('Tambahan lokal uji retry aman')

@@ -27,7 +27,7 @@ test('manager mobile nav is evenly arranged in three columns and controls focus'
   assert.match(css, /\.primary-button:focus-visible/);
 });
 
-test('dashboard omits duplicate team settings and all buttons have tactile elevation', () => {
+test('dashboard omits duplicate team settings and global controls do not add a competing bevel', () => {
   assert.doesNotMatch(app, /Pengaturan profil tim/);
-  assert.match(css, /button:not\(:disabled\)\s*\{[^}]*box-shadow:/);
+  assert.match(css, /button:not\(:disabled\)\s*\{[^}]*box-shadow:\s*none/);
 });

@@ -59,7 +59,7 @@ def main():
         page.evaluate('Object.defineProperty(crypto, "randomUUID", {value: undefined, configurable: true})')
         for kind in ('petty_cash', 'finance_request'):
             page.locator('[data-action="open-report-choice"]').click()
-            page.locator(f'[data-action="choose-report-type"][data-type="{kind}"]').click()
+            page.locator("#reportType").select_option(kind)
             expect(page.locator('#reportForm')).to_be_visible()
             page.locator('#reportAmount').fill('125000')
             page.locator('#reportDescription').fill('=Manager local ' + kind)
@@ -105,7 +105,7 @@ def main():
             page.locator(f'[data-action="edit-user-profile"][data-id="{target["id"]}"]').click()
             dialog = visible_dialog(page)
             with page.expect_file_chooser() as chooser_info:
-                dialog.locator('[data-action="choose-profile-photo"]').click()
+                dialog.locator('#profilePhoto').click()
             chooser_info.value.set_files({
                 'name': 'gallery.PNG',
                 'mimeType': 'application/octet-stream' if target['role'] == 'user' else 'image/png',
@@ -174,9 +174,15 @@ def main():
         page.on('requestfailed', lambda request: export_events.append({
             'failure': request.failure
         }) if request.url.endswith('/api/export.csv') else None)
+        # CSV remains a supported API attachment, not a second primary export button.
+        page.evaluate("""() => {
+          const link = document.createElement('a'); link.href = '/api/export.csv';
+          link.download = ''; link.id = 'csv-api-regression'; link.textContent = 'CSV regression';
+          document.body.append(link);
+        }""")
         try:
             with page.expect_download() as download:
-                page.locator('[data-action="download-csv"]').click()
+                page.locator('#csv-api-regression').click()
         except Exception:
             print('CSV_DOWNLOAD_DIAGNOSTIC url=' + page.url + ' events=' + str(export_events) + ' errors=' + str(errors), flush=True)
             page.screenshot(path=str(SCREENSHOTS / 'csv-download-failure.png'), full_page=True)
@@ -188,7 +194,7 @@ def main():
         assert raw.startswith(b'\xef\xbb\xbf') and b'\r\n' in raw
         assert len(list(csv.reader(io.StringIO(raw.decode('utf-8-sig'))))) == len(rows)
         page.screenshot(path=str(SCREENSHOTS / 'manager-csv-downloaded.png'), full_page=True)
-        print('MANAGER_CSV_UI_PASS status=200 download=1 rows=' + str(len(rows)) + ' bom=1 columns=19 formula_safe=1', flush=True)
+        print('MANAGER_CSV_ATTACHMENT_PASS status=200 download=1 rows=' + str(len(rows)) + ' bom=1 columns=19 formula_safe=1', flush=True)
         assert not errors, errors
         context.close()
         browser.close()

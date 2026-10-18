@@ -1,33 +1,49 @@
-# Kandidat rilis PDF dan kontrol keuangan
+# Rilis 2026.10.18.5 — PWA dan antarmuka ringkas
 
-## Status saat ini
+Basis rilis ini adalah produksi `2026.10.18.4` pada commit `5b59991`. Ini pembaruan web/PWA pada origin yang sama, bukan APK atau wrapper Android baru. Tidak ada migrasi, perubahan saldo, transaksi contoh, perubahan akun, atau perubahan database produksi dalam pekerjaan ini. Push biasa ke `main` memakai workflow yang sudah ada; gate D1 tetap read-only dan tidak boleh dilewati.
 
-Kandidat disiapkan di branch `feat/corporate-pdf-controls-20261018`, berbasis `3315b04`. Branch produksi `main` masih berada pada commit tersebut saat diperiksa. Kandidat **belum di-deploy** dan tidak menjalankan migrasi atau transaksi produksi. Riwayat rilis CSV sebelumnya tetap tersedia dalam Git; instruksi lama bukan persetujuan untuk migrasi baru.
+## Satu lokasi untuk setiap tindakan
 
-## Perubahan utama
+| Tindakan | Lokasi utama |
+| --- | --- |
+| User membuat laporan | Menu **Buat laporan**; sidebar desktop dan tombol tambah mobile adalah padanan responsif, tidak terlihat bersamaan |
+| Manager membuat pengajuan sendiri | Satu tombol **Buat pengajuan** di Ringkasan |
+| Memilih Petty cash / Request Finance | Satu kolom jenis dalam form; dialog pemilihan awal yang mengulang fungsi tersebut dihapus |
+| Menyetujui atau menolak | Halaman **Persetujuan**, tetap dengan konfirmasi, alasan, larangan keputusan sendiri, dan pemeriksaan saldo |
+| Menandai Request Finance terkirim | Kartu hasil laporan di **Finance**, hanya untuk request yang disetujui; tidak ada daftar Finance kedua |
+| Isi ulang, saldo awal, unduh PDF | **Finance** |
+| Rincian saldo, tren dan batas perangkat | Disclosure **Rincian saldo dan tren petty cash** di Finance |
+| Rekonsiliasi dan ambang organisasi | Disclosure kontrol keuangan di Finance; ambang organisasi tetap berbeda dari batas perangkat |
+| Password dan pengelolaan akun | Kontrol header sesuai role; tidak digandakan dalam menu User |
+| Aktivitas, nota, dan audit laporan | Detail pengajuan; riwayat sistem dan ledger tetap tersedia pada disclosure masing-masing |
 
-Unduhan Manager menjadi PDF korporat: periode, ringkasan saldo/arus kas, buku kas bersaldo berjalan, pengajuan User/Manager terpisah menurut jenis, status, catatan lengkap, audit, header tabel berulang, dan nomor halaman. Tabel pengajuan memakai nomor urut, bukan UUID panjang yang menghabiskan ruang. Ekspor mencakup semua hasil filter, bukan halaman yang sedang terlihat. Endpoint CSV lama tetap ada hanya untuk kompatibilitas.
+Ringkasan Manager tidak lagi menampilkan pengajuan yang sama dalam tiga daftar (antrean, hari ini, terbaru). Kini hanya ada satu daftar terbaru, saldo utama, ringkasan jumlah, dan peringatan aktif. Dashboard User tidak lagi mengulang CTA, panel instruksi besar, atau status+timeline untuk item yang sama. Finance memakai satu daftar terfilter sebagai sumber eksplorasi dan tindakan; metrik dan daftar request kedua dihapus. Daftar overdue tidak disalin ke dashboard; peringatan jumlah tetap tampil dan keputusan tetap di Persetujuan. Pesan error, draft, konflik, konfirmasi kas, dan jejak audit dipertahankan.
 
-Dashboard Manager menonjolkan saldo, kesehatan kas, antrean, isi ulang atomik, riwayat terperinci WIB, ledger harian, dan tren 30 hari. User memiliki satu CTA utama, status/timeline berdasarkan data nyata, serta draf tahan offline/gagal kirim. Pemberitahuan versi tidak memaksa reload dan melindungi draf/transaksi aktif; navigasi lokal tidak menunggu jaringan.
+## Foto dan unduhan dalam PWA
 
-Kontrol tambahan mencakup rekonsiliasi akhir bulan tanpa koreksi saldo, nota JPEG/PNG privat, pengaturan ambang organisasi opt-in dengan audit versi, daftar laporan melewati batas usia, dan deteksi duplikasi yang hanya memperingatkan. Riwayat serta pencarian memakai cursor dan jumlah baris UI terbatas. Detail akses nota, batas berkas, dan kontrak fitur ada di README.
+Picker foto kini input native yang terlihat, bukan overlay transparan. JPEG/PNG/WebP dari penyedia yang memberi MIME generik atau kosong dan nama tanpa ekstensi dapat dikenali melalui header singkat, lalu tetap didekode dan divalidasi. Pembatalan tidak menghapus draf sebelumnya. Batas ukuran dan validasi server tidak dilonggarkan.
 
-Tampilan diuji pada 320/390px, landscape, dan desktop. Aksi Finance dibuat dua kolom di HP agar konten utama tidak tertutup tombol. Safe-area, viewport keyboard, dialog, fokus, target sentuh, disabled/busy states, dan reduced motion mendapat penjagaan tambahan. Emulasi browser bukan bukti kompatibilitas perangkat fisik tertentu.
+Mode standalone/fullscreen memakai tautan attachment PDF same-origin secara sinkron pada ketukan pengguna, bukan Blob yang baru dibuat setelah fetch selesai. Filter yang diterapkan, cookie sesi, MIME PDF, dan Content-Disposition tetap dipertahankan. Pesan tidak mengklaim file sudah tersimpan; tautan pemulihan tetap ada jika perangkat tidak menampilkan hasil.
 
-## Validasi lokal
+Build HTML, semua JS/CSS, cache service worker dan `version.json` disamakan. Banner hanya menawarkan versi yang lebih baru, tersedia untuk seluruh role dan login, serta tidak tertutup overlay login. Reload tetap eksplisit dan diblokir saat transaksi atau draf belum aman.
 
-- Suite JavaScript/SQLite: **200 tes lulus**.
-- SQLite profil: **9 tes lulus**.
-- E2E kontrol keuangan: lulus untuk selisih rekonsiliasi tanpa perubahan saldo, pengaturan, duplikasi non-blocking, nota privat, respons unggahan hilang/retry dengan kunci sama, pagination 25 baris, seluruh 83 hasil filter di PDF, serta empat ukuran layar.
-- Regresi operasional dan passkey penuh: **lulus**. Cakupan mencakup debit sekali, rollback, cursor tanpa duplikasi/gap, keputusan Finance, status, ekspor, audit, dan akun. Skenario request-budget passkey menggunakan reset counter fixture `--local` agar terpisah dari skenario signature/replay sebelumnya; kebijakan keamanan aplikasi tidak diturunkan.
-- `git diff --check` dan sintaks workflow YAML: lulus.
+## Bukti pengujian
 
-Hasil lokal bukan bukti deployment. Status CI branch tetap harus lulus sebelum merge. Tidak ada klaim reproduksi pada perangkat fisik pengguna atau ekspor terautentikasi produksi.
+Semua pengujian transaksi memakai database lokal sementara. Bukti proses dan screenshot berada di workspace artefak, bukan data produksi.
 
-## Prasyarat produksi yang belum disetujui
+- Unit JavaScript/SQLite dan integritas skema lokal dijalankan melalui `npm test` serta `python3 -B tests/profile_schema_unit.py`.
+- Pengujian foto memeriksa berkas rusak/berbahaya, MIME/ekstensi, pemilih native Chromium, decoding JPEG/PNG/WebP, draf dan pemulihan, simpan/reload profil Manager serta User yang dikelola Manager, dan tidak berubahnya data finansial.
+- PDF browser diuji sebagai attachment nyata beserta teks, sesi dan respons 401. Regresi khusus standalone menyertakan dua fixture, filter URL tepat, hasil yang termasuk/terkecuali dalam teks PDF, respons attachment yang ditunda 5,2 detik, serta tidak dibuatnya Blob URL.
+- Uji responsif mencakup 320/390px, landscape 844×390, desktop, dialog tanpa overflow horizontal, target sentuh 44px, serta fokus form pada simulasi viewport keyboard 390×420.
+- Pembaruan menguji versi baru/lebih lama, layar login, draf, konfirmasi batal, dan transaksi aktif.
+- Regresi dashboard memeriksa kedua role, lokasi tindakan tunggal, tidak ada kartu laporan berulang pada halaman yang sama, dan akses kemampuan penting setelah pemindahan.
 
-Migrasi `0005_cash_topups.sql` membangun ulang ledger untuk jenis isi ulang sambil menyalin ID/baris lama dan memulihkan proteksi. `0006_financial_controls.sql`, `0007_submission_receipts.sql`, dan `0008_financial_alert_settings.sql` menambahkan rekonsiliasi, nota privat, pengaturan, serta audit/proteksi. Persetujuan 0004 sebelumnya **tidak mencakup** paket baru ini.
+Perintah pengujian utama: `bash tests/run-profile-local.sh --image-upload`, `--mobile-download`, `--manager-actions`, `--app-update`, `--financial-controls`; `./tests/run-pwa-local.sh`; serta `bash tests/run-profile-local.sh --dashboard-design`.
 
-Penerapan 0005–0008 memerlukan persetujuan pemilik yang spesifik, backup/bookmark pemulihan, pemilihan target database yang dikunci, dan pembandingan saldo, identitas/jumlah baris ledger, audit, serta trigger sebelum/sesudah. Jangan mengisi saldo, membuat transaksi contoh, mengoreksi selisih rekonsiliasi, atau mengubah akun/DNS sebagai bagian rilis ini.
+## Batas bukti yang tidak boleh disalahartikan
 
-Workflow deploy hanya memeriksa kolom dan trigger secara read-only; ia tidak menerapkan 0005–0008 dan akan menghentikan deployment jika skema belum lengkap. Jangan melewati gate tersebut atau mengaktifkan jalur migrasi 0004 lama untuk menerapkan paket baru. Setelah prosedur migrasi yang disetujui selesai, verifikasi skema dan deploy commit yang sama melalui gerbang CI biasa; pemeriksaan live harus tetap read-only.
+Belum ada perangkat Android/PWA terpasang nyata yang diuji. Emulasi UA, matchMedia standalone, event cancel, landscape dan viewport keyboard di Chromium bukan bukti sistem operasi Android atau galeri fisik. Jangan menyebut kasus perangkat pengguna sudah terbukti selesai sebelum penerimaan di ikon PWA pada HP-nya.
+
+Penerimaan minimum: pastikan versi `.5` terlihat dari ikon PWA, pilih lalu simpan foto dan buka ulang, batalkan lalu pilih lagi, kembali dari galeri dengan draf tetap ada, unduh PDF terfilter dan buka file di Unduhan, lalu periksa sesi dan form saat keyboard terbuka. Tidak perlu menghapus data atau menginstal ulang sebagai langkah awal. Rincian kontrak dan langkah diagnosis ada di [Regresi berkas PWA](pwa-file-regression.md).
+
+Keberhasilan deployment harus dibuktikan oleh workflow commit rilis yang sama dan respons read-only `https://app.pangsumafc.com/version.json` yang menunjukkan `2026.10.18.5`; hasil lokal saja bukan bukti rilis live.

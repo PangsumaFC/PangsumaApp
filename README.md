@@ -85,7 +85,7 @@ Analisis `/api/cash/insights` menjumlahkan seluruh ledger dengan integer presisi
 
 Jalankan `bash tests/run-profile-local.sh --financial-workspace` untuk menguji draf offline, respons pengiriman hilang setelah commit, retry tanpa debit ganda, filter daftar/PDF yang sama, audit, ambang lokal, grafik, dan tata letak 320/390px. Suite Node juga memakai SQLite termigrasi lokal untuk memeriksa otorisasi, cursor, ekspor >100 baris, seluruh ledger >500 baris, batas hari WIB, dan selisih rekonsiliasi. Semua data uji berada di database sementara; tidak membuat transaksi produksi.
 
-## Kandidat rilis kontrol keuangan 2026.10.18.4
+## Paket kontrol keuangan 2026.10.18.4 (arsip)
 
 Rekonsiliasi Manager mencatat saldo ledger historis untuk bulan yang sudah berakhir, hasil hitung fisik, selisih, catatan, pencatat, waktu WIB, serta audit immutable. Fitur ini **tidak mengoreksi saldo**, tidak mengunci bulan, dan tidak mengubah transaksi lama. Draf terpisah menurut akun dan retry isi yang sama memakai kunci idempotensi yang sama.
 
@@ -97,6 +97,10 @@ Laporan Manager memakai pencarian server dan cursor 25 baris per halaman. Riwaya
 
 Lapisan mobile melindungi safe-area, gestur Android, orientasi, viewport keyboard, dialog, fokus, target sentuh, angka rupiah panjang, busy/disabled states, dan reduced motion. Pembaruan versi tetap eksplisit dengan guard draf/transaksi; menu lokal tidak menunggu fetch.
 
-**Rilis produksi menunggu persetujuan pemilik atas migrasi 0005–0008.** Workflow hanya memeriksa kolom dan 12 trigger baru secara read-only dan akan memblokir deploy jika skema belum lengkap. Workflow tidak menjalankan migrasi ini. Backup/bookmark serta verifikasi saldo, identitas/baris ledger, dan audit merupakan bagian prosedur migrasi terpisah yang harus disetujui. Pengujian hanya memakai database sementara `--local`, tanpa transaksi produksi.
+**Catatan historis rilis .4:** paket tersebut telah menjadi basis produksi pada `5b59991`. Rilis PWA/UI `.5` tidak menerapkan migrasi atau mengubah database. Workflow hanya memeriksa kolom dan 12 trigger baru secara read-only dan akan memblokir deploy jika skema belum lengkap. Workflow tidak menjalankan migrasi ini. Backup/bookmark serta verifikasi saldo, identitas/baris ledger, dan audit merupakan bagian prosedur migrasi terpisah yang harus disetujui. Pengujian hanya memakai database sementara `--local`, tanpa transaksi produksi.
 
 Regresi tambahan: `bash tests/run-profile-local.sh --financial-controls` menguji rekonsiliasi, pengaturan, duplikasi non-blocking, nota privat, respons unggahan hilang/retry idempoten, pagination, PDF terfilter lengkap, dan viewport 320/390px, landscape, desktop. `npm test` mencakup unit, SQLite termigrasi, kontrol akses/CSRF, nominal aman, audit, cursor, dan berkas berbahaya. `bash tests/run-local.sh` mencakup operasi/passkey penuh; isolasi counter rate-limit hanya dilakukan pada fixture sementara, tanpa melonggarkan kebijakan aplikasi.
+
+## Perbaikan PWA dan antarmuka 2026.10.18.5
+
+Status aktif ada di [catatan rilis](docs/release-status.md). Foto memakai input native terlihat; unduhan standalone memakai attachment same-origin sinkron. [Kontrak PWA](docs/pwa-file-regression.md) menjelaskan batas bukti pengujian Android. Dashboard kini ringkas, setiap aksi punya lokasi utama, dan Finance memakai satu daftar hasil terfilter. Pilihan jenis laporan hanya di form; rincian saldo/tren dipusatkan pada disclosure Finance. Menu password hanya di header, bukan diulang pada navigasi User. Jalankan `./tests/run-pwa-local.sh` untuk regresi standalone terisolasi; simulasi Chromium tidak boleh disebut pengujian PWA Android terpasang.

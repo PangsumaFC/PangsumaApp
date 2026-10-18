@@ -64,3 +64,38 @@ test('a detached or incomplete custom-range form never auto-applies its stale dr
   h.form.isConnected = true; h.form.checkValidity = () => false; h.input(); h.flushTimers(); await settle();
   assert.equal(h.calls.length, 1);
 });
+
+test('all draft fields survive result refresh while PDF keeps only applied filters', async () => {
+  const h = clientHarness(); h.client.render(); await settle();
+  h.form.values = { q: 'nota', jenis: 'petty_cash', status: 'approved', pengaju: 'Rahmat' };
+  h.input();
+  h.events.change({ target: { form: h.form, name: 'jenis', value: 'petty_cash' } });
+  h.client.refresh(); await settle();
+  const html = h.client.render();
+  assert.match(html, /value="petty_cash" selected/);
+  assert.match(html, /value="approved" selected/);
+  assert.match(html, /value="Rahmat"/);
+  assert.equal(h.client.pdfUrl(), '/api/export.pdf', 'unsaved filters must not affect export');
+  h.events.submit({ target: h.form, preventDefault() {} }); await settle();
+  const applied = new URLSearchParams(h.client.pdfUrl().split('?')[1]);
+  assert.equal(applied.get('jenis'), 'petty_cash');
+  assert.equal(applied.get('status'), 'approved');
+  assert.equal(applied.get('pengaju'), 'Rahmat');
+  h.form.values.jenis = '';
+  h.events.change({ target: { form: h.form, name: 'jenis', value: '' } });
+  h.client.refresh(); await settle();
+  assert.doesNotMatch(h.client.render(), /value="petty_cash" selected/);
+  assert.equal(new URLSearchParams(h.client.pdfUrl().split('?')[1]).get('jenis'), 'petty_cash');
+});
+
+test('finance actions can resolve the bounded filter page without retaining old pages or other sessions', async () => {
+  const h = clientHarness(); h.client.render(); await settle();
+  assert.equal(h.client.findItem('first-page')?.id, 'first-page');
+  h.click('after'); await settle();
+  assert.equal(h.client.findItem('first-page'), null);
+  assert.equal(h.client.findItem('second-page')?.id, 'second-page');
+  h.setUser({ id: 'other-manager', role: 'manager' });
+  assert.equal(h.client.findItem('second-page'), null);
+  h.setUser({ id: 'ordinary-user', role: 'user' });
+  assert.equal(h.client.findItem('second-page'), null);
+});

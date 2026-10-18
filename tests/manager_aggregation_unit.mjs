@@ -10,7 +10,7 @@ function functionSource(name) {
   const end = source.indexOf('\nfunction ', start + 1);
   return source.slice(start, end < 0 ? source.length : end);
 }
-function harness(summary = {}) {
+function harness() {
   const submissions = [
     ['manager-petty', 'petty_cash', 'approved', 'manager'],
     ['user-petty-approved', 'petty_cash', 'approved', 'user'],
@@ -24,39 +24,44 @@ function harness(summary = {}) {
   ].map(([id, type, status, createdBy]) => ({ id, type, status, createdBy, description: id, amountIdr: 1000 }));
   const context = vm.createContext({
     state: {
-      user: { id: 'manager', role: 'manager' }, submissions, summary,
+      user: { id: 'manager', role: 'manager' }, submissions,
+      summary: { financeWaiting: 25, financeTotal: 50, financeSent: 20 },
       cashBalanceIdr: 100000, cashLedger: [], history: { cashLedger: { loaded: 0, total: 0 } }
     },
     pageHeading: (title, subtitle, actions = '') => `${title} ${subtitle} ${actions}`,
     metricCard: (_icon, label, value) => `${label}=${value};`,
-    submissionCard: item => `<card>${item.id}</card>`,
+    submissionCard: (item, options = {}) => `<card>${item.id}</card>${options.financeActions && item.type === 'finance_request' && item.status === 'approved' ? `<button data-action="send-finance" data-id="${item.id}">Send</button>` : ''}`,
     money: String, compactMoney: String, escapeHTML: String,
     submissionMeta: () => '', historyControls: () => '', emptyState: title => title,
-    ledgerRow: () => '', userOverview: () => 'user-only'
+    cashInsightsRegion: () => '<cash-insights/>', ledgerRow: () => '', userOverview: () => 'user-only'
   });
   vm.runInContext(`${functionSource('financePage')}\n${functionSource('cashInfo')}`, context);
   return context;
 }
 
-test('Pengeluaran menggabungkan Manager otomatis approved dan User approved tanpa pending/rejected', () => {
+test('Pengeluaran menggabungkan Manager dan User approved tanpa pending atau rejected', () => {
   const html = vm.runInContext('cashInfo()', harness());
   assert.match(html, /<card>manager-petty<\/card>/);
   assert.match(html, /<card>user-petty-approved<\/card>/);
   assert.doesNotMatch(html, /user-petty-pending|user-petty-rejected|manager-finance/);
 });
 
-test('Fallback ringkasan Finance hanya menghitung approved sebagai siap dikirim', () => {
-  const html = vm.runInContext('financePage()', harness());
-  assert.match(html, /Belum dikirim=2;/);
-  assert.match(html, /Terkirim=1;/);
+test('Finance fallback renders each report once and only approved finance requests can be sent', () => {
+  const context = harness();
+  const html = vm.runInContext('financePage()', context);
+  for (const item of context.state.submissions) assert.equal(html.split(`<card>${item.id}</card>`).length - 1, 1);
   const sendIds = [...html.matchAll(/data-action="send-finance" data-id="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(sendIds, ['manager-finance', 'user-finance-approved']);
-  assert.match(html, /Menunggu Manager/); // Pending is visible with its own label, never ready to send.
+  assert.match(html, /data-panel="cash-insights"/);
 });
 
-test('Ringkasan Finance dari server tetap dipakai untuk riwayat berpaginasi', () => {
-  const html = vm.runInContext('financePage()', harness({ financeWaiting: 25, financeTotal: 50, financeSent: 20 }));
-  assert.match(html, /Belum dikirim=25;/);
-  assert.match(html, /Total request=50;/);
-  assert.match(html, /Terkirim=20;/);
+test('filtered workspace is the only Finance list, without duplicate totals or cards', () => {
+  const context = harness();
+  context.ManagerReportFilters = { render: () => '<filtered-workspace/>', pdfUrl: () => '/api/export.pdf?q=applied' };
+  const html = vm.runInContext('financePage()', context);
+  assert.equal(html.split('<filtered-workspace/>').length - 1, 1);
+  assert.doesNotMatch(html, /<card>|Ringkasan Finance|Belum dikirim=|Total request=|Terkirim=/);
+  assert.match(html, /\/api\/export\.pdf\?q=applied/);
+  assert.equal((html.match(/data-action="download-pdf"/g) || []).length, 1);
+  assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 1);
 });

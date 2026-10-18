@@ -104,7 +104,8 @@ CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --
 curl --connect-timeout 1 --max-time 5 -fsS "$base/api/health" >/dev/null || { cat "$state_dir/wrangler.log" >&2; exit 1; }
 echo 'PROFILE_MIGRATION_POST_PASS health=200 same_server_recovered=1'
 export PANGSUMA_LOCAL_URL="$base"
-export PROFILE_REVIEW_DIR="$(mktemp -d /workspace/pangsuma-profile-review.XXXXXX)"
+export PROFILE_REVIEW_DIR="${PROFILE_REVIEW_DIR:-$(mktemp -d /workspace/pangsuma-profile-review.XXXXXX)}"
+mkdir -p "$PROFILE_REVIEW_DIR"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUNBUFFERED=1
 echo "PROFILE_REVIEW_DIR=$PROFILE_REVIEW_DIR"

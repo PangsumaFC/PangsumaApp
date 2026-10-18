@@ -68,8 +68,9 @@ button:disabled:hover, button:disabled:active { transform: none; }
 .item-amount, .metric-value, .ledger-count strong, .balance-panel strong,
 .archive-total, td[data-label*="Nominal"], td[data-label*="Saldo"],
 [class*="amount"], [class*="balance"] { font-variant-numeric: tabular-nums; }
-.item-amount { max-width: 48%; overflow-wrap: anywhere; white-space: normal; }
-.item-side { min-width: 0; max-width: min(48%, 230px); }
+.item-row { grid-template-columns: minmax(0, 1fr) minmax(144px, 200px); }
+.item-amount { width: 100%; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.item-side { min-width: 0; width: 100%; max-width: 100%; }
 
 /* Tables scroll as a component only; do not create a page-wide horizontal scroller. */
 .table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
@@ -152,4 +153,155 @@ dialog.report-choice, dialog.app-dialog {
   .page-heading .heading-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; align-items: stretch; }
   .page-heading .heading-actions > button { min-width: 0; width: 100%; min-height: 48px; height: auto; padding: 10px; white-space: normal; font-size: 13px; line-height: 1.35; }
   .page-heading .heading-actions > .pdf-fallback { grid-column: 1 / -1; }
+}
+
+/* Precision pass: preserve the ledger's full values while giving each control
+   a predictable column, baseline, and wrapping boundary. */
+.page-heading,
+.section-row,
+.fc-heading,
+.receipt-heading { min-width: 0; }
+.page-heading > :first-child,
+.section-row > :first-child,
+.fc-heading > :first-child,
+.receipt-heading > :first-child { min-width: 0; }
+.page-heading h1,
+.section-row h2,
+.fc-heading h2,
+.receipt-heading h3 { overflow-wrap: anywhere; }
+.page-heading .date-label,
+.section-row > .archive-total,
+.section-row > .cash-trend-change,
+.fc-heading p { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.form-actions { align-items: stretch; }
+.form-actions > button,
+.form-actions > .primary-button,
+.form-actions > .secondary-button,
+.form-actions > .danger-button { min-width: min(100%, 150px); }
+.item-actions > button { flex: 0 1 auto; }
+.cash-health-card,
+.cash-trend-card { min-width: 0; }
+.cash-health-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .42fr); gap: 24px; align-items: start; }
+.cash-health-threshold { min-width: 0; padding-left: 20px; border-left: 1px solid var(--line); text-align: right; }
+.cash-health-threshold strong,
+.cash-health-threshold p { overflow-wrap: anywhere; }
+.cash-health-threshold .text-button { margin-top: 4px; }
+.cash-trend-card .section-row { align-items: flex-start; }
+.cash-trend-change { max-width: 42%; overflow-wrap: anywhere; }
+.profile-dialog .dialog-panel { min-width: 0; overflow-wrap: anywhere; }
+.profile-photo-actions { position: relative; z-index: 2; align-items: center; }
+.profile-gallery-picker { display: inline-flex; min-width: 0; min-height: 44px; align-items: center; padding: 9px 14px; border: 1px solid #ccd5dc; border-radius: var(--radius-sm); color: var(--blue-deep); background: var(--paper); cursor: pointer; font-weight: 660; }
+.profile-gallery-picker:hover { border-color: #aebdc8; background: #f5f7f9; }
+#profilePhoto { display: block; min-width: 0; min-height: 44px; max-width: 100%; color: var(--blue-deep); font-size: 13px; }
+#profilePhoto::file-selector-button { min-height: 44px; margin-right: 8px; padding: 8px 12px; border: 1px solid #ccd5dc; border-radius: var(--radius-sm); color: var(--blue-deep); background: var(--paper); cursor: pointer; font: inherit; font-weight: 660; }
+#profilePhoto::file-selector-button:hover { border-color: #aebdc8; background: #f5f7f9; }
+.profile-gallery-picker:focus-visible, #profilePhoto:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.profile-dialog .profile-preview { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .topbar { align-items: center; }
+  .brand-name { max-width: 10.5rem; overflow-wrap: anywhere; }
+  .page-heading,
+  .section-row,
+  .fc-heading,
+  .receipt-heading { row-gap: 8px; }
+  .cash-health-card { grid-template-columns: minmax(0, 1fr); gap: 15px; }
+  .cash-health-threshold { padding: 13px 0 0; border-top: 1px solid var(--line); border-left: 0; text-align: left; }
+  .cash-trend-change { max-width: 48%; text-align: right; }
+  dialog.profile-dialog { width: min(560px, calc(100% - 20px)); }
+  .profile-photo-actions { align-items: stretch; }
+  .profile-photo-actions > * { flex: 1 1 180px; min-width: 0; text-align: center; }
+  .form-actions > button,
+  .form-actions > .primary-button,
+  .form-actions > .secondary-button,
+  .form-actions > .danger-button { min-width: 0; }
+}
+
+@media (max-width: 390px) {
+  .topbar { padding-inline: 10px; }
+  .brand { gap: 6px; }
+  .brand img { width: 34px; height: 34px; }
+  .brand-name { max-width: 8.6rem; font-size: 16px; line-height: 1.1; }
+  .top-actions { gap: 4px; }
+  .logout-button { padding-inline: 10px; }
+  .cash-health-equation { gap: 8px 6px; }
+  .cash-health-equation > div { flex: 1 1 42%; }
+  .cash-trend-change { max-width: 44%; }
+}
+
+@media (max-width: 330px) {
+  .brand-name { max-width: 6.9rem; }
+  .account-icon-button { width: 44px; min-width: 44px; padding-inline: 6px; }
+  .logout-button { padding-inline: 8px; }
+}
+
+/* Cohesive controls: keep Pangsuma's blue/gold palette, but remove the
+   competing raised/beveled treatment from product buttons. */
+.install-button,
+.primary-button,
+.secondary-button,
+.quiet-button,
+.danger-button,
+.text-button,
+.filter-chip,
+.choice-option,
+.choice-close,
+.profile-photo-actions button {
+  box-shadow: none;
+  transform: none;
+  border-radius: var(--radius-sm, 8px);
+}
+.primary-button { border-color: var(--blue-deep, #17334e); background: var(--blue-deep, #17334e); color: #fff; }
+.primary-button:hover { border-color: #224966; background: #224966; }
+.secondary-button,
+.install-button { border-color: #ccd5dc; background: var(--paper, #fff); color: var(--blue-deep, #17334e); }
+.secondary-button:hover,
+.install-button:hover,
+.quiet-button:hover { border-color: #aebdc8; background: #f5f7f9; }
+.quiet-button { border-color: transparent; background: transparent; color: var(--blue-deep, #17334e); }
+.danger-button { border-color: #d9b8b3; background: #fff; color: var(--red, #913b35); }
+.sidebar .nav-button[aria-current="page"] {
+  box-shadow: none;
+  color: var(--blue-deep, #17334e);
+  background: #e8f0f7;
+}
+
+/* The photo chooser is a field, not a second faux button. */
+.profile-photo-label { display: block; margin: 0 0 5px; color: var(--ink); font-weight: 650; }
+.profile-photo-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; align-items: end; }
+.profile-photo-actions .profile-photo-label { grid-column: 1 / -1; margin: 0; }
+#profilePhoto { width: 100%; min-height: 44px; padding: 7px 0; color: var(--ink); background: transparent; }
+#profilePhoto::file-selector-button {
+  min-height: 44px; margin: 0 10px 0 0; padding: 8px 12px;
+  border: 1px solid #ccd5dc; border-radius: var(--radius-sm, 8px);
+  color: var(--blue-deep); background: var(--paper); cursor: pointer; font: inherit; font-weight: 660;
+}
+#profilePhoto::file-selector-button:hover { border-color: #aebdc8; background: #f5f7f9; }
+.profile-photo-actions > .text-button { min-height: 44px; white-space: nowrap; }
+
+/* Cash actions use the available card width rather than a narrow fixed button. */
+.balance-actions { min-width: 0; }
+.cash-health-threshold { text-align: left; }
+@media (max-width: 760px) {
+  .balance-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .balance-actions > button { width: 100%; min-width: 0; }
+  .profile-photo-actions { grid-template-columns: minmax(0, 1fr) auto; }
+}
+@media (max-width: 359px) {
+  .balance-actions { grid-template-columns: minmax(0, 1fr); }
+  .profile-photo-actions { grid-template-columns: minmax(0, 1fr); }
+  .profile-photo-actions > .text-button { width: 100%; }
+}
+
+/* The same update control must remain actionable above the login overlay. */
+body.logged-out .app-update-banner:not([hidden]) {
+  position: fixed;
+  z-index: 21;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  margin: 0 auto;
+}
+body.logged-out:has(.app-update-banner:not([hidden])) .login-screen {
+  padding-top: max(150px, calc(env(safe-area-inset-top, 0px) + 140px));
 }

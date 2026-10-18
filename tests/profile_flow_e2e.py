@@ -124,7 +124,7 @@ def login_user_and_rotate(page: Page, email: str, temporary: str) -> str:
 def set_file(page: Page, selector: str, name: str, data: bytes, mime: str):
     assert page.locator(selector).count() == 1
     with page.expect_file_chooser() as chooser:
-        page.locator("[data-action='choose-profile-photo']").click()
+        page.locator("#profilePhoto").click()
     chooser.value.set_files({"name": name, "mimeType": mime, "buffer": data})
 
 
@@ -301,8 +301,8 @@ def main():
         assert user.locator(".welcome-card img").evaluate("img => img.complete && img.naturalWidth > 0")
         before_form = user.locator("body").inner_text()
         assert user.evaluate("typeof window.refreshProfile") == "function"
-        user.locator("[data-action='open-report-choice']").first.click()
-        user.locator("#reportChoice [data-action='choose-report-type']").first.click()
+        user.locator("[data-page='new-report']:visible").first.click()
+        user.locator("#reportType").select_option("petty_cash")
         user.locator("#reportDescription").fill("Draft survives profile refresh")
         before_refresh = user.locator("body").inner_text()
         user.evaluate("window.refreshProfile()")

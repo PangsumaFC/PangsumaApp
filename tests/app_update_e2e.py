@@ -36,18 +36,20 @@ def main():
         browser = playwright.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox"])
         context = browser.new_context(viewport={"width": 1280, "height": 900}, timezone_id="Asia/Jakarta")
         page = context.new_page()
-        build = {"value": "2026.10.18.4"}
+        current = json.loads((Path(__file__).resolve().parents[1] / "site/version.json").read_text())["build"]
+        parts = current.split(".")
+        newer = ".".join(parts[:-1] + [str(int(parts[-1]) + 1)])
+        build = {"value": newer}
         page.route("**/version.json*", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"build": build["value"]})))
         page.goto(BASE, wait_until="networkidle", timeout=30_000)
         login(page, MANAGER, password)
         password = rotate_first_login(page, password)
         page.evaluate("checkForAppUpdate()")
         expect(page.locator("#appUpdateBanner")).to_be_visible(timeout=10_000)
-        expect(page.locator("#appUpdateVersion")).to_contain_text("2026.10.18.4")
+        expect(page.locator("#appUpdateVersion")).to_contain_text(newer)
 
         page.locator("[data-action='open-report-choice']:visible").first.click()
-        page.locator("[data-action='choose-report-type']").first.wait_for(timeout=10_000)
-        page.locator("[data-action='choose-report-type']").first.click()
+        page.locator("#reportType").select_option("petty_cash")
         page.locator("#reportForm").wait_for(timeout=10_000)
         page.locator("#reportForm [name='description']").fill("Draf jangan hilang")
         page.evaluate("checkForAppUpdate()")
@@ -62,7 +64,7 @@ def main():
         expect(page.locator("#reportForm [name='description']")).to_have_value("Draf jangan hilang")
 
         page.evaluate("window.confirm = () => true")
-        build["value"] = "2026.10.18.3"
+        build["value"] = current
         page.locator("#appUpdateReload").click()
         page.wait_for_load_state("networkidle", timeout=20_000)
         page.wait_for_timeout(500)

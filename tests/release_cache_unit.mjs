@@ -8,7 +8,11 @@ const worker = fs.readFileSync(new URL('../site/sw.js', import.meta.url), 'utf8'
 
 test('HTML and service worker precache the same release-specific executable assets', () => {
   const build = html.match(/name="app-build" content="([^"]+)"/)[1];
-  for (const asset of ['app.js', 'password-crypto.js', 'pangsuma-theme.css']) {
+  assert.equal(JSON.parse(fs.readFileSync(new URL('../site/version.json', import.meta.url), 'utf8')).build, build);
+  const executableAssets = [...html.matchAll(/(?:src|href)="\/([^"?]+\.(?:js|css))\?v=([^"&]+)"/g)];
+  assert.ok(executableAssets.length >= 11);
+  for (const [, asset, version] of executableAssets) {
+    assert.equal(version, build, `${asset} must use the running build`);
     assert.ok(html.includes(`/${asset}?v=${build}`));
     assert.ok(worker.includes(`/${asset}?v=${build}`));
   }
