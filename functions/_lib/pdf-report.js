@@ -24,6 +24,7 @@ function sanitize(value) {
 function safeText(value) { return sanitize(value).text; }
 
 function amount(value) {
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) value = BigInt(value);
   if (typeof value === 'bigint') return `${value < 0n ? '-' : ''}Rp${(value < 0n ? -value : value).toLocaleString('id-ID')}`;
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';
@@ -42,6 +43,11 @@ function shortDate(value) {
   return Number.isNaN(d.getTime()) ? safeText(value).slice(0, 10) : new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+function integerIdr(value) {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) return BigInt(value);
+  return BigInt(Math.round(num(value)));
+}
 function isIncoming(value) { return ['in', 'credit'].includes(String(value ?? '').toLowerCase()); }
 function isOutgoing(value) { return ['out', 'debit'].includes(String(value ?? '').toLowerCase()); }
 function statusLabel(value) {
@@ -92,21 +98,21 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
   pdf.setSubject('Petty Cash, Request Finance, dan jejak audit');
   pdf.setCreator('Pangsuma App');
   const snapshot = snapshotAt || new Date().toISOString();
-  const dates = [...submissions.map(row => row.date ? `${row.date}T00:00:00+07:00` : row.created_at), ...ledger.map(row => row.created_at), ...audits.map(row => row.created_at), snapshot].map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
-  const earliest = dates.reduce((a, b) => a < b ? a : b, new Date(snapshot));
-  const latest = dates.reduce((a, b) => a > b ? a : b, new Date(snapshot));
+  const dates = [...submissions.map(row => row.date ? `${row.date}T00:00:00+07:00` : row.created_at), ...ledger.map(row => row.created_at), ...audits.map(row => row.created_at)].map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
+  const earliest = dates.length ? dates.reduce((a, b) => a < b ? a : b) : new Date(snapshot);
+  const latest = dates.length ? dates.reduce((a, b) => a > b ? a : b) : new Date(snapshot);
   const periodDate = date => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
   const period = periodLabel || `Periode ${periodDate(earliest)} - ${periodDate(latest)} | Seluruh riwayat`;
   const filterLines = filterDescription ? wrap(`Filter: ${filterDescription}`, regular, 7.5, CONTENT_W) : [];
   const headerBottom = 100 + filterLines.length * 10;
-  let page; let y; let pageNo = 0; let unicodeReplaced = false; let pendingHeading = '';
-  const mark = (value) => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
+  let page; let y; let pendingHeading = ''; let unicodeReplaced = sanitize(filterDescription).replaced;
+  const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
-    page = pdf.addPage([PAGE_W, PAGE_H]); pageNo += 1;
+    page = pdf.addPage([PAGE_W, PAGE_H]);
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
     page.drawText('LAPORAN KEUANGAN', { x: MARGIN, y: PAGE_H - 63, size: 19, font: bold, color: NAVY });
-    page.drawText(`Snapshot ${mark(dateWib(snapshotAt || new Date().toISOString()))} WIB`, { x: PAGE_W - MARGIN - 240, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
+    page.drawText(`Tanggal cetak: ${mark(dateWib(snapshot))} WIB`, { x: PAGE_W - MARGIN - 240, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 240, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
     filterLines.forEach((line, index) => page.drawText(mark(line), { x: MARGIN, y: PAGE_H - 92 - index * 10, size: 7.5, font: regular, color: MUTED }));
@@ -126,7 +132,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
     page.drawText(valueText, { x: xx, y: yy, size, font, color, maxWidth: width });
   }
   function heading(label) { pendingHeading = label; }
-  function table({ columns, rows, empty = 'Tidak ada data.' }) {
+  function table({ columns, rows, totals }) {
     const headerH = 22; const fontSize = 7.4; const pad = 5; const lineH = 9.4;
     const total = columns.reduce((a, c) => a + c.width, 0);
     if (total > CONTENT_W + 0.01) throw new Error(`Table width ${total} exceeds content width ${CONTENT_W}`);
@@ -146,7 +152,6 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
       y -= headerH;
     }
     drawHeader();
-    if (!rows.length) { ensure(27); page.drawRectangle({ x: MARGIN, y: y - 22, width: total, height: 22, color: PALE }); text(empty, MARGIN + pad, y - 14, 8, regular, MUTED); y -= 27; return; }
     rows.forEach((row, rowIndex) => {
       const cells = columns.map(c => wrap(mark(row[c.key]), regular, fontSize, c.width - pad * 2));
       const rowHeight = Math.max(22, Math.max(...cells.map(c => c.length)) * lineH + 8);
@@ -171,6 +176,18 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
         y -= h; offset += count;
       }
     });
+    if (totals) {
+      const cells = columns.map(c => totals[c.key] === undefined ? [] : wrap(mark(totals[c.key]), bold, fontSize, c.width - pad * 2));
+      const height = Math.max(24, Math.max(...cells.map(c => c.length)) * lineH + 8);
+      if (y - height < 38) { footer(); newPage(); drawHeader(); }
+      page.drawRectangle({ x: MARGIN, y: y - height + 4, width: total, height, color: PALE });
+      let x = MARGIN;
+      columns.forEach((c, i) => {
+        cells[i].forEach((line, li) => text(line, x + pad, y - 12 - li * lineH, fontSize, bold, NAVY, { maxWidth: c.width - pad * 2, align: c.align }));
+        x += c.width;
+      });
+      y -= height;
+    }
     y -= 13;
   }
 
@@ -182,53 +199,55 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
   const auditRows = [...(Array.isArray(audits) ? audits : [])].sort((a, b) => (new Date(a.created_at || a.date || 0) - new Date(b.created_at || b.date || 0)) || num(a.id) - num(b.id));
   const petty = subs.filter(s => String(s.type || '').toLowerCase() === 'petty_cash');
   const finance = subs.filter(s => String(s.type || '').toLowerCase() !== 'petty_cash');
-  const totalFor = (list, statuses) => list.filter(s => statuses.includes(String(s.status).toLowerCase())).reduce((a, s) => a + BigInt(Math.round(num(s.amount_idr ?? s.amount))), 0n);
+  const totalFor = (list, statuses) => list.filter(s => statuses.includes(String(s.status).toLowerCase())).reduce((a, s) => a + integerIdr(s.amount_idr ?? s.amount), 0n);
+  const totalSubmitted = list => list.reduce((a, s) => a + integerIdr(s.amount_idr ?? s.amount), 0n);
   const financeApproved = totalFor(finance, ['approved']); const financeSent = totalFor(finance, ['sent']);
   const opening = ledgers.find(l => l.event_type === 'opening_balance' && num(l.amount_idr) > 0) || ledgers.find(l => l.event_type === 'opening_balance');
-  const openingBalance = openingBalanceIdr !== null ? num(openingBalanceIdr) : num(opening?.balance_after_idr ?? (opening ? opening.amount_idr : 0));
-  const incoming = ledgers.filter(l => isIncoming(l.direction)).reduce((a, l) => a + BigInt(Math.round(num(l.amount_idr ?? l.amount))), 0n);
-  const outgoing = ledgers.filter(l => isOutgoing(l.direction)).reduce((a, l) => a + BigInt(Math.round(num(l.amount_idr ?? l.amount))), 0n);
-  const finalBalance = closingBalanceIdr !== null ? num(closingBalanceIdr) : ledgers.length ? num(ledgers[ledgers.length - 1].balance_after_idr) : openingBalance;
+  const openingBalance = openingBalanceIdr !== null ? integerIdr(openingBalanceIdr) : integerIdr(opening?.balance_after_idr ?? (opening ? opening.amount_idr : 0));
+  const incoming = ledgers.filter(l => isIncoming(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
+  const outgoing = ledgers.filter(l => isOutgoing(l.direction)).reduce((a, l) => a + integerIdr(l.amount_idr ?? l.amount), 0n);
+  const finalBalance = closingBalanceIdr !== null ? integerIdr(closingBalanceIdr) : ledgers.length ? integerIdr(ledgers[ledgers.length - 1].balance_after_idr) : openingBalance;
 
   newPage();
-  ensure(132);
-  page.drawRectangle({ x: MARGIN, y: y - 120, width: CONTENT_W, height: 120, color: PALE });
+  ensure(108);
+  page.drawRectangle({ x: MARGIN, y: y - 96, width: CONTENT_W, height: 96, color: PALE });
   text('RINGKASAN', MARGIN + 14, y - 17, 8, bold, TEAL);
-  text(`Saldo awal ${amount(openingBalance)}`, MARGIN + 14, y - 37, 10, regular, INK);
-  text(`Saldo akhir ${amount(finalBalance)}`, MARGIN + 14, y - 56, 13, bold, NAVY);
-  const stats = [`${ledgerIsPartial ? 'Masuk terpilih' : 'Total masuk'} ${amount(incoming)}`, `${ledgerIsPartial ? 'Keluar terpilih' : 'Keluar'} ${amount(outgoing)}`, `Finance disetujui ${amount(financeApproved)}`, `Finance terkirim ${amount(financeSent)}`];
-  stats.forEach((s, i) => text(s, MARGIN + 215 + (i % 2) * 190, y - 34 - Math.floor(i / 2) * 22, 8, regular, INK, { maxWidth: 180 }));
-  text(`Baris ledger ${ledgers.length} | Audit ${auditRows.length}`, MARGIN + 585, y - 56, 8, regular, INK, { maxWidth: 180 });
-  const balanceNote = ledgerIsPartial ? 'Saldo berjalan adalah saldo rekening; transaksi lain di luar filter tidak ditampilkan.' : openingBalanceIdr !== null ? 'Saldo akhir = saldo awal + masuk periode - keluar periode. Request Finance tidak mengubah Petty Cash.' : 'Total masuk mencakup saldo awal. Request Finance tidak mengubah saldo Petty Cash.';
-  text(balanceNote, MARGIN + 14, y - 74, 7, regular, MUTED);
-  text(`Petty Cash: ${petty.length} pengajuan | Nominal diajukan (semua status) ${amount(totalFor(petty, ['pending', 'approved', 'rejected', 'sent']))}`, MARGIN + 14, y - 92, 8, regular, INK, { maxWidth: CONTENT_W - 28 });
-  text(`Request Finance: ${finance.length} pengajuan | Nominal diajukan (semua status) ${amount(totalFor(finance, ['pending', 'approved', 'rejected', 'sent']))}`, MARGIN + 14, y - 107, 8, regular, INK, { maxWidth: CONTENT_W - 28 });
-  y -= 136;
+  text(`${ledgerIsPartial ? 'Saldo akun awal' : 'Saldo awal'} ${amount(openingBalance)}`, MARGIN + 14, y - 35, 9, regular, INK);
+  text(`${ledgerIsPartial ? 'Saldo akun akhir' : 'Saldo akhir'} ${amount(finalBalance)}`, MARGIN + 14, y - 53, 11, bold, NAVY);
+  const stats = [`${ledgerIsPartial ? 'Masuk terpilih' : openingBalanceIdr !== null ? 'Masuk periode' : 'Masuk + saldo awal'} ${amount(incoming)}`, `${ledgerIsPartial ? 'Keluar terpilih' : 'Keluar'} ${amount(outgoing)}`, `Finance disetujui ${amount(financeApproved)}`, `Finance terkirim ${amount(financeSent)}`];
+  stats.forEach((s, i) => text(s, MARGIN + 260 + (i % 2) * 245, y - 35 - Math.floor(i / 2) * 18, 8, regular, INK));
+  text(`Petty Cash: ${petty.length} pengajuan | Total diajukan ${amount(totalSubmitted(petty))}`, MARGIN + 14, y - 74, 8, regular, INK);
+  text(`Request Finance: ${finance.length} pengajuan | Total diajukan ${amount(totalSubmitted(finance))}`, MARGIN + 14, y - 88, 8, regular, INK);
+  text(`Baris ledger ${ledgers.length} | Audit ${auditRows.length}`, MARGIN + 505, y - 88, 8, regular, INK);
+  y -= 112;
 
-  heading('Petty Cash — Buku Kas');
-  table({ columns: [
-    { key: 'no', label: 'No', width: 38 }, { key: 'date', label: 'Tanggal (WIB)', width: 92 }, { key: 'description', label: 'Keterangan / ID Referensi', width: 330 },
-    { key: 'in', label: 'Masuk', width: 100, align: 'right' }, { key: 'out', label: 'Keluar', width: 100, align: 'right' }, { key: 'balance', label: 'Saldo', width: 111, align: 'right' }
-  ], rows: ledgers.map((l, i) => ({ no: i + 1, date: dateWib(l.created_at ?? l.date), description: [l.description || l.note || (l.event_type === 'opening_balance' ? 'Saldo awal Petty Cash' : l.event_type), l.description && l.note && l.note !== l.description ? l.note : '', l.created_by_name ? `Pemohon: ${l.created_by_name}` : '', l.actor_name ? `Pencatat: ${l.actor_name}` : '', `Ledger #${l.id}${l.submission_id ? ` | Pengajuan ${l.submission_id}` : ''}`].filter(Boolean).join(' | '), in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', balance: amount(l.balance_after_idr) })) });
+  if (ledgers.length) {
+    heading(ledgerIsPartial ? 'Petty Cash - Buku Kas Terpilih (Saldo Akun)' : 'Petty Cash - Buku Kas');
+    table({ columns: [
+      { key: 'no', label: 'No', width: 38 }, { key: 'date', label: 'Tanggal (WIB)', width: 92 }, { key: 'description', label: 'Keterangan / ID Referensi', width: 330 },
+      { key: 'in', label: 'Masuk', width: 100, align: 'right' }, { key: 'out', label: 'Keluar', width: 100, align: 'right' }, { key: 'balance', label: 'Saldo', width: 111, align: 'right' }
+    ], rows: ledgers.map((l, i) => ({ no: i + 1, date: dateWib(l.created_at ?? l.date), description: [l.description || l.note || (l.event_type === 'opening_balance' ? 'Saldo awal Petty Cash' : l.event_type), l.description && l.note && l.note !== l.description ? l.note : '', l.created_by_name ? `Pengaju: ${l.created_by_name}` : '', l.actor_name ? `Pencatat: ${l.actor_name}` : '', `Ledger #${l.id}${l.submission_id ? ` | Pengajuan ${l.submission_id}` : ''}`].filter(Boolean).join(' | '), in: isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', out: isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-', balance: amount(l.balance_after_idr) })), totals: { description: 'Total buku kas', in: amount(incoming), out: amount(outgoing) } });
+  }
 
   function submissionTable(rows) {
     table({ columns: [
       { key: 'id', label: 'No.', width: 80 }, { key: 'date', label: 'Tanggal', width: 62 }, { key: 'status', label: 'Status', width: 80 },
-      { key: 'applicant', label: 'Pemohon / Jabatan', width: 170 }, { key: 'amount', label: 'Nominal', width: 102, align: 'right' }, { key: 'reason', label: 'Keperluan / Catatan / Keputusan', width: 287 }
-    ], rows: rows.map((s, index) => ({ id: index + 1, date: shortDate(s.date || s.created_at), status: statusLabel(s.status), applicant: `${s.created_by_name || s.applicant_name || s.created_by || '-'} / ${roleLabel(s.created_by_role || s.role)}${s.created_by_position || s.position ? ` / ${s.created_by_position || s.position}` : ''}`, amount: amount(s.amount_idr ?? s.amount), reason: [s.description, s.note, s.decision_reason].filter(Boolean).join(' | ') || '-' })) });
+      { key: 'applicant', label: 'Pengaju / Jabatan', width: 170 }, { key: 'amount', label: 'Nominal', width: 102, align: 'right' }, { key: 'reason', label: 'Keterangan / Catatan / Keputusan', width: 287 }
+    ], rows: rows.map((s, index) => ({ id: index + 1, date: shortDate(s.date || s.created_at), status: statusLabel(s.status), applicant: `${s.created_by_name || s.applicant_name || s.created_by || '-'} / ${roleLabel(s.created_by_role || s.role)}${s.created_by_position || s.position ? ` / ${s.created_by_position || s.position}` : ''}`, amount: amount(s.amount_idr ?? s.amount), reason: [s.description, s.note, s.decision_reason].filter(Boolean).join(' | ') || '-' })), totals: { applicant: 'Total pengajuan', amount: amount(totalSubmitted(rows)) } });
   }
-  heading('Pengajuan Petty Cash - User & Manager');
-  submissionTable(petty);
-  heading('Request Finance - User & Manager');
-  submissionTable(finance);
+  if (petty.length) { heading('Pengajuan Petty Cash'); submissionTable(petty); }
+  if (finance.length) { heading('Request Finance'); submissionTable(finance); }
 
-  heading('Lampiran Audit');
-  table({ columns: [
-    { key: 'id', label: 'ID', width: 45 }, { key: 'date', label: 'Waktu (WIB)', width: 100 }, { key: 'action', label: 'Aksi', width: 145 },
-    { key: 'actor', label: 'Aktor', width: 115 }, { key: 'entity', label: 'Entitas', width: 105 }, { key: 'details', label: 'Rincian', width: 271 }
-  ], rows: auditRows.map(a => ({ id: a.id ?? '-', date: dateWib(a.created_at ?? a.date), action: a.action || '-', actor: a.actor_name || a.actor || 'Sistem', entity: `${a.entity_type || '-'} #${a.entity_id || '-'}`, details: typeof a.details_json === 'string' ? a.details_json : JSON.stringify(a.details_json ?? {}) })) });
+  if (auditRows.length) {
+    heading('Lampiran Audit');
+    table({ columns: [
+      { key: 'id', label: 'ID', width: 45 }, { key: 'date', label: 'Waktu (WIB)', width: 100 }, { key: 'action', label: 'Aksi', width: 145 },
+      { key: 'actor', label: 'Aktor', width: 115 }, { key: 'entity', label: 'Entitas', width: 105 }, { key: 'details', label: 'Rincian', width: 271 }
+    ], rows: auditRows.map(a => ({ id: a.id ?? '-', date: dateWib(a.created_at ?? a.date), action: a.action || '-', actor: a.actor_name || a.actor || 'Sistem', entity: `${a.entity_type || '-'} #${a.entity_id || '-'}`, details: typeof a.details_json === 'string' ? a.details_json : JSON.stringify(a.details_json ?? {}) })) });
+  }
 
-  if (unicodeReplaced) { ensure(22); text('Catatan: beberapa karakter Unicode tidak didukung font PDF dan diganti dengan tanda ?. Data asli tidak diubah.', MARGIN, y, 7, regular, MUTED, { maxWidth: CONTENT_W }); y -= 14; }
+  if (!subs.length && !ledgers.length && !auditRows.length) text('Tidak ada transaksi pada filter ini.', MARGIN, y, 9, regular, MUTED);
+  if (unicodeReplaced) { ensure(22); text('Karakter di luar font ditampilkan sebagai ?.', MARGIN, y, 7, regular, MUTED); }
   footer();
   const pages = pdf.getPages();
   pages.forEach((entry, index) => {

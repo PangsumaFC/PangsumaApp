@@ -47,7 +47,7 @@ test('date-only PDF includes preceding opening and selected closing, while appli
   const response = await onRequest({ request: request('/export.pdf?start=2025-02-28&end=2025-02-28&applicant=User%20Alpha', managerToken), env: { DB: db } });
   assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'application/pdf');
   const text = await pdfText(new Uint8Array(await response.arrayBuffer()));
-  assert.match(text, /Periode 2025-02-28/); assert.match(text, /Saldo awal Rp5\.000/); assert.match(text, /Saldo akhir Rp5\.300/);
+  assert.match(text, /Periode 2025-02-28/); assert.match(text, /Saldo akun awal Rp5\.000/); assert.match(text, /Saldo akun akhir Rp5\.300/);
   assert.match(text, /Alpha selected/); assert.doesNotMatch(text, /Beta excluded/); assert.match(text, /Baris ledger 1 \| Audit 1/);
 });
 

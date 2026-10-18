@@ -1,0 +1,107 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PDFDocument } from 'pdf-lib';
+import { buildFinancialReport } from '../functions/_lib/pdf-report.js';
+
+const execFileAsync = promisify(execFile);
+
+async function extractPdf(bytes) {
+  const dir = await mkdtemp(join(tmpdir(), 'pangsuma-pdf-'));
+  const input = join(dir, 'report.pdf');
+  try {
+    await writeFile(input, bytes);
+    const { stdout } = await execFileAsync('pdftotext', ['-layout', input, '-'], { maxBuffer: 4 * 1024 * 1024 });
+    const { stdout: bounds } = await execFileAsync('pdftotext', ['-bbox', input, '-'], { maxBuffer: 8 * 1024 * 1024 });
+    const words = [...bounds.matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)"/g)];
+    assert.ok(words.length > 0, 'PDF must contain extractable text');
+    for (const word of words) {
+      const [left, top, right, bottom] = word.slice(1).map(Number);
+      assert.ok(left >= 29 && right <= 813 && top >= 8 && bottom <= 590, `Text outside page margins: ${word[0]}`);
+    }
+    return stdout;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function render(data) {
+  const bytes = await buildFinancialReport({ snapshotAt: '2026-10-18T12:00:00.000Z', ...data });
+  return { bytes, text: await extractPdf(bytes), pages: (await PDFDocument.load(bytes)).getPageCount() };
+}
+
+const ledger = [
+  { id: 1, event_type: 'opening_balance', direction: 'in', amount_idr: 1000000, balance_after_idr: 1000000, created_at: '2026-10-01T01:00:00.000Z', description: 'Saldo awal kas', actor_name: 'Sari' },
+  { id: 2, event_type: 'topup', direction: 'in', amount_idr: 500000, balance_after_idr: 1500000, created_at: '2026-10-04T02:00:00.000Z', description: 'Top up kas Oktober', note: 'Bukti bank TOPUP-42', created_by_name: 'Budi', actor_name: 'Sari', submission_id: 'PC-101' },
+  { id: 3, event_type: 'expense', direction: 'out', amount_idr: 125000, balance_after_idr: 1375000, created_at: '2026-10-06T03:00:00.000Z', description: 'Beli tinta printer', note: 'Nota TINTA-7', created_by_name: 'Dina', actor_name: 'Sari', submission_id: 'PC-102' },
+];
+
+const submissions = [
+  { id: 'PC-101', type: 'petty_cash', date: '2026-10-04', status: 'approved', amount_idr: 125000, description: 'Tinta printer', note: 'Catatan nyata: simpan nota TINTA-7', decision_reason: 'Keputusan nyata: setujui pembelian', created_by_name: 'Dina', created_by_role: 'user', created_by_position: 'Bendahara' },
+  { id: 'RF-201', type: 'finance', date: '2026-10-05', status: 'rejected', amount_idr: 300000, description: 'Sewa kendaraan', note: 'Catatan nyata: vendor penuh', decision_reason: 'Keputusan nyata: tolak, di luar anggaran', created_by_name: 'Raka', created_by_role: 'manager', created_by_position: 'Ketua' },
+];
+
+const audits = [{ id: 77, created_at: '2026-10-06T04:00:00.000Z', action: 'submission.rejected', actor_name: 'Raka', entity_type: 'finance_request', entity_id: 'RF-201', details_json: { audit_sentinel: 'AUDIT-KEPT-77', reason: 'anggaran' } }];
+
+test('concise report keeps filters, totals, statuses, notes, decisions, and audit evidence while removing narrative disclaimers', async () => {
+  const { text } = await render({ submissions, ledger, audits, filterDescription: 'Status: disetujui; Pemohon: Dina', periodLabel: '01-06 Oktober 2026' });
+  assert.match(text, /Tanggal cetak/);
+  assert.match(text, /Status: disetujui; Pemohon: Dina/);
+  assert.match(text, /Saldo awal\s+Rp1\.000\.000/);
+  assert.match(text, /Saldo akhir\s+Rp1\.375\.000/);
+  assert.match(text, /Masuk[^\n]*Rp1\.500\.000/);
+  assert.match(text, /Keluar\s+Rp125\.000/);
+  assert.match(text, /Total buku kas\s+Rp1\.500\.000\s+Rp125\.000/);
+  assert.match(text, /Total pengajuan\s+Rp125\.000/);
+  assert.match(text, /Total pengajuan\s+Rp300\.000/);
+  assert.match(text, /Catatan nyata:\s+simpan\s+nota\s+TINTA-7/);
+  assert.match(text, /Keputusan nyata:\s+setujui\s+pembelian/);
+  assert.match(text, /Catatan nyata:\s+vendor\s+penuh/);
+  assert.match(text, /Keputusan nyata:\s+tolak,\s+di\s+luar\s+anggaran/);
+  assert.match(text, /Ditolak/);
+  assert.match(text, /Raka \/ Manager \/ Ketua/);
+  assert.match(text, /AUDIT-KEPT-77/);
+  assert.match(text, /Halaman 1 dari \d+/);
+  assert.doesNotMatch(text, /Saldo akhir = saldo awal \+ masuk periode - keluar periode/);
+  assert.doesNotMatch(text, /Request Finance tidak mengubah/);
+  assert.doesNotMatch(text, /Total masuk mencakup saldo awal/);
+  assert.doesNotMatch(text, /beberapa karakter Unicode tidak didukung/);
+});
+
+test('does not print headings for empty irrelevant sections', async () => {
+  const { text } = await render({ ledger, submissions: [], audits: [] });
+  assert.match(text, /Petty Cash - Buku Kas/);
+  assert.doesNotMatch(text, /Pengajuan Petty Cash/);
+  assert.doesNotMatch(text, /Request Finance\s+No\./);
+  assert.doesNotMatch(text, /Lampiran Audit/);
+});
+
+test('empty filtered report is one page with the explicit empty-report message', async () => {
+  const { text, pages } = await render({ submissions: [], ledger: [], audits: [], filterDescription: 'Tanggal: 31-12-2099' });
+  assert.equal(pages, 1);
+  assert.match(text, /Tidak ada transaksi pada filter ini\./);
+  assert.match(text, /Tanggal cetak/);
+  assert.doesNotMatch(text, /Petty Cash - Buku Kas/);
+  assert.doesNotMatch(text, /Request Finance - User & Manager/);
+  assert.doesNotMatch(text, /Lampiran Audit/);
+});
+
+test('long descriptions paginate without dropping unique beginning and ending sentinels', async () => {
+  const longDescription = `LONG-START-9 ${'deskripsi panjang transaksi '.repeat(180)} LONG-END-9`;
+  const { text, pages } = await render({
+    submissions: [{ id: 'PC-LONG', type: 'petty_cash', date: '2026-10-07', status: 'approved', amount_idr: 99000, description: longDescription, note: 'LONG-NOTE-9', decision_reason: 'LONG-DECISION-9', created_by_name: 'Dina', created_by_role: 'user' }],
+    ledger: [],
+    audits: [],
+  });
+  assert.ok(pages > 1, `expected pagination, got ${pages} page(s)`);
+  assert.match(text, /LONG-START-9/);
+  assert.match(text, /LONG-END-9/);
+  assert.match(text, /LONG-NOTE-9/);
+  assert.match(text, /LONG-DECISION-9/);
+  assert.match(text, /Rp99\.000/);
+  assert.match(text, /Halaman \d+ dari \d+/);
+});

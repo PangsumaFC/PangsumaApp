@@ -78,7 +78,7 @@ async function reportText(bytes) {
   return { text: lines.join('\n'), count: document.getPageCount() };
 }
 
-test('filtered PDF preserves explicit period, real account balances, scope note, category totals and row counts', async () => {
+test('filtered PDF preserves explicit period, real account balances, concise scope labels, category totals and row counts', async () => {
   const data = fixture(1);
   data.submissions[0].status = 'approved';
   data.ledger = [{ id: 2, event_type: 'petty_cash_approval', direction: 'debit', amount_idr: 500, balance_after_idr: 1500, created_at: '2026-10-10T03:00:00.000Z', actor_name: 'Manager Uji', note: 'Biaya terpilih' }];
@@ -88,9 +88,11 @@ test('filtered PDF preserves explicit period, real account balances, scope note,
     openingBalanceIdr: 2000, closingBalanceIdr: 1500, ledgerIsPartial: true }));
   assert.match(result.text, /Periode 01\/10\/2026 - 15\/10\/2026/);
   assert.match(result.text, /Filter: Jenis: Petty Cash/);
-  assert.match(result.text, /Saldo awal Rp2\.000/);
-  assert.match(result.text, /Saldo akhir Rp1\.500/);
-  assert.match(result.text, /transaksi lain di luar filter tidak ditampilkan/);
+  assert.match(result.text, /Saldo akun awal Rp2\.000/);
+  assert.match(result.text, /Saldo akun akhir Rp1\.500/);
+  assert.match(result.text, /Buku Kas Terpilih \(Saldo Akun\)/);
+  assert.match(result.text, /Keluar terpilih Rp500/);
+  assert.doesNotMatch(result.text, /transaksi lain di luar filter tidak ditampilkan/);
   assert.match(result.text, /Baris ledger 1 \| Audit 0/);
   assert.match(result.text, /Petty Cash: 1 pengajuan/);
   assert.match(result.text, /Request Finance: 0 pengajuan/);
@@ -106,4 +108,35 @@ test('positive opening balance is used instead of the original zero sentinel', a
   ];
   const { text } = await reportText(await buildFinancialReport(data));
   assert.match(text, /Saldo awal Rp1\.000/);
+});
+
+test('report totals retain exact bigint and integer-string rupiah values', async () => {
+  const value = 9007199254740993n;
+  const { text } = await reportText(await buildFinancialReport({
+    snapshotAt: '2026-10-18T03:00:00Z',
+    submissions: [{ id: 'large-1', type: 'finance_request', status: 'approved', date: '2026-10-01', amount_idr: value.toString(), description: 'Nominal presisi' }],
+    ledger: [{ id: 1, event_type: 'opening_balance', direction: 'credit', amount_idr: value, balance_after_idr: value, created_at: '2026-10-01T03:00:00Z' }]
+  }));
+  assert.match(text, /Finance disetujui Rp9\.007\.199\.254\.740\.993/);
+  assert.match(text, /Saldo akhir Rp9\.007\.199\.254\.740\.993/);
+  assert.match(text, /Total diajukan Rp9\.007\.199\.254\.740\.993/);
+  assert.doesNotMatch(text, /9\.007\.199\.254\.740\.992/);
+});
+
+test('automatic report period follows audit dates rather than print date for audit-only input', async () => {
+  const { text } = await reportText(await buildFinancialReport({
+    snapshotAt: '2026-10-18T03:00:00Z',
+    audits: [{ id: 1, created_at: '2026-09-02T03:00:00Z', action: 'cash.reconciled', details_json: 'Audit periode September' }]
+  }));
+  assert.match(text, /Periode 02 Sep 2026 - 02 Sep 2026/);
+  assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
+});
+
+test('font substitution has a concise conditional data-integrity marker, not a generic disclaimer', async () => {
+  const data = fixture(1);
+  const { text } = await reportText(await buildFinancialReport(data));
+  assert.match(text, /Karakter di luar font ditampilkan sebagai \?\./);
+  assert.doesNotMatch(text, /Data asli tidak diubah/);
+  const plain = await reportText(await buildFinancialReport({}));
+  assert.doesNotMatch(plain.text, /Karakter di luar font/);
 });
