@@ -91,3 +91,11 @@ test('empty filter handoff states its full-report scope explicitly', () => {
   assert.equal(h.nodes.get('filterList').children[0].textContent, 'Seluruh periode · semua pengajuan');
   assert.equal(h.api.canonicalUrl(), 'https://app.test/pdf-browser.html');
 });
+
+test('browser handoff assets use the same release cache tag as the application', () => {
+  const build = JSON.parse(fs.readFileSync(new URL('../site/version.json', import.meta.url), 'utf8')).build;
+  const html = fs.readFileSync(new URL('../site/pdf-browser.html', import.meta.url), 'utf8');
+  const tags = [...html.matchAll(/(?:src|href)="\/pdf-browser\.(?:js|css)\?v=([^"]+)"/g)];
+  assert.equal(tags.length, 2);
+  for (const [, version] of tags) assert.equal(version, build);
+});
