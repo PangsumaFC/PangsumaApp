@@ -811,3 +811,13 @@ body.logged-out > .pwa-install-feedback { display: none; }
   .finance-section .heading-actions { width: 100%; }
   .finance-section .heading-actions > button { flex: 1 1 180px; white-space: normal; }
 }
+
+/* Manager account search: keeps the filter readable beside the account actions. */
+.users-search-panel { margin-block: 16px; }
+.users-search-panel h2 { margin: 0 0 8px; }
+.users-search-panel label { display: block; font-weight: 600; margin-bottom: 6px; }
+.users-search-panel input[type="search"] { width: 100%; max-width: 36rem; min-height: 44px; }
+@media (max-width: 640px) {
+  .users-search-panel { padding: 16px; }
+  .users-search-panel input[type="search"] { max-width: none; }
+}

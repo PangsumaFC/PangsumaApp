@@ -56,7 +56,7 @@ test('audit: laporan user memakai server search dan alias status canonical', () 
 });
 
 test('audit: user admin list memakai pagination dan total server', () => {
-  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=100`/);
+  assert.match(source, /api\(`\/users\?page=\$\{page\}&limit=100&q=/);
   assert.match(source, /state\.usersPage = \{ page:/);
   assert.match(source, /data-action=\"load-more-users\"/);
 });

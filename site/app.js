@@ -83,7 +83,7 @@ const state = {
   submissions: [],
   pendingSubmissions: [],
   users: [],
-  usersPage: { page: 1, limit: 100, total: 0, hasMore: false },
+  usersPage: { page: 1, limit: 100, total: 0, hasMore: false, query: '', loading: false, error: '' },
   cashLedger: [],
   auditEvents: [],
   summary: {},
@@ -189,6 +189,7 @@ let managerSyncBusy = false;
 let managerSyncLastAt = 0;
 let managerSyncRerenderPending = false;
 let archiveSearchTimer = 0;
+let usersSearchTimer = 0;
 let cashInsightsRequestEpoch = 0;
 let cashInsightsRequestBusy = false;
 let cashInsightsCacheKey = '';
@@ -1031,22 +1032,30 @@ function asyncLifecycle() {
 }
 const usersPageLifecycle = asyncLifecycle();
 const historyPageLifecycles = new Map();
-async function refreshUsersPage(page = 1, append = false) {
+async function refreshUsersPage(page = 1, append = false, query = state.usersPage.query || '') {
   if (!state.user || state.user.role !== 'manager') return false;
   const request = usersPageLifecycle.begin();
+  state.usersPage = { ...state.usersPage, loading: true, error: '' };
   try {
-    const result = await api(`/users?page=${page}&limit=100`);
+    const search = String(query || '').trim().slice(0, 100);
+    const result = await api(`/users?page=${page}&limit=100&q=${encodeURIComponent(search)}`);
     if (!usersPageLifecycle.current(request)) return false;
     const rows = Array.isArray(result.users) ? result.users : [];
     state.users = rows;
-    state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore) };
+    state.usersPage = { page: Number(result.page || page), limit: Number(result.limit || 100), total: Number(result.total || state.users.length), hasMore: Boolean(result.hasMore), query: search, loading: false, error: '' };
     return true;
   } catch (error) {
     usersPageLifecycle.fail(request, error);
+    if (usersPageLifecycle.current(request)) state.usersPage = { ...state.usersPage, loading: false, error: friendlyError(error) };
     throw error;
   } finally { usersPageLifecycle.finish(request); }
 }
 
+function accountDraftKey() { return 'manager-account-form'; }
+function readAccountDraft() { return state.user?.role === 'manager' ? readDraft(accountDraftKey()) : null; }
+function persistAccountDraft() { const form = $('#userForm'); if (!state.user || state.user.role !== 'manager' || !form) return; const values = { name: String(form.name?.value || '').slice(0, 80), email: String(form.email?.value || '').slice(0, 180), position: String(form.position?.value || '').slice(0, 80) }; if (Object.values(values).some(Boolean)) writeDraft(accountDraftKey(), '', values); else clearDraft(accountDraftKey()); }
+function restoreAccountDraft() { const draft = readAccountDraft(), form = $('#userForm'); if (!form || !draft) return; for (const field of ['name', 'email', 'position']) if (form.elements[field]) form.elements[field].value = draft[field] || ''; $('#addUserCard').hidden = false; }
+function accountDraftPresent() { const draft = readAccountDraft(); return Boolean(draft && Object.values(draft).some(Boolean)); }
 function usersPage() {
   const userRows = state.users.map(user => {
     const passkeyCount = Number(user.passkeyCount || 0);
@@ -1060,10 +1069,13 @@ function usersPage() {
     return `<tr><td data-label="Pengguna"><div class="profile-user-cell">${profileAvatar(user, 'user-initial')}<div>${escapeHTML(user.name)}${user.nickname ? `<small class="profile-nickname">${escapeHTML(user.nickname)}</small>` : ''}</div></div></td><td data-label="Posisi dashboard">${escapeHTML(user.dashboardPosition ?? user.position ?? 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><div class="user-access-state"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></div></td><td data-label="Aksi">${actions}</td></tr>`;
   }).join('');
   const actions = '<div class="user-page-actions"><button class="secondary-button" type="button" data-action="open-add-user">Tambah pengguna</button></div>';
+  const query = String(state.usersPage.query || '');
+  const listStatus = state.usersPage.loading ? '<p class="field-help" role="status" aria-live="polite">Memuat daftar akun…</p>' : state.usersPage.error ? `<p class="field-error" role="alert">${escapeHTML(state.usersPage.error)}</p>` : '';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
+    <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
-    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : emptyState('Belum ada akun', 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    ${state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users">Halaman sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users">Halaman berikutnya</button>' : ''}</div>` : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
 
 function myReportsPage() {
@@ -1138,6 +1150,7 @@ function renderApp() {
     body = currentPage === 'my-reports' ? myReportsPage() : currentPage === 'cash-info' ? cashInfo() : currentPage === 'new-report' ? reportForm() : userOverview();
   }
   $('#appContent').innerHTML = body;
+  if (currentPage === 'users') restoreAccountDraft();
   if (currentPage === 'new-report' && typeof ReportEvidence !== 'undefined') ReportEvidence.mountDuplicateCheck($('#reportForm'));
   $$('#appContent details[data-panel]').forEach(panel => { panel.open = openPanels.has(panel.dataset.panel); });
   if (pageChanged) $('#mainContent').scrollTo(0, 0);
@@ -1539,6 +1552,7 @@ async function performNewUser(event) {
       email: String(data.get('email')).trim(),
       position: String(data.get('position') || '').trim()
     } });
+    clearDraft(accountDraftKey());
     await renderAfterMutation('Akun User dibuat. Atur password sementara sebelum akses diberikan.', 'Akun User dibuat. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
@@ -1799,7 +1813,7 @@ async function handleAction(button) {
   if (action === 'report-detail') { await openReportActivity(id, button);
   } else if (action === 'load-more-users' || action === 'previous-users') {
     const next = Math.max(1, Number(state.usersPage.page || 1) + (action === 'previous-users' ? -1 : 1));
-    try { await refreshUsersPage(next); renderApp(); } catch (error) { showToast(friendlyError(error)); }
+    try { await refreshUsersPage(next, false, state.usersPage.query); renderApp(); } catch (error) { showToast(friendlyError(error)); }
   } else if (action === 'load-more-history') {
     await loadMoreHistory(button.dataset.collection, button);
   } else if (action === 'open-report-choice') {
@@ -1844,6 +1858,8 @@ async function handleAction(button) {
     const card = $('#addUserCard');
     if (card) { card.hidden = false; $('#userName').focus(); }
   } else if (action === 'cancel-add-user') {
+    if (accountDraftPresent() && !window.confirm('Buang draf akun ini?')) return;
+    clearDraft(accountDraftKey());
     const card = $('#addUserCard');
     if (card) card.hidden = true;
     $('#userForm')?.reset();
@@ -1939,7 +1955,7 @@ function bindEvents() {
       navigateToPage(page);
       $('#mainContent').focus({ preventScroll: true });
       if (page === 'users' && state.user?.role === 'manager') {
-        void refreshUsersPage(1).then(() => { if (currentPage === page) renderApp(); })
+        void refreshUsersPage(1, false, state.usersPage.query).then(() => { if (currentPage === page) renderApp(); })
           .catch(error => { if (error.code !== 'session_changed') showToast(friendlyError(error)); });
       } else if (page === 'my-reports' && state.user?.role === 'user' && typeof BoundedHistory !== 'undefined') {
         configureBoundedHistory();
@@ -1975,6 +1991,8 @@ function bindEvents() {
   });
 
   document.addEventListener('input', event => {
+    if (event.target.closest?.('#userForm')) persistAccountDraft();
+    if (event.target.id === 'usersSearch') { state.usersPage.query = event.target.value.slice(0, 100); clearTimeout(usersSearchTimer); usersSearchTimer = setTimeout(() => { if (currentPage !== 'users') return; void refreshUsersPage(1, false, state.usersPage.query).then(ok => { if (ok && currentPage === 'users') renderApp(); }).catch(error => { if (error.code !== 'session_changed') { renderApp(); showToast(friendlyError(error)); } }); }, 300); }
     if (event.target.closest?.('#reportForm') && event.target.id !== 'reportType') persistReportDraft();
     if (event.target.closest?.('#cashTopupForm')) persistCashTopupDraft();
     if (event.target.id === 'loginIdentifier' || event.target.id === 'loginPassword') {
