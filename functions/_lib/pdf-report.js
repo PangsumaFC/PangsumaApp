@@ -70,6 +70,11 @@ function shortDate(value) {
   const d = new Date(`${String(value).slice(0, 10)}T00:00:00+07:00`);
   return Number.isNaN(d.getTime()) ? safeText(value).slice(0, 10) : new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 }
+function printDate(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? safeText(value).slice(0, 10) : new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+}
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function integerIdr(value) {
   if (typeof value === 'bigint') return value;
@@ -146,7 +151,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });
     page.drawText('PANGSUMA FC', { x: MARGIN, y: PAGE_H - 42, size: 13, font: bold, color: NAVY });
     page.drawText('Laporan Petty Cash', { x: MARGIN, y: PAGE_H - 63, size: 17, font: bold, color: NAVY });
-    page.drawText(`Tanggal cetak: ${mark(shortDate(snapshot))}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
+    page.drawText(`Tanggal cetak: ${mark(printDate(snapshot))}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 47, size: 8, font: regular, color: MUTED });
     page.drawText(`Manager: ${mark(managerName || '-').slice(0, 45)}`, { x: PAGE_W - MARGIN - 210, y: PAGE_H - 61, size: 8, font: regular, color: MUTED });
     page.drawText(mark(period), { x: MARGIN, y: PAGE_H - 80, size: 7.5, font: regular, color: MUTED });
     y = PAGE_H - headerBottom;

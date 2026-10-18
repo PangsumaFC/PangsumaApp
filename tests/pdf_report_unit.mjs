@@ -132,12 +132,12 @@ test('report totals retain exact bigint and integer-string rupiah values', async
 
 test('audit-only input does not affect cashflow period or print audit details', async () => {
   const { text } = await reportText(await buildFinancialReport({
-    snapshotAt: '2026-10-18T03:00:00Z',
+    snapshotAt: '2026-10-18T18:33:00Z',
     audits: [{ id: 1, created_at: '2026-09-02T03:00:00Z', action: 'cash.reconciled', details_json: 'Audit periode September' }]
   }));
-  assert.match(text, /Periode 18 Okt 2026 - 18 Okt 2026/);
+  assert.match(text, /Periode 19 Okt 2026 - 19 Okt 2026/);
   assert.doesNotMatch(text, /Audit periode September/);
-  assert.match(text, /Tanggal cetak:.*18\/10\/2026/);
+  assert.match(text, /Tanggal cetak:.*19\/10\/2026/);
   assert.doesNotMatch(text, /Tanggal cetak:.*\d{2}:\d{2}/);
 });
 
