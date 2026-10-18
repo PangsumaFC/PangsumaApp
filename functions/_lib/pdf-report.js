@@ -92,7 +92,8 @@ function wrap(text, font, size, maxWidth) {
   return lines.length ? lines : ['-'];
 }
 
-export async function buildFinancialReport({ submissions = [], ledger = [], audits = [], snapshotAt, managerName, filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false } = {}) {
+export async function buildFinancialReport({ submissions = [], ledger = [], audits = [], snapshotAt, managerName, filterDescription = '', periodLabel = '', openingBalanceIdr = null, closingBalanceIdr = null, ledgerIsPartial = false, maxPages = MAX_PDF_PAGES } = {}) {
+  const pageLimit = Math.min(MAX_PDF_PAGES, Math.max(1, Math.trunc(Number(maxPages)) || MAX_PDF_PAGES));
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -110,8 +111,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], audi
   let page; let y; let pendingHeading = ''; let unicodeReplaced = sanitize(filterDescription).replaced;
   const mark = value => { const result = sanitize(value); unicodeReplaced ||= result.replaced; return result.text; };
   function newPage() {
-    if (pdf.getPageCount() >= MAX_PDF_PAGES) {
-      throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_PAGES} halaman). Persempit filter lalu coba lagi.`);
+    if (pdf.getPageCount() >= pageLimit) {
+      throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${pageLimit} halaman). Persempit filter lalu coba lagi.`);
     }
     page = pdf.addPage([PAGE_W, PAGE_H]);
     page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: TEAL });

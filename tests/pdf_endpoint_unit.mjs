@@ -90,30 +90,34 @@ async function call(db, cookie) {
   return onRequest({ request: request('/export.pdf', cookie), env: { DB: db } });
 }
 
-test('manager export renders a valid paginated PDF with all financial sections', async () => {
-  const db = fakeDb();
-  const response = await call(db);
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('content-type'), 'application/pdf');
-  assert.match(response.headers.get('content-disposition'), /^attachment; filename="pangsuma-laporan-keuangan-\d{4}-\d{2}-\d{2}\.pdf"$/);
-  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
-  assert.equal(response.headers.get('pragma'), 'no-cache');
-  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  assert.deepEqual(Array.from(bytes.slice(0, 5)), Array.from(Buffer.from('%PDF-')));
-  const pdf = await PDFDocument.load(bytes);
-  assert.ok(pdf.getPageCount() >= 1);
-  const sql = db.calls.map(call => call.sql);
-  assert.equal(sql.filter(query => /FROM submissions s/.test(query)).length, 2);
-  assert.equal(sql.filter(query => /FROM cash_ledger l/.test(query)).length, 2);
-  assert.equal(sql.filter(query => /FROM audit_events a/.test(query)).length, 2);
-  const submissionCursorCall = db.calls.find(call => /FROM submissions s/.test(call.sql) && call.bound.length === 4);
-  assert.equal(submissionCursorCall.bound[1], '2025-01-01T00:02:00.000Z');
-  assert.equal(submissionCursorCall.bound[2], '2025-01-01T00:02:00.000Z');
-  assert.equal(submissionCursorCall.bound[3], 'submission-2');
-  assert.equal(db.calls.filter(call => /FROM cash_ledger l|FROM audit_events a/.test(call.sql) && call.bound.length === 2).length, 2);
-});
-
+for (const largeSection of ['submission', 'ledger', 'audit']) {
+  test(`manager export paginates every row beyond 500 ${largeSection} records with all financial sections`, async () => {
+    const sizes = Object.fromEntries(['submission','ledger','audit'].map(kind => [kind, kind === largeSection ? 501 : 1]));
+    const db = fakeDb({ rows: Object.fromEntries(Object.entries(sizes).map(([kind,count]) => [kind, makeRows(kind,count)])) });
+    const response = await call(db);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/pdf');
+    assert.match(response.headers.get('content-disposition'), /^attachment; filename="pangsuma-laporan-keuangan-\d{4}-\d{2}-\d{2}\.pdf"$/);
+    assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+    assert.equal(response.headers.get('pragma'), 'no-cache');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert.deepEqual(Array.from(bytes.slice(0, 5)), Array.from(Buffer.from('%PDF-')));
+    const pdf = await PDFDocument.load(bytes); assert.ok(pdf.getPageCount() >= 1);
+    const sql = db.calls.map(call => call.sql);
+    for (const [kind,pattern] of [['submission', /FROM submissions s/],['ledger', /FROM cash_ledger l/],['audit', /FROM audit_events a/]]) {
+      assert.equal(sql.filter(query => pattern.test(query)).length, kind === largeSection ? 2 : 1);
+    }
+    if (largeSection === 'submission') {
+      const cursorCall = db.calls.find(call => /FROM submissions s/.test(call.sql) && call.bound.length === 4);
+      assert.deepEqual(cursorCall.bound.slice(1), ['2025-01-01T00:02:00.000Z','2025-01-01T00:02:00.000Z','submission-2']);
+    } else {
+      const pattern = largeSection === 'ledger' ? /FROM cash_ledger l/ : /FROM audit_events a/;
+      const cursorCall = db.calls.find(call => pattern.test(call.sql) && call.bound.length === 2);
+      assert.equal(cursorCall.bound[1], 2);
+    }
+  });
+}
 test('PDF export rejects unsupported methods', async () => {
   const db = fakeDb();
   const response = await onRequest({ request: request('/export.pdf', '__Host-pangsuma_session=local-test-token', 'POST'), env: { DB: db } });

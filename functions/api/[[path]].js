@@ -54,9 +54,11 @@ const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
 // PDF generation sorts each section in memory; reject oversized reports before
 // any rows are collected so the caller can narrow filters and retry.
 // pdf-lib retains every drawn object until serialization. A conservative,
-// measured section cap avoids Worker memory exhaustion; callers get a
+// conservative section, aggregate and render caps bound work; callers get a
 // recoverable 413 and can narrow filters rather than receiving a truncated PDF.
 const MAX_PDF_ROWS_PER_SECTION = 600;
+const MAX_PDF_TOTAL_ROWS = 1000;
+const MAX_PDF_PAGES = 80;
 const MAX_PDF_RENDERED_TEXT_CHARS = 80_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1299,8 +1301,11 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
   // existing `creator` join alias.
   const joinedSubmissionFilter = buildSubmissionFilterSql(filters, { alias: 's', creatorAlias: 'c' });
   const hasSpecific = hasSubmissionSpecificFilter(filters);
-  let renderedTextChars = 0;
+  let renderedTextChars = 0, collectedRows = 0;
+  const totalRowsError = () => new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_TOTAL_ROWS.toLocaleString('id-ID')} baris gabungan). Persempit filter lalu coba lagi.`);
   const accountRenderedText = (rows, kind) => {
+    collectedRows += rows.length;
+    if (collectedRows > MAX_PDF_TOTAL_ROWS) throw totalRowsError();
     const fields = kind === 'submission'
       ? ['description', 'note', 'decision_reason', 'created_by_name', 'created_by_position']
       : kind === 'ledger'
@@ -1355,6 +1360,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
   if (Math.max(submissionCount, ledgerCount, auditCount) > MAX_PDF_ROWS_PER_SECTION) {
     throw new ApiError(413, 'report_too_large', `Laporan terlalu besar untuk PDF (maksimal ${MAX_PDF_ROWS_PER_SECTION.toLocaleString('id-ID')} baris per bagian). Persempit filter lalu coba lagi.`);
   }
+  if (submissionCount + ledgerCount + auditCount > MAX_PDF_TOTAL_ROWS) throw totalRowsError();
   let cursor = null;
   while (true) {
     const rows = (await db.prepare(`
@@ -1453,7 +1459,7 @@ async function exportPdf(context, db) {
     db,
     gather: async (at) => {
       const data = await fullFinancialReportData(db, at, filters);
-      return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name });
+      return buildFinancialReport({ ...data, snapshotAt: at, managerName: user.name, maxPages: MAX_PDF_PAGES });
     }
   });
   return new Response(bytes, { headers: {
