@@ -68,7 +68,7 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
     const linkedReceipts = receiptUrls(linkedSubmission);
     const attachmentUrls = ledgerReceipts.length ? ledgerReceipts : linkedReceipts;
     return { ...row, report_key: `ledger-${row.id}`, report_at: row.created_at,
-      report_description: [display.description, display.note && display.note !== display.description ? display.note : '', applicant ? `Pengaju: ${applicant}` : ''].filter(Boolean).join(' | '),
+      report_description: [display.description, display.note && display.note !== display.description ? display.note : ''].filter(Boolean).join(' | '),
       known_demo: display.knownDemo,
       is_cash: true,
       dropbox_receipt_urls: attachmentUrls, report_attachment_urls: attachmentUrls,
@@ -82,8 +82,7 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
     rows.push({ known_demo: display.knownDemo, report_key: `submission-${submission.id}`,
       report_at: submission.date ? `${submission.date}T00:00:00+07:00` : submission.created_at,
       report_description: [display.description, display.note,
-        `${finance ? 'Finance' : 'Pengajuan'} ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`,
-        submission.created_by_name ? `Pengaju: ${submission.created_by_name}` : ''].filter(Boolean).join(' | '),
+        `${finance ? 'Finance' : 'Pengajuan'} ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`].filter(Boolean).join(' | '),
       is_cash: false, direction: '', amount_idr: 0, submission_amount_idr: submission.amount_idr ?? submission.amount ?? 0, balance_after_idr: null,
       dropbox_receipt_urls: receiptUrls(submission), report_attachment_urls: receiptUrls(submission),
       dropbox_receipt_url: receiptUrls(submission)[0] || null,

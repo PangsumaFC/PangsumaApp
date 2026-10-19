@@ -62,7 +62,7 @@ test('cashflow report keeps filters, totals and ledger notes but excludes submis
   assert.doesNotMatch(text, /Saldo awal\s+Rp|Saldo akhir\s+Rp|Masuk\s+Rp|Keluar\s+Rp/);
   assert.match(text, /Total kas keseluruhan\s+Rp1\.500\.000\s+Rp125\.000/);
   assert.match(text, /Catatan nyata:/);
-  assert.match(text, /Pengaju:\s+Dina/);
+  assert.doesNotMatch(text, /Pengaju:|Dina|Budi/);
   for (const excluded of ['Keputusan nyata', 'AUDIT-KEPT-77', 'Lampiran Audit', 'Finance disetujui']) assert.ok(!text.includes(excluded), excluded);
   assert.match(text, /Halaman 1 dari \d+/);
 });

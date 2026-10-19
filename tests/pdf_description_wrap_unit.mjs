@@ -104,7 +104,7 @@ for (const [type, rightEdge] of [['petty_cash', 256], ['finance_request', 361]])
       const plain = description.replace(/^SIMULASI\s*/i, '').replace(/\n/g, ' ');
       for (const token of plain.split(/\s+/).filter(token => token.length >= 5)) assert.ok(text.includes(token), `missing description token ${token}`);
     }
-    // pdftotext places the renderer's status/applicant suffix between wrapped
+    // pdftotext places the renderer's status suffix between wrapped
     // description lines, so assert the complete source vocabulary exactly once
     // rather than requiring a visual line boundary or suffix placement.
     assert.equal(count(text, /pengguna\./g), 2);
@@ -135,6 +135,6 @@ test('petty_cash and finance_request retain huge descriptions across pages with 
     assert.equal(count(text, /DATA DEMO/g), 1);
     assert.equal(count(text, /Fixture wrap regression/g), 1);
     assert.match(text, /Lampiran/);
-    assert.ok(text.includes('Akun Demo'));
+    assert.ok(!text.includes('Akun Demo'), 'applicant suffix must not be printed');
   }
 });

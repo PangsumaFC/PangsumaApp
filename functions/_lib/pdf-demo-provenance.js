@@ -110,12 +110,20 @@ ee6b4e87-4c62-498a-b14e-777f4eaab1b2
 5ed470b5-c11d-49af-b98e-27a3eb4d40cd
 58095f2f-ceaa-4311-b950-150207639b93
 `.trim().split('\n'));
-const businessDescription = /^SIMULASI \[D20261018-A\] ((?:Perlengkapan latihan|Konsumsi kegiatan|Transport kegiatan|Kebutuhan administrasi|Penggantian perlengkapan|Biaya kegiatan) (?:[1-9]|10|11)\.(?:[1-9]|10))$/;
+const seedLabels = ['Perlengkapan latihan', 'Konsumsi kegiatan', 'Transport kegiatan', 'Kebutuhan administrasi', 'Penggantian perlengkapan', 'Biaya kegiatan'];
+// The generator emits 6 rows for account 1, then 10 for each of accounts 2–11.
+// Its a+1.i+1 suffix is an internal seed ordinal, not quantity or business prose.
+const seedDescriptions = new Map([...submissionIds].map((id, index) => {
+  const a = index < 6 ? 0 : 1 + Math.floor((index - 6) / 10);
+  const i = index < 6 ? index : (index - 6) % 10;
+  const label = seedLabels[i % seedLabels.length];
+  return [id, { source: `SIMULASI [D20261018-A] ${label} ${a + 1}.${i + 1}`, label }];
+}));
 export function reportDisplayFields({ id, topupId, description, note, applicant }) {
-  const match = String(description ?? '').match(businessDescription);
+  const seed = seedDescriptions.get(String(id));
   const seedNote = `SIMULASI | Seed langsung oleh Manager untuk akun ${applicant}; bukan pengajuan asli pengguna. Tanggal usaha untuk uji; pencatatan mengikuti waktu eksekusi.`;
-  if (submissionIds.has(String(id)) && match && applicant && note === seedNote) {
-    return { description: match[1], note: '', knownDemo: true };
+  if (seed && description === seed.source && applicant && note === seedNote) {
+    return { description: seed.label, note: '', knownDemo: true };
   }
   const topupNote = 'SIMULASI [D20261018-A] | Seed langsung oleh Manager; bukan transaksi kas nyata.';
   if (topupId === "a32aefb5-69b1-4666-be32-586110ed22a9" && description === topupNote && note === topupNote) {
