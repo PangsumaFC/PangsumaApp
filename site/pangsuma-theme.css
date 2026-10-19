@@ -93,10 +93,8 @@ body.logged-out > header, body.logged-out > .app-shell, body.logged-out > .mobil
 }
 .install-button { border-color: var(--line); color: var(--blue-deep); background: var(--paper); }
  .install-button svg { width: 18px; height: 18px; }
-.account-icon-button { display: inline-grid; width: 42px; min-width: 42px; height: 42px; min-height: 42px; place-items: center; padding: 8px; border-radius: 13px; }
+.account-icon-button { display: inline-grid; flex: none; width: 44px; min-width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 8px; border-radius: 13px; }
 .account-icon-button svg { width: 21px; height: 21px; }
-.account-password-button.is-manager .account-password-label { display: none; }
-.account-password-button.is-manager { width: 42px; min-width: 42px; padding-inline: 8px; }
 .account-users-button[aria-current="page"], .account-password-button[aria-current="page"] { color: var(--blue-deep); border-color: var(--gold); background: var(--blue-soft); box-shadow: 0 0 0 2px rgba(229,193,88,.22); }
 
 .primary-button { color: #fff; background: var(--blue-deep); }
@@ -506,9 +504,7 @@ button:disabled { cursor: not-allowed; opacity: .52; transform: none !important;
   .pangsuma-loader-sweep { transform: rotate(-45deg); }
   .is-busy::before { animation: none; }
 }
-.account-password-button { min-height: 44px; }
 .account-password-button svg { width: 17px; height: 17px; flex: none; }
-.account-password-button span { font-size: 12px; }
 .primary-button:active, .secondary-button:active, .quiet-button:active, .danger-button:active, .choice-option:active { transform: translateY(1px); }
 .danger-button { border-color: #d9b8b3; color: #7e302c; background: #fff; }
 .danger-button:hover { border-color: #ba817a; color: #702723; background: var(--red-pale); }
@@ -570,8 +566,6 @@ button:disabled { cursor: not-allowed; opacity: .52; transform: none !important;
 @media (max-width: 760px) {
   body { font-size: 16px; }
   .top-actions { gap: 6px; }
-  .account-password-button { min-width: 44px; min-height: 44px; gap: 5px; padding: 7px 9px; }
-  .account-password-button span { font-size: 11px; }
   .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .metric-row > .metric:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .metric { min-height: 76px; gap: 9px; padding: 11px; }
@@ -604,8 +598,6 @@ button:disabled { cursor: not-allowed; opacity: .52; transform: none !important;
   .login-kicker { font-size: 10px; }
 }
 @media (max-width: 360px) {
-  .account-password-button { width: 44px; padding: 8px; }
-  .account-password-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
   .metric { gap: 7px; padding: 10px 9px; }
   .metric-icon { width: 32px; height: 32px; }
   .metric-value { font-size: 18px; }

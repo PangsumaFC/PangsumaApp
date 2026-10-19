@@ -88,7 +88,8 @@ def main():
         user.locator("#loginGate").wait_for(state="hidden", timeout=15_000)
         expect(user.locator(".user-primary-action")).to_have_count(0)
         expect(user.locator(".user-status-section")).to_have_count(1)
-        assert user.locator(".user-status-section .item-row").count() <= 3
+        # The current overview retains up to five reports; this fixture created four.
+        expect(user.locator(".user-status-section .item-row")).to_have_count(4)
         assert user.locator(".mobile-nav.is-user .mobile-add").count() == 1
         assert user.locator(".account-users-button").is_hidden()
         expect(user.locator(".account-password-button")).to_be_visible()
