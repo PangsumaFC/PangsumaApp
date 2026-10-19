@@ -25,7 +25,6 @@ import { INITIAL_ROSTER, MANAGER_EMAIL } from '../_lib/roster.js';
 import { handlePasskeyApi } from '../_lib/webauthn.js';
 import { validProfileImage } from '../_lib/profile-photo.js';
 import { ensureUserProfilesSchema } from '../_lib/migration-guard.js';
-import { csvLine, csvHeader } from '../_lib/csv-export.js';
 import { buildFinancialReport } from '../_lib/pdf-report.js';
 import { createCashTopup } from '../_lib/cash-topup.js';
 import { getCashReconciliations, createCashReconciliation } from '../_lib/cash-reconciliation.js';
@@ -52,7 +51,6 @@ const LOGIN_IP_FAILURE_LIMIT = 20;
 const LOGIN_ATTEMPT_MAX_ROWS = 20000;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 500;
-const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
 // PDF generation sorts each section in memory; reject oversized reports before
 // any rows are collected so the caller can narrow filters and retry.
 // pdf-lib retains every drawn object until serialization. A conservative,
@@ -1186,79 +1184,6 @@ async function logout(context, db) {
   return jsonResponse({ ok: true }, 200, { 'Set-Cookie': '__Host-pangsuma_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
 }
 
-async function* fullExportCsv(db, snapshotAt) {
-  yield csvHeader();
-  let submissionCursor = null;
-  while (true) {
-    const filters = ['s.created_at <= ?'];
-    const params = [snapshotAt];
-    if (submissionCursor) {
-      filters.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
-      params.push(submissionCursor.createdAt, submissionCursor.createdAt, submissionCursor.id);
-    }
-    const result = await db.prepare(`
-      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
-             s.decision_reason, s.created_at, s.created_by,
-             creator.name AS created_by_name, creator.position AS created_by_position
-      FROM submissions s
-      JOIN users creator ON creator.id = s.created_by
-      WHERE ${filters.join(' AND ')}
-      ORDER BY s.created_at DESC, s.id DESC
-      LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...params).all();
-    const rows = result.results || [];
-    for (const row of rows) yield csvLine([
-      'Pengajuan', row.id, row.created_at, row.date, row.type, row.status, row.amount_idr,
-      row.created_by_name, row.created_by_position, row.description, row.note,
-      row.decision_reason, '', '', '', '', '', '', ''
-    ]);
-    if (rows.length < EXPORT_PAGE_SIZE) break;
-    const last = rows[rows.length - 1];
-    submissionCursor = { createdAt: last.created_at, id: last.id };
-  }
-
-  let ledgerCursor = null;
-  while (true) {
-    const result = await db.prepare(`
-      SELECT l.id, l.event_type, l.direction, l.amount_idr, l.balance_after_idr,
-             l.submission_id, l.note, l.created_at, u.name AS actor_name
-      FROM cash_ledger l
-      LEFT JOIN users u ON u.id = l.actor_id
-      WHERE l.created_at <= ? ${ledgerCursor ? 'AND l.id < ?' : ''}
-      ORDER BY l.id DESC
-      LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...(ledgerCursor ? [snapshotAt, ledgerCursor] : [snapshotAt])).all();
-    const rows = result.results || [];
-    for (const row of rows) yield csvLine([
-      'Ledger', row.id, row.created_at, '', row.event_type, '', row.amount_idr,
-      '', '', '', row.note, '', row.actor_name, row.direction, row.balance_after_idr,
-      '', 'submission', row.submission_id || '', ''
-    ]);
-    if (rows.length < EXPORT_PAGE_SIZE) break;
-    ledgerCursor = Number(rows[rows.length - 1].id);
-  }
-
-  let auditCursor = null;
-  while (true) {
-    const result = await db.prepare(`
-      SELECT a.id, a.action, a.entity_type, a.entity_id, a.details_json, a.created_at,
-             COALESCE(u.name, 'Sistem') AS actor_name
-      FROM audit_events a
-      LEFT JOIN users u ON u.id = a.actor_id
-      WHERE a.created_at <= ? ${auditCursor ? 'AND a.id < ?' : ''}
-      ORDER BY a.id DESC
-      LIMIT ${EXPORT_PAGE_SIZE}
-    `).bind(...(auditCursor ? [snapshotAt, auditCursor] : [snapshotAt])).all();
-    const rows = result.results || [];
-    for (const row of rows) yield csvLine([
-      'Audit', row.id, row.created_at, '', '', '', '', '', '', '', '', '',
-      row.actor_name, '', '', row.action, row.entity_type, row.entity_id, row.details_json
-    ]);
-    if (rows.length < EXPORT_PAGE_SIZE) break;
-    auditCursor = Number(rows[rows.length - 1].id);
-  }
-}
-
 async function readExportMutationMarker(db) {
   // Append-only audit/ledger IDs catch same-millisecond writes; submission
   // timestamps/counts catch edits and legacy databases without audit rows.
@@ -1275,20 +1200,6 @@ async function readExportMutationMarker(db) {
   return JSON.stringify(row || null);
 }
 
-async function collectCsv(db, snapshotAt) {
-  const chunks = [];
-  let byteLength = 0;
-  const encoder = new TextEncoder();
-  for await (const chunk of fullExportCsv(db, snapshotAt)) {
-    byteLength += encoder.encode(chunk).byteLength;
-    if (byteLength > MAX_EXPORT_BYTES) {
-      throw new ApiError(413, 'report_too_large', 'Laporan terlalu besar untuk dibuat dengan aman.');
-    }
-    chunks.push(chunk);
-  }
-  return chunks.join('');
-}
-
 async function runConsistentExport({ db, gather }) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const before = await readExportMutationMarker(db);
@@ -1298,23 +1209,6 @@ async function runConsistentExport({ db, gather }) {
     if (before === after) return { body, snapshotAt };
   }
   throw new ApiError(409, 'report_changed_retry', 'Data berubah selama pembuatan laporan. Coba lagi.');
-}
-
-async function exportCsv(context, db) {
-  ensureMethod(context.request, 'GET');
-  const user = await requireUser(context.request, db);
-  requireManager(user);
-  const { body, snapshotAt } = await runConsistentExport({ db, gather: (at) => collectCsv(db, at) });
-  return new Response(body, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="pangsuma-rekap-lengkap-${jakartaToday()}.csv"`,
-      'Cache-Control': 'no-store, max-age=0',
-      'Pragma': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-      'X-Report-Snapshot-At': snapshotAt
-    }
-  });
 }
 
 // Read every page rather than exporting only the dashboard's first 100 rows.
@@ -1563,7 +1457,6 @@ async function dispatch(context, db, path) {
     requireManager(actor);
     return createCashTopup(context, db, actor);
   }
-  if (path === '/export.csv') return exportCsv(context, db);
   if (path === '/export.pdf') return exportPdf(context, db);
   if (path === '/reports') return reports(context, db);
   const historyMatch = path.match(/^\/history\/(submissions|cash-ledger|audit-events)$/);

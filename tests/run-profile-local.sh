@@ -100,6 +100,7 @@ for path in ('/api/login', '/api/session', '/api/overview', '/api/users', '/api/
 print('PROFILE_MIGRATION_PRE_PASS health=503 login=503 session=503 overview=503 users=503 profile=503 raw_sql_errors=0')
 PY
 cp "$repo_root/migrations/0003_user_profiles.sql" "$repo_root/migrations/0004_manager_submissions.sql" "$repo_root/migrations/0005_cash_topups.sql" "$repo_root/migrations/0006_financial_controls.sql" "$repo_root/migrations/0007_submission_receipts.sql" "$repo_root/migrations/0008_financial_alert_settings.sql" "$project_dir/migrations/"
+cp "$repo_root/migrations/0009_receipt_dropbox_metadata.sql" "$repo_root/migrations/0010_request_numbers.sql" "$repo_root/migrations/0011_request_number_receipts.sql" "$project_dir/migrations/"
 CI=1 timeout -k 3s 30s "$wrangler" d1 migrations apply pangsuma-profile-local --local --config "$project_dir/wrangler.jsonc" --persist-to "$state_dir" >/dev/null
 curl --connect-timeout 1 --max-time 5 -fsS "$base/api/health" >/dev/null || { cat "$state_dir/wrangler.log" >&2; exit 1; }
 echo 'PROFILE_MIGRATION_POST_PASS health=200 same_server_recovered=1'

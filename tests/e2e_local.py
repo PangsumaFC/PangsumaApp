@@ -4,8 +4,6 @@ import os
 import re
 import time
 import uuid
-import csv
-import io
 import json
 import hashlib
 import subprocess
@@ -661,22 +659,7 @@ def main():
         assert "RINGKASAN" in complete_text and "Buku Kas" in complete_text and "Lampiran Audit" in complete_text
         assert "Perlengkapan latihan" in complete_text and "Transport kegiatan lapangan" in complete_text
 
-        legacy_csv_text = page.evaluate("async () => (await fetch('/api/export.csv')).text()")
-        exported_rows = list(csv.reader(io.StringIO(legacy_csv_text.lstrip('\ufeff'))))
-        category_index = exported_rows[0].index("Kategori")
-        id_index = exported_rows[0].index("ID")
-        categories = [row[category_index] for row in exported_rows[1:]]
-        assert categories.count("Pengajuan") == expected_total
-        assert categories.count("Ledger") == len(ledger_history)
-        assert categories.count("Audit") == len(audit_history)
-        csv_submission_ids = {row[id_index] for row in exported_rows[1:] if row[category_index] == "Pengajuan"}
-        csv_ledger_ids = {row[id_index] for row in exported_rows[1:] if row[category_index] == "Ledger"}
-        csv_audit_ids = {row[id_index] for row in exported_rows[1:] if row[category_index] == "Audit"}
-        assert csv_submission_ids == {item["id"] for item in manager_history}, "CSV must match the full submission cursor set"
-        assert csv_ledger_ids == {str(item["id"]) for item in ledger_history}, "CSV must match the full ledger cursor set"
-        assert csv_audit_ids == {str(item["id"]) for item in audit_history}, "CSV must match the full audit cursor set"
-        assert any(row[0] == "Pengajuan" and row[9].startswith("'=") for row in exported_rows[1:]), "CSV formula cells must be neutralized"
-
+        assert api(page, '/api/export.csv')['status'] == 404
         local_d1_rows("DELETE FROM login_attempts")
         digit_values = ",".join(f"({value})" for value in range(10))
         expired_fixture = f"""

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import base64
-import csv
 import hashlib
-import io
 import json
 import os
 import secrets
@@ -87,6 +85,18 @@ def api(page: Page, path, method="GET", body=None, headers=None):
       return {status:r.status,data:d,headers:Object.fromEntries(r.headers.entries())};
     }""", {"path": path, "method": method, "body": body, "headers": headers or {}})
 
+
+def complete_history(page: Page, collection: str, key: str):
+    rows, cursor = [], ""
+    for _ in range(200):
+        result = api(page, f"/api/history/{collection}" + (f"?cursor={cursor}" if cursor else ""))
+        assert result["status"] == 200, result
+        data = result["data"]
+        rows.extend(data[key])
+        if not data.get("hasMore"):
+            return rows
+        cursor = data["nextCursor"]
+    raise AssertionError("history pagination exceeded synthetic fixture bound")
 
 def login(page: Page, email: str, password: str):
     page.locator("#loginIdentifier").fill(email)
@@ -222,8 +232,9 @@ def main():
         assert set(user_overview["data"]["history"]) == {"submissions"}
         assert not user.locator("[data-page='cash-info'], [data-page='approvals'], [data-page='finance']").count()
         assert not user.locator(".balance-panel, .cash-note, [data-panel='cash-ledger']").count()
-        for path in ("/api/history/cash-ledger", "/api/history/audit-events", "/api/export.csv"):
+        for path in ("/api/history/cash-ledger", "/api/history/audit-events", "/api/export.pdf"):
             assert api(user, path)["status"] == 403, path
+        assert api(user, "/api/export.csv")["status"] == 404
         # Invalid empty payloads test authorization before any possible cash write.
         assert api(user, "/api/cash/opening-balance", "POST", {})["status"] == 403
         for action in ("approve", "reject", "send"):
@@ -248,7 +259,7 @@ def main():
         report_overview = api(manager, "/api/overview")["data"]
         assert report_overview["submissions"] and report_overview["cashBalanceIdr"] == 0
         financial_before = {key: report_overview[key] for key in ("cashBalanceIdr", "submissions", "cashLedger", "summary")}
-        report_csv_before = manager.evaluate("async () => { const r = await fetch('/api/export.csv'); if (!r.ok) throw new Error('export failed'); return r.text(); }")
+        history_before = {"submissions": complete_history(manager, "submissions", "submissions"), "audit": complete_history(manager, "audit-events", "auditEvents"), "ledger": complete_history(manager, "cash-ledger", "cashLedger")}
 
         # Manager profile form: fills current values, saves text plus photo, and persists.
         logout(user)
@@ -512,7 +523,13 @@ def main():
         # Responsive dialog/dashboard checks at all required widths, with no horizontal overflow.
         for width in (320, 390, 768, 1280):
             manager2.set_viewport_size({"width": width, "height": 900})
-            manager2.locator("[data-page='users']:visible").first.click(); manager2.locator("tbody tr").first.wait_for(timeout=10_000)
+            manager2.locator("[data-page='users']:visible").first.click()
+            try:
+                manager2.locator("tbody tr").first.wait_for(timeout=10_000)
+            except Exception:
+                manager2.screenshot(path=str(SCREENSHOTS / f"profile-viewport-error-{width}.png"), full_page=True)
+                print("PROFILE_VIEWPORT_DIAGNOSTIC", width, manager2.locator("#appContent").inner_text(), browser_errors, flush=True)
+                raise
             manager2.locator("tbody tr").filter(has_text=second["name"]).locator("[data-action='edit-user-profile']").click(); d = visible_dialog(manager2)
             assert manager2.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             d.screenshot(path=str(SCREENSHOTS / f"profile-dialog-{width}.png"))
@@ -539,22 +556,25 @@ def main():
         final_overview = api(manager2, '/api/overview')['data']
         for key, value in financial_before.items():
             assert final_overview[key] == value, key
-        report_csv_after = manager2.evaluate("async () => { const r = await fetch('/api/export.csv'); if (!r.ok) throw new Error('export failed'); return r.text(); }")
-        # The complete export includes audit events, so successful profile saves
-        # must add rows. Compare financial rows and preserve all prior audit rows.
-        before_rows = list(csv.DictReader(io.StringIO(report_csv_before.lstrip('\ufeff'))))
-        after_rows = list(csv.DictReader(io.StringIO(report_csv_after.lstrip('\ufeff'))))
-        assert [r for r in after_rows if r['Kategori'] != 'Audit'] == [r for r in before_rows if r['Kategori'] != 'Audit'], "profile edits must not change exported submissions or ledger"
-        after_audit = {r['ID']: r for r in after_rows if r['Kategori'] == 'Audit'}
-        assert all(after_audit.get(r['ID']) == r for r in before_rows if r['Kategori'] == 'Audit'), "profile edits must preserve previous audit export rows"
-        assert any(r['Aksi audit'] == 'user.profile_updated' for r in after_audit.values()), "profile saves must appear in the complete audit export"
+        history_after = {"submissions": complete_history(manager2, "submissions", "submissions"), "audit": complete_history(manager2, "audit-events", "auditEvents"), "ledger": complete_history(manager2, "cash-ledger", "cashLedger")}
+        # Compare complete financial histories and retain every prior audit row.
+        assert manager2.evaluate("async () => (await fetch('/api/export.csv')).status") == 404
+        assert history_after['submissions'] == history_before['submissions']
+        assert history_after['ledger'] == history_before['ledger']
+        before_audit_ids = {row['id'] for row in history_before['audit']}
+        after_audit_ids = {row['id'] for row in history_after['audit']}
+        assert before_audit_ids <= after_audit_ids
+        prior_audit = {row['id']: row for row in history_before['audit']}
+        final_audit = {row['id']: row for row in history_after['audit']}
+        assert all(final_audit[id] == row for id, row in prior_audit.items())
+        assert any(row['action'] == 'user.profile_updated' for row in final_audit.values())
         for original in overview['data']['users']:
             final_user = next(u for u in final_overview['users'] if u['id'] == original['id'])
             for key in ('id', 'name', 'email', 'position', 'role', 'active'):
                 assert final_user[key] == original[key], (original['id'], key)
         user_ctx.close(); manager_ctx.close(); browser.close()
     assert not browser_errors, browser_errors
-    print("PROFILE_FLOW_PASS bootstrap=1 manager_rotation=1 manager_target_profile=1 user_sync=1 concurrent_contexts=1 fresh_editor=1 conflict_409=1 conflict_no_audit=1 initial_conflict=1 missing_version=1 load_error=1 validation=1 csrf=1 auth=1 photo_isolation=1 financial_unchanged=1 nonempty_report_unchanged=1 financial_csv_unchanged=1 audit_export_preserved=1 roster_unchanged=1 responsive=320,390,768,1280 screenshots=" + str(SCREENSHOTS))
+    print("PROFILE_FLOW_PASS bootstrap=1 manager_rotation=1 manager_target_profile=1 user_sync=1 concurrent_contexts=1 fresh_editor=1 conflict_409=1 conflict_no_audit=1 initial_conflict=1 missing_version=1 load_error=1 validation=1 csrf=1 auth=1 photo_isolation=1 financial_unchanged=1 nonempty_report_unchanged=1 financial_history_unchanged=1 audit_history_preserved=1 roster_unchanged=1 responsive=320,390,768,1280 screenshots=" + str(SCREENSHOTS))
 
 
 if __name__ == "__main__":

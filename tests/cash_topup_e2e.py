@@ -23,6 +23,8 @@ def main():
         before = api(page, '/api/overview')['data']
         assert before['cashBalanceIdr'] == 0
         page.locator('[data-page="finance"]:visible').first.click()
+        expect(page.locator('[data-action="open-cash-topup"]:visible')).to_have_count(0)
+        page.locator('[data-page="overview"]:visible').first.click()
         page.locator('[data-action="open-cash-topup"]:visible').first.click()
         page.locator('#cashTopupAmount').fill('250000')
         page.locator('#cashTopupNote').fill('Transfer pemilik untuk operasional lokal')
@@ -38,7 +40,8 @@ def main():
         audit = [entry for entry in overview['auditEvents'] if entry['action'] == 'cash.topup_created']
         assert len(audit) == 1
         page.locator('[data-page="finance"]:visible').first.click()
-        expect(page.locator('#appContent')).to_contain_text('Petty cash ditambah')
+        page.locator('[data-panel="cash-ledger"] summary').click()
+        expect(page.locator('#appContent')).to_contain_text('Petty Cash ditambah')
         expect(page.locator('#appContent')).to_contain_text('WIB')
         page.locator('details').evaluate_all('(nodes) => nodes.forEach(node => node.open = true)')
         text = page.locator('#appContent').inner_text()
@@ -56,6 +59,8 @@ def main():
                 route.continue_()
         page.route('**/api/cash/topups', lose_first_response)
         page.locator('[data-page="finance"]:visible').first.click()
+        expect(page.locator('[data-action="open-cash-topup"]:visible')).to_have_count(0)
+        page.locator('[data-page="overview"]:visible').first.click()
         page.locator('[data-action="open-cash-topup"]:visible').first.click()
         page.locator('#cashTopupAmount').fill('50000')
         page.locator('#cashTopupNote').fill('Tambahan lokal uji retry aman')
@@ -69,6 +74,7 @@ def main():
         assert after['cashBalanceIdr'] == 300000
         assert len([entry for entry in after['cashLedger'] if entry['event_type'] == 'cash_topup']) == 2
         assert len([entry for entry in after['auditEvents'] if entry['action'] == 'cash.topup_created']) == 2
+        page.locator('[data-page="finance"]:visible').first.click()
         with page.expect_download() as download:
             page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
         pdf_path = SCREENSHOTS / 'laporan-isi-ulang-lokal.pdf'

@@ -63,7 +63,6 @@ test('User ditolak dari ledger kas, opening balance, dan export', async () => {
   for (const [path, method, body] of [
     ['/history/cash-ledger', 'GET'],
     ['/cash/opening-balance', 'POST', { amountIdr: 1, ownerConfirmed: true }],
-    ['/export.csv', 'GET'],
     ['/export.pdf', 'GET']
   ]) {
     const db = fakeDb();

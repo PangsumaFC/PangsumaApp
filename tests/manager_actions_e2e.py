@@ -1,8 +1,7 @@
-"""Local-only regression for Manager submissions, CSV downloads and mobile photo decoding."""
+"""Local-only regression for Manager submissions, PDF downloads and mobile photo decoding."""
 import base64
-import csv
-import io
 import os
+import subprocess
 
 from playwright.sync_api import expect, sync_playwright
 from profile_flow_e2e import (
@@ -152,50 +151,35 @@ def main():
         dialog.locator('[data-action="close-dialog"]').first.click()
         print('MANAGER_PHOTO_METADATA_PASS empty_mime=1 jpg_alias=1 invalid_replacement_rejected=1 draft_preserved=1', flush=True)
 
-        # Consume the complete HTTP stream and then exercise the real download button.
-        csv_response = page.evaluate('''async () => {
-            const r=await fetch('/api/export.csv');
-            return {status:r.status, type:r.headers.get('content-type'), text:await r.text()};
-        }''')
-        assert csv_response['status'] == 200 and 'text/csv' in csv_response['type'], csv_response
-        rows = list(csv.reader(io.StringIO(csv_response['text'].lstrip('\ufeff'))))
-        assert all(len(row) == 19 for row in rows), rows
-        exported = {row[1] for row in rows[1:] if row[0] == 'Pengajuan'}
-        assert {s['id'] for s in own} <= exported, rows
-        export_statuses = {row[1]: row[5] for row in rows[1:] if row[0] == 'Pengajuan'}
-        assert export_statuses[petty['id']] == 'approved', export_statuses
-        assert export_statuses[finance['id']] == 'sent', export_statuses
-        assert all(row[9].startswith("'=Manager") for row in rows[1:] if row[0] == 'Pengajuan'), rows
-        assert any(row[0] == 'Audit' for row in rows[1:]), rows
-        page.locator('[data-page="finance"]:visible').first.click()
-        export_events = []
-        page.on('response', lambda response: export_events.append({
-            'status': response.status, 'headers': response.headers
-        }) if response.url.endswith('/api/export.csv') else None)
-        page.on('requestfailed', lambda request: export_events.append({
-            'failure': request.failure
-        }) if request.url.endswith('/api/export.csv') else None)
-        # CSV remains a supported API attachment, not a second primary export button.
-        page.evaluate("""() => {
-          const link = document.createElement('a'); link.href = '/api/export.csv';
-          link.download = ''; link.id = 'csv-api-regression'; link.textContent = 'CSV regression';
-          document.body.append(link);
+        # CSV was removed; the supported export is the complete, filtered PDF report.
+        csv_response = page.evaluate("""async () => {
+            const r = await fetch('/api/export.csv');
+            return {status: r.status, type: r.headers.get('content-type')};
         }""")
-        try:
-            with page.expect_download() as download:
-                page.locator('#csv-api-regression').click()
-        except Exception:
-            print('CSV_DOWNLOAD_DIAGNOSTIC url=' + page.url + ' events=' + str(export_events) + ' errors=' + str(errors), flush=True)
-            page.screenshot(path=str(SCREENSHOTS / 'csv-download-failure.png'), full_page=True)
-            raise
+        assert csv_response['status'] == 404, csv_response
+        page.locator('[data-page="finance"]:visible').first.click()
+        search = page.locator('#managerReportFiltersForm [name="q"]')
+        search.fill('Manager local petty_cash')
+        page.locator('#managerReportFiltersForm [type="submit"]').click()
+        expect(page.locator('#managerReportsRegion .manager-report-filters')).to_have_attribute(
+            'aria-busy', 'false', timeout=15_000)
+        pdf_url = page.evaluate('() => ManagerReportFilters.pdfUrl("petty_cash")')
+        assert 'q=Manager+local+petty_cash' in pdf_url and 'laporan=petty_cash' in pdf_url, pdf_url
+        with page.expect_download() as download:
+            page.locator('[data-action="download-pdf"][data-report-type="petty_cash"]:visible').click()
         assert download.value.failure() is None
-        downloaded = SCREENSHOTS / 'manager-complete-export.csv'
+        downloaded = SCREENSHOTS / 'manager-filtered-report.pdf'
         download.value.save_as(downloaded)
         raw = downloaded.read_bytes()
-        assert raw.startswith(b'\xef\xbb\xbf') and b'\r\n' in raw
-        assert len(list(csv.reader(io.StringIO(raw.decode('utf-8-sig'))))) == len(rows)
-        page.screenshot(path=str(SCREENSHOTS / 'manager-csv-downloaded.png'), full_page=True)
-        print('MANAGER_CSV_ATTACHMENT_PASS status=200 download=1 rows=' + str(len(rows)) + ' bom=1 columns=19 formula_safe=1', flush=True)
+        assert raw.startswith(b'%PDF-'), raw[:16]
+        pdf_text = subprocess.run(['pdftotext', str(downloaded), '-'], check=True,
+                                  capture_output=True, text=True).stdout
+        normalized_pdf = ' '.join(pdf_text.split())
+        assert 'Laporan Petty Cash' in normalized_pdf
+        assert 'Manager local petty_cash' in normalized_pdf
+        assert 'Manager local finance_request' not in normalized_pdf
+        page.screenshot(path=str(SCREENSHOTS / 'manager-filtered-report.png'), full_page=True)
+        print('MANAGER_PDF_DOWNLOAD_PASS csv_status=404 filtered=1 download=1 pdf=1 full_report=1', flush=True)
         assert not errors, errors
         context.close()
         browser.close()

@@ -13,7 +13,7 @@ from profile_flow_e2e import BASE, MANAGER, SCREENSHOTS, api, credential, http, 
 
 def finance_insights(page):
     page.locator('[data-page="finance"]:visible').first.click()
-    details = page.locator('[data-panel="cash-insights"]')
+    details = page.locator('.cash-trend-details')
     if details.get_attribute("open") is None:
         details.locator('summary').first.click()
 
