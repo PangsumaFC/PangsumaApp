@@ -23,7 +23,10 @@ test('disclosure is rendered immediately before the upload action', () => {
 test('preparing a preview does not call the API or grant consent', () => {
   assert.doesNotMatch(prepareBlock, /apiCall\(/);
   assert.doesNotMatch(prepareBlock, /dropboxPublicConsent/);
-  assert.equal((source.match(/dropboxPublicConsent/g) || []).length, 1);
+  assert.equal((source.match(/dropboxPublicConsent/g) || []).length, 2);
+  const draftPrepare = source.slice(source.indexOf('async function prepareDraftSubmission('), source.indexOf('async function completeDraftSubmission('));
+  assert.doesNotMatch(draftPrepare, /apiCall\(|dropboxPublicConsent/);
+  assert.match(draftPrepare, /if \(!ctx\.draft\.publicConsent\)/);
 });
 
 test('upload requires a prepared preview and sends consent only from the click handler', () => {

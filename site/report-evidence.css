@@ -3,3 +3,17 @@
 
 .receipt-retry { min-height: 44px; margin-left: .35rem; padding: .45rem .75rem; border: 1px solid var(--accent,#246bce); border-radius: .45rem; color: var(--accent,#246bce); background: #fff; font: inherit; font-weight: 650; cursor: pointer; }
 .receipt-retry:focus-visible { outline: 3px solid #6ea8fe; outline-offset: 2px; }
+.new-request-evidence{margin-top:1rem;padding:1rem;border:1px solid var(--border,#d9e0e8);border-radius:.75rem;background:var(--surface,#fff)}
+.new-request-evidence .receipt-picker{align-items:flex-start;flex-direction:column}.new-request-evidence .receipt-dropbox-disclosure{color:var(--muted,#637083);font-size:.82rem}.receipt-consent{display:flex;gap:.45rem;align-items:flex-start;font-size:.86rem}.receipt-consent input{margin-top:.2rem}.new-request-evidence.is-draft-locked{border-color:#bf7b00;background:#fffaf0}.new-request-evidence.is-draft-locked .receipt-preview{opacity:.9}
+
+/* Keep the accessible native picker tiny, including the mobile full-width rule. */
+.receipt-picker { position: relative; }
+.receipt-picker > .receipt-file { width: 1px; min-width: 0; max-width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; inset-inline-start: 0; clip-path: inset(50%); }
+.receipt-picker:focus-within .receipt-file-label { outline: 2px solid var(--focus, #795b17); outline-offset: 3px; }
+.new-request-evidence { min-width: 0; border-color: var(--line, #dfe4e8); border-radius: 16px; background: var(--paper, #fff); }
+.new-request-evidence .receipt-file-label { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; border-color: var(--blue-deep, #17334e); color: var(--blue-deep, #17334e); font-weight: 650; }
+.new-request-evidence .receipt-dropbox-disclosure { line-height: 1.5; text-align: start; }
+.receipt-consent { min-height: 44px; align-items: center; text-align: start; line-height: 1.45; cursor: pointer; }
+.receipt-consent input { flex: 0 0 20px; width: 20px; min-width: 20px; max-width: 20px; height: 20px; min-height: 20px; margin: 0; padding: 0; accent-color: var(--blue-deep, #17334e); }
+.receipt-remove { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line, #dfe4e8); border-radius: 10px; background: var(--paper, #fff); color: var(--muted, #637083); font: inherit; cursor: pointer; }
+.new-request-evidence .receipt-retry { margin-left: 0; }

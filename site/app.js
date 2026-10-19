@@ -1241,7 +1241,10 @@ function renderApp() {
   $('#appContent').innerHTML = body;
   if (currentPage === 'users') restoreAccountDraft();
   if (currentPage === 'users' && addUserWasOpen && $('#addUserCard')) $('#addUserCard').hidden = false;
-  if (currentPage === 'new-report' && typeof ReportEvidence !== 'undefined') ReportEvidence.mountDuplicateCheck($('#reportForm'));
+  if (currentPage === 'new-report' && typeof ReportEvidence !== 'undefined') {
+    ReportEvidence.mountDraft($('#reportForm'), { type: reportTypePreset, ownerId: state.user.id });
+    ReportEvidence.mountDuplicateCheck($('#reportForm'));
+  }
   $$('#appContent details[data-panel]').forEach(panel => { panel.open = openPanels.has(panel.dataset.panel); });
   if (pageChanged) $('#mainContent').scrollTo(0, 0);
   lastRenderedPage = currentPage;
@@ -1670,16 +1673,40 @@ async function performNewSubmission(event) {
   const form = $('#reportForm');
   if (!form.reportValidity()) return;
   const button = form.querySelector('[type="submit"]');
+  if (button.disabled) return;
   const data = new FormData(form);
+  const owner = state.user?.id;
+  let requestSaved = false;
   setButtonBusy(button, true, 'Mengirim pengajuan…');
   try {
-    const payload = { type: String(data.get('type')), amountIdr: Number(data.get('amountIdr')), date: String(data.get('date')), description: String(data.get('description')).trim(), note: String(data.get('note') || '').trim() };
+    const type = String(data.get('type') || form.type?.value || (typeof reportTypePreset !== 'undefined' ? reportTypePreset : ''));
+    const previous = typeof readDraft === 'function' ? readDraft('report', type) : null;
+    const field = name => data.get(name) ?? previous?.[name] ?? '';
+    const payload = { type, amountIdr: Number(field('amountIdr')), date: String(field('date')), description: String(field('description')).trim(), note: String(field('note')).trim() };
+    const evidence = typeof ReportEvidence !== 'undefined' ? ReportEvidence : null;
+    const photo = evidence ? await evidence.prepareDraftSubmission(form) : null;
+    if (state.user?.id !== owner) return;
     const savedDraft = typeof readDraft === 'function' ? readDraft('report', payload.type) : null;
     if (typeof reportTypePreset !== 'undefined' && reportTypePreset !== payload.type) submissionIdempotencyKey = savedDraft?.idempotencyKey || '';
     const submittedFingerprint = JSON.stringify(payload);
     if (!submissionIdempotencyKey || (savedDraft?.submittedFingerprint && savedDraft.submittedFingerprint !== submittedFingerprint)) submissionIdempotencyKey = newSubmissionKey();
     if (typeof writeDraft === 'function') writeDraft('report', payload.type, { ...payload, amountIdr: String(payload.amountIdr), idempotencyKey: submissionIdempotencyKey, submittedFingerprint });
-    await api('/submissions', { method: 'POST', headers: { 'Idempotency-Key': submissionIdempotencyKey }, body: payload });
+    if (photo?.hasPhoto && typeof readDraft === 'function') {
+      const persisted = readDraft('report', payload.type);
+      if (persisted?.idempotencyKey !== submissionIdempotencyKey || persisted?.submittedFingerprint !== submittedFingerprint) throw new Error('Draf pengajuan belum dapat disimpan di perangkat ini. Pengajuan belum dikirim; kosongkan ruang penyimpanan lalu coba lagi.');
+    }
+    let submissionId = evidence?.getDraftSubmission(form);
+    if (!submissionId) {
+      const result = await api('/submissions', { method: 'POST', headers: { 'Idempotency-Key': submissionIdempotencyKey }, body: payload });
+      submissionId = result?.submission?.id;
+    }
+    requestSaved = true;
+    if (state.user?.id !== owner) return;
+    if (photo?.hasPhoto) {
+      if (!submissionId) throw new Error('ID pengajuan belum diterima. Coba lagi dengan draf yang sama.');
+      setButtonBusy(button, true, 'Mengunggah foto…');
+      await evidence.completeDraftSubmission(form, submissionId);
+    }
     if (typeof clearDraft === 'function') clearDraft('report', payload.type);
     submissionIdempotencyKey = '';
     let refreshed = true;
@@ -1692,7 +1719,7 @@ async function performNewSubmission(event) {
     else { currentPage = successPage; renderApp(); }
     showToast(!refreshed ? 'Pengajuan sudah tersimpan. Ringkasan belum diperbarui; muat ulang saat koneksi tersedia, jangan kirim ulang.' : state.user.role === 'manager' ? 'Pengajuan otomatis disetujui dan masuk rekap.' : 'Pengajuan terkirim dan tersimpan di akun Anda.');
   } catch (error) {
-    showToast(friendlyError(error));
+    showToast(requestSaved ? `Pengajuan sudah tersimpan, tetapi foto belum terkonfirmasi. Coba lagi unggah foto tanpa membuat pengajuan baru. ${friendlyError(error)}` : friendlyError(error));
   } finally {
     if (button.isConnected) setButtonBusy(button, false);
   }

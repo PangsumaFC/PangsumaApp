@@ -75,3 +75,33 @@ test('perubahan draf sesudah gagal kirim mendapat kunci baru, retry isi sama mem
   await h.submit();
   assert.equal(h.calls.posts[2].headers['Idempotency-Key'], secondKey);
 });
+
+test('foto gagal lalu retry hanya mengunggah receipt pada ID yang sama', async () => {
+  const h = harness(); let savedId = null, uploads = 0;
+  h.context.ReportEvidence = {
+    prepareDraftSubmission: async () => ({ hasPhoto: true }),
+    getDraftSubmission: () => savedId,
+    completeDraftSubmission: async (_form, id) => { savedId = id; uploads++; if (uploads === 1) throw Error('upload offline'); }
+  };
+  await h.submit();
+  assert.equal(h.calls.posts.length, 1);
+  assert.equal(savedId, 'saved');
+  assert.equal(h.context.currentPage, 'new-report');
+  assert.match(h.calls.toasts.at(-1), /Pengajuan sudah tersimpan.*foto belum terkonfirmasi/);
+  await h.submit();
+  assert.equal(h.calls.posts.length, 1);
+  assert.equal(uploads, 2);
+  assert.equal(h.context.currentPage, 'overview');
+});
+test('consent atau foto sedang diproses tidak boleh membuat pengajuan', async () => {
+  const h = harness();
+  h.context.ReportEvidence = { prepareDraftSubmission: async () => { throw Error('consent required'); } };
+  await h.submit();
+  assert.equal(h.calls.posts.length, 0);
+  assert.match(h.calls.toasts[0], /consent/);
+});
+test('perubahan sesi ketika menyiapkan foto tidak mengirim sebagai akun lain', async () => {
+  const h = harness(); h.context.state.user.id = 'original-owner';
+  h.context.ReportEvidence = { prepareDraftSubmission: async () => { h.context.state.user.id = 'different-owner'; return { hasPhoto: true }; } };
+  await h.submit(); assert.equal(h.calls.posts.length, 0);
+});
