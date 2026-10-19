@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import fs from 'node:fs';
+import { LocalD1 } from './local_financial_db.mjs';
+const workflow = fs.readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+const step = workflow.split('      - name: Require separately approved request-number migrations')[1].split('      - name: Deploy Pages')[0];
+const queries = /--command "([^"]+)"/.exec(step)[1].split(';').map(x => x.trim()).filter(Boolean);
+const triggerNames = ['receipt_dropbox_metadata_insert_guard','request_number_reservations_immutable','request_number_reservations_no_delete','submissions_request_number_immutable','submissions_request_number_required'];
+test('numbering release preflight is read-only and detects missing Dropbox numbering guard', () => {
+  assert.equal(queries.length, 3); assert.ok(queries.every(q => q.startsWith('SELECT ')));
+  assert.doesNotMatch(step, /migrations apply|--command.*\b(?:UPDATE|INSERT|DELETE|ALTER|DROP)\b/i);
+  const db = new LocalD1();
+  for (const name of ['0006_financial_controls.sql','0007_submission_receipts.sql','0008_financial_alert_settings.sql','0009_receipt_dropbox_metadata.sql']) db.db.exec(fs.readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
+  assert.deepEqual(db.db.prepare(queries[0]).all(), []);
+  assert.equal(db.db.prepare(queries[1]).all().length, 4);
+  db.db.exec(fs.readFileSync(new URL('../migrations/0011_request_number_receipts.sql', import.meta.url), 'utf8'));
+  assert.deepEqual(db.db.prepare(queries[1]).all().map(x => x.name), triggerNames);
+  assert.equal(db.db.prepare(queries[2]).get().missing, 0);
+  assert.ok(workflow.indexOf('Require separately approved request-number migrations') < workflow.indexOf('      - name: Deploy Pages app'));
+});

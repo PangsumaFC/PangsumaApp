@@ -1,6 +1,6 @@
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, BlendMode } from 'pdf-lib';
 import { ApiError } from './http.js';
-import { unifiedReportRows } from './pdf-cashflow.js';
+import { unifiedReportRows, requestNumberOf } from './pdf-cashflow.js';
 import { managerSignaturePng, managerStampPng } from './pdf-approval-assets.js';
 
 const PAGE_W = 595.28;
@@ -53,8 +53,12 @@ function drawMoneyCell(page, value, x, yy, width, font, color, baseSize = 8.5, p
   let size = baseSize;
   const available = width - pad * 2;
   const gap = 4;
-  while (size > 4 && font.widthOfTextAtSize(parts.prefix, size) + gap + font.widthOfTextAtSize(parts.number, size) > available) size -= 0.25;
-  const numberWidth = font.widthOfTextAtSize(parts.number, size);
+  while (size > 4 && renderedWidth(parts.prefix, font, size) + gap + renderedWidth(parts.number, font, size) > available) size -= 0.25;
+  // Extremely large integer values must still remain complete, with currency
+  // and digits separated, even in the narrower three-column cash layout.
+  const glyphWidth = renderedWidth(parts.prefix, font, size) + renderedWidth(parts.number, font, size);
+  if (glyphWidth + gap > available) size *= (available - gap) / glyphWidth;
+  const numberWidth = renderedWidth(parts.number, font, size);
   page.drawText(parts.prefix, { x: x + pad, y: yy, size, font, color });
   page.drawText(parts.number, { x: right - numberWidth, y: yy, size, font, color });
 }
@@ -186,16 +190,21 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   const hasSimulation = unified.hasSimulation;
 
   function ledgerTable(rows) {
+    // Both layouts fit exactly inside the 535pt content area. The Lampiran
+    // header identifies the attachment column; each blue link is the complete
+    // canonical request number without a repeated label taking up its space.
     const columns = reportType === 'finance_request' ? [
       { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
-      { key: 'description', label: 'Keterangan', width: 253 },
-      { key: 'in', label: 'Nominal request', width: 110, align: 'right' },
-      { key: 'attachment', label: 'Lampiran', width: 90 },
+      { key: 'request_number', label: 'No. Pengajuan', width: 94 },
+      { key: 'description', label: 'Keterangan', width: 150 },
+      { key: 'in', label: 'Nominal request', width: 95, align: 'right' },
+      { key: 'attachment', label: 'Lampiran', width: 114 },
     ] : [
       { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
-      { key: 'description', label: 'Keterangan', width: 148 }, { key: 'in', label: 'Masuk', width: 76, align: 'right' },
-      { key: 'out', label: 'Keluar', width: 76, align: 'right' }, { key: 'balance', label: 'Saldo', width: 86, align: 'right' },
-      { key: 'attachment', label: 'Lampiran', width: 67 },
+      { key: 'request_number', label: 'No. Pengajuan', width: 94 },
+      { key: 'description', label: 'Keterangan', width: 120 }, { key: 'in', label: 'Masuk', width: 54, align: 'right' },
+      { key: 'out', label: 'Keluar', width: 54, align: 'right' }, { key: 'balance', label: 'Saldo', width: 54, align: 'right' },
+      { key: 'attachment', label: 'Lampiran', width: 77 },
     ];
     const total = columns.reduce((sum, column) => sum + column.width, 0);
     const headerH = 24; const fontSize = 8.5; const pad = 4; const lineH = 11;
@@ -223,8 +232,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       const attachmentUrls = Array.isArray(row.attachment_urls) ? row.attachment_urls : (row.attachment_url ? [row.attachment_url] : []);
       const cells = columns.map(column => ['in', 'out', 'balance'].includes(column.key)
         ? [mark(row[column.key])]
-        : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map(() => 'Lampiran') : ['-'])
-          : wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
+        : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map(() => row.request_number || 'Lampiran') : ['-'])
+          : wrap(mark(row[column.key]), regular, column.key === 'description' ? 7.2 : fontSize, column.width - pad * 2));
       const lineCount = Math.max(...cells.map(cell => cell.length));
       const fullHeight = Math.max(22, lineCount * lineH + 8);
       if (fullHeight <= PAGE_H - MARGIN - 38 && y - fullHeight < 38) {
@@ -246,15 +255,19 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
           slice.forEach((line, lineIndex) => {
             const lineY = y - 12 - lineIndex * lineH;
             if (column.key === 'in' || column.key === 'out' || column.key === 'balance') drawMoneyCell(page, line, x, lineY, column.width, regular, INK, fontSize, pad);
-            else text(line, x + pad, lineY, fontSize, regular, column.key === 'attachment' && line !== '-' ? rgb(0.05, 0.25, 0.75) : INK, { maxWidth: column.width - pad * 2, align: column.align });
-            if (column.key === 'attachment' && line !== '-') {
+            else if (column.key === 'attachment' && line !== '-') {
+              let attachmentSize = fontSize;
+              const available = column.width - pad * 2;
+              while (attachmentSize > 5.5 && renderedWidth(line, regular, attachmentSize) > available) attachmentSize -= 0.25;
+              text(line, x + pad, lineY, attachmentSize, regular, rgb(0.05, 0.25, 0.75));
               const linkIndex = offset + lineIndex;
               const url = attachmentUrls[linkIndex];
               if (url) {
-                const labelWidth = regular.widthOfTextAtSize(line, fontSize);
+                const linkX = x + pad;
+                const labelWidth = renderedWidth(line, regular, attachmentSize);
                 const link = pdf.context.register(pdf.context.obj({
                   Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
-                  Rect: [x + pad, lineY - 4, x + pad + labelWidth, lineY + fontSize + 2],
+                  Rect: [linkX, lineY - 4, Math.min(x + column.width - pad, linkX + labelWidth), lineY + attachmentSize + 2],
                   Border: [0, 0, 0],
                   // Contents is the non-printing accessible name/tooltip for the
                   // link. It keeps row/file provenance unique without adding
@@ -266,7 +279,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
                 if (annotations) annotations.push(link);
                 else page.node.set(PDFName.of('Annots'), pdf.context.obj([link]));
               }
-            }
+            } else text(line, x + pad, lineY, column.key === 'description' ? 7.2 : fontSize, regular, INK, { maxWidth: column.width - pad * 2, align: column.align });
           });
           x += column.width;
         });
@@ -319,6 +332,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       no: i + 1,
       date: shortDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(l.report_at))),
       description: l.report_description,
+      request_number: requestNumberOf(l) || null,
       in: reportType === 'finance_request' ? amount(l.submission_amount_idr ?? l.amount_idr ?? l.amount) : (isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-'),
       out: reportType === 'finance_request' ? '-' : (isOutgoing(l.direction) ? amount(l.amount_idr ?? l.amount) : '-'),
       balance: reportType === 'finance_request' ? '-' : (l.is_cash ? amount(l.balance_after_idr) : '-'),

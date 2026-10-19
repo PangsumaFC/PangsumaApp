@@ -957,6 +957,10 @@ function submissionMeta(item, includeOwner = false) {
   return pieces.map(escapeHTML).join(' · ');
 }
 
+function submissionNumber(item) {
+  const value = String(item?.requestNumber || '').trim();
+  return value ? `<span class="item-request-number">Nomor ${escapeHTML(value)}</span>` : '';
+}
 function submissionCard(item, options = {}) {
   const [label, statusClass] = statusInfo(item);
   const owner = options.includeOwner ? `<span class="item-owner">${escapeHTML(item.createdByName || 'Pengguna')}</span>` : '';
@@ -977,7 +981,7 @@ function submissionCard(item, options = {}) {
     actions = `<div class="item-actions"><button class="primary-button" type="button" data-action="send-finance" data-id="${escapeHTML(item.id)}">Tandai terkirim ke Finance</button></div>`;
   }
   const detail = `<button class="text-button" type="button" data-action="report-detail" data-id="${escapeHTML(item.id)}">Detail</button>`;
-  return `<article class="item-row"><div class="item-copy">${owner}<div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div>${item.note ? `<p class="item-note">${escapeHTML(item.note)}</p>` : ''}</div><div class="item-side">${amount}${options.showStatus !== false ? status : ''}${detail}</div>${item.decisionReason ? `<p class="decision-reason"><strong>Alasan:</strong> ${escapeHTML(item.decisionReason)}</p>` : ''}${actions}</article>`;
+  return `<article class="item-row"><div class="item-copy">${owner}<div class="item-title">${escapeHTML(item.description)}</div><div class="item-meta">${submissionMeta(item, false)}</div>${submissionNumber(item)}${item.note ? `<p class="item-note">${escapeHTML(item.note)}</p>` : ''}</div><div class="item-side">${amount}${options.showStatus !== false ? status : ''}${detail}</div>${item.decisionReason ? `<p class="decision-reason"><strong>Alasan:</strong> ${escapeHTML(item.decisionReason)}</p>` : ''}${actions}</article>`;
 }
 
 function emptyState(title, message = '') {
@@ -1064,14 +1068,16 @@ function auditRow(event) {
   };
   const label = actionLabels[event.action] || event.action;
   const amount = details.amount_idr ? ` · ${money(details.amount_idr)}` : '';
+  const requestNumber = event.request_number ? ` · Nomor ${escapeHTML(event.request_number)}` : '';
   const reason = details.reason ? ` · Alasan: ${escapeHTML(details.reason)}` : '';
-  return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actor_name || 'Sistem')}</span></div><small>${escapeHTML(dateTimeLong(event.created_at))}${amount}${reason}</small></li>`;
+  return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actor_name || 'Sistem')}</span></div><small>${escapeHTML(dateTimeLong(event.created_at))}${requestNumber}${amount}${reason}</small></li>`;
 }
 
 function ledgerRow(event) {
   const debit = event.direction === 'debit';
   const topup = event.event_type === 'cash_topup';
-  return `<li><div class="audit-main"><strong>${topup ? 'Petty Cash ditambah' : debit ? 'Pengeluaran Petty Cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
+  const requestNumber = event.request_number ? ` · Nomor ${escapeHTML(event.request_number)}` : '';
+  return `<li><div class="audit-main"><strong>${topup ? 'Petty Cash ditambah' : debit ? 'Pengeluaran Petty Cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${requestNumber}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
 }
 
 function asyncLifecycle() {
@@ -1167,8 +1173,9 @@ function usersPage() {
 }
 
 function myReportsPage() {
-  const query = state.archiveSearch.trim().toLocaleLowerCase('id-ID');
-  const filtered = state.submissions.filter(item => state.archiveType === 'all' || item.type === state.archiveType).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
+  const query = state.archiveSearch.trim();
+  // Search and type filtering are server-scoped; never filter only the loaded page.
+  const filtered = state.submissions.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
   const groups = new Map();
   for (const item of filtered) {
     const key = String(item.date).slice(0, 7);
@@ -1177,7 +1184,7 @@ function myReportsPage() {
   }
   const content = filtered.length ? [...groups.entries()].map(([month, items], index) => `<details class="archive-month" ${index === 0 ? 'open' : ''}><summary><span class="archive-month-copy"><strong>${escapeHTML(monthLabel(month))}</strong><small>${items.length} laporan</small></span><span class="archive-chevron" aria-hidden="true"></span></summary><div class="archive-month-content"><div class="list-stack">${items.map(item => submissionCard(item)).join('')}</div></div></details>`).join('') : emptyState(query || state.archiveType !== 'all' ? 'Tidak ada laporan yang cocok' : 'Belum ada laporan', query || state.archiveType !== 'all' ? 'Ubah kata kunci atau jenis laporan.' : 'Pengajuan yang Anda kirim akan tersimpan di akun Anda.');
   return `${pageHeading('Laporan', 'Riwayat pengajuan Anda.')}
-    <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Cari kebutuhan atau tanggal…" value="${escapeHTML(state.archiveSearch)}"></label><div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${state.archiveType === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="petty_cash" aria-pressed="${state.archiveType === 'petty_cash'}">Petty Cash</button><button class="filter-chip" type="button" data-report-filter="finance_request" aria-pressed="${state.archiveType === 'finance_request'}">Request Finance</button></div></div><div class="archive-month-list" id="archiveResults">${content}</div>${historyControls('submissions', 'laporan')}`;
+    <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Cari nomor, kebutuhan, atau tanggal…" value="${escapeHTML(state.archiveSearch)}"></label><div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${state.archiveType === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="petty_cash" aria-pressed="${state.archiveType === 'petty_cash'}">Petty Cash</button><button class="filter-chip" type="button" data-report-filter="finance_request" aria-pressed="${state.archiveType === 'finance_request'}">Request Finance</button></div></div><div class="archive-month-list" id="archiveResults">${content}</div>${historyControls('submissions', 'laporan')}`;
 }
 
 function reportForm() {
@@ -1911,7 +1918,7 @@ async function openReportActivity(id, trigger) {
         const transition = details.to ? `${details.from ? `${statuses[details.from] || details.from} → ` : ''}${statuses[details.to] || details.to}` : '';
         return `<li><div class="audit-main"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(event.actorName || 'Sistem')}</span></div><small>${escapeHTML(dateTimeWibFull(event.createdAt))}</small>${transition ? `<p>${escapeHTML(transition)}</p>` : ''}${details.reason ? `<p>Alasan: ${escapeHTML(details.reason)}</p>` : ''}</li>`;
       }).join('');
-      body.innerHTML = `<p><strong>${escapeHTML(sub.description || '')}</strong><br>${escapeHTML(reportTypeLabel(sub.type))} · ${escapeHTML(money(sub.amountIdr))} · ${escapeHTML(statuses[sub.status] || sub.status)}</p><p class="field-help">Pengaju: ${escapeHTML(sub.createdByName || '—')}${sub.createdByPosition ? ` · ${escapeHTML(sub.createdByPosition)}` : ''}</p>${sub.resolvedByName ? `<p class="field-help">Pemroses: ${escapeHTML(sub.resolvedByName)}</p>` : ''}${sub.sentByName ? `<p class="field-help">Ditandai terkirim oleh: ${escapeHTML(sub.sentByName)}</p>` : ''}${sub.note ? `<p>${escapeHTML(sub.note)}</p>` : ''}${sub.decisionReason ? `<p><strong>Alasan keputusan:</strong> ${escapeHTML(sub.decisionReason)}</p>` : ''}${rows ? `<ol class="audit-list">${rows}</ol>` : '<p class="field-help">Audit aktivitas belum tersedia. Status saat ini berasal dari pengajuan tersimpan.</p>'}<nav class="report-pagination" aria-label="Navigasi aktivitas">${activityPage.hasPrevious ? '<button class="secondary-button" type="button" data-report-activity-before>Sebelumnya</button>' : ''}${activityPage.hasMore ? '<button class="secondary-button" type="button" data-report-activity-more>Berikutnya</button>' : ''}</nav>`;
+      body.innerHTML = `<p><strong>${escapeHTML(sub.description || '')}</strong><br>${submissionNumber(sub)}<span>${escapeHTML(reportTypeLabel(sub.type))} · ${escapeHTML(money(sub.amountIdr))} · ${escapeHTML(statuses[sub.status] || sub.status)}</span></p><p class="field-help">Pengaju: ${escapeHTML(sub.createdByName || '—')}${sub.createdByPosition ? ` · ${escapeHTML(sub.createdByPosition)}` : ''}</p>${sub.resolvedByName ? `<p class="field-help">Pemroses: ${escapeHTML(sub.resolvedByName)}</p>` : ''}${sub.sentByName ? `<p class="field-help">Ditandai terkirim oleh: ${escapeHTML(sub.sentByName)}</p>` : ''}${sub.note ? `<p>${escapeHTML(sub.note)}</p>` : ''}${sub.decisionReason ? `<p><strong>Alasan keputusan:</strong> ${escapeHTML(sub.decisionReason)}</p>` : ''}${rows ? `<ol class="audit-list">${rows}</ol>` : '<p class="field-help">Audit aktivitas belum tersedia. Status saat ini berasal dari pengajuan tersimpan.</p>'}<nav class="report-pagination" aria-label="Navigasi aktivitas">${activityPage.hasPrevious ? '<button class="secondary-button" type="button" data-report-activity-before>Sebelumnya</button>' : ''}${activityPage.hasMore ? '<button class="secondary-button" type="button" data-report-activity-more>Berikutnya</button>' : ''}</nav>`;
       body.querySelector('[data-report-activity-more]')?.addEventListener('click', () => load(activityPage.nextCursor, 'next'));
       body.querySelector('[data-report-activity-before]')?.addEventListener('click', () => load(activityPage.previousCursor, 'before'));
       if (receiptWorkspace) body.append(receiptWorkspace);

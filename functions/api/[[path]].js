@@ -35,6 +35,7 @@ import { getPaginatedReports } from '../_lib/report-pagination.js';
 import { getReportActivity } from '../_lib/report-activity.js';
 import { getCashInsights } from '../_lib/cash-insights.js';
 import { unifiedReportRows } from '../_lib/pdf-cashflow.js';
+import { reserveRequestNumber } from '../_lib/request-numbers.js';
 import {
   parseReportFilters,
   buildSubmissionFilterSql,
@@ -167,6 +168,7 @@ function mapSubmission(row) {
   if (!row) return null;
   return {
     id: row.id,
+    requestNumber: row.request_number || '',
     type: row.type,
     status: row.status,
     amountIdr: Number(row.amount_idr),
@@ -186,7 +188,7 @@ function mapSubmission(row) {
 
 async function readSubmission(db, id) {
   const row = await db.prepare(`
-    SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+    SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
            s.decision_reason, s.created_at, s.updated_at, s.created_by,
            creator.name AS created_by_name, creator.position AS created_by_position,
            resolver.name AS resolved_by_name, sender.name AS sent_by_name
@@ -476,7 +478,7 @@ async function submissionsPage(db, user, cursor = null, filters = {}, direction 
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(`
-    SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+    SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
            s.decision_reason, s.created_at, s.updated_at, s.created_by,
            creator.name AS created_by_name, creator.position AS created_by_position,
            resolver.name AS resolved_by_name, sender.name AS sent_by_name
@@ -515,9 +517,10 @@ async function cashLedgerPage(db, cursor = null, anchorId = null) {
   if (id) { predicates.push('l.id < ?'); params.push(id); }
   const result = await db.prepare(`
     SELECT l.id, l.event_type, l.direction, l.amount_idr, l.balance_after_idr,
-           l.submission_id, l.note, l.created_at, u.name AS actor_name
+           l.submission_id, l.note, l.created_at, u.name AS actor_name, s.request_number
     FROM cash_ledger l
     LEFT JOIN users u ON u.id = l.actor_id
+    LEFT JOIN submissions s ON s.id = l.submission_id
     ${predicates.length ? `WHERE ${predicates.join(' AND ')}` : ''}
     ORDER BY l.id DESC
     LIMIT ${HISTORY_PAGE_SIZE + 1}
@@ -532,9 +535,10 @@ async function auditEventsPage(db, cursor = null) {
   const id = parseIdCursor(cursor);
   const result = await db.prepare(`
     SELECT a.id, a.action, a.entity_type, a.entity_id, a.details_json, a.created_at,
-           COALESCE(u.name, 'Sistem') AS actor_name
+           COALESCE(u.name, 'Sistem') AS actor_name, s.request_number
     FROM audit_events a
     LEFT JOIN users u ON u.id = a.actor_id
+    LEFT JOIN submissions s ON a.entity_type = 'submission' AND s.id = a.entity_id
     ${id ? 'WHERE a.id < ?' : ''}
     ORDER BY a.id DESC
     LIMIT ${HISTORY_PAGE_SIZE + 1}
@@ -633,7 +637,7 @@ async function overview(context, db) {
     db.prepare('SELECT COUNT(*) AS count FROM audit_events').first(),
     completeCashFlow(db, Number(cash?.ledger_high_water_id || 0)),
     db.prepare(`
-      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
              s.decision_reason, s.created_at, s.updated_at, s.created_by,
              creator.name AS created_by_name, creator.position AS created_by_position,
              resolver.name AS resolved_by_name, sender.name AS sent_by_name
@@ -754,20 +758,23 @@ async function createSubmission(context, db) {
   const existing = await findIdempotentSubmission(db, user.id, idempotencyKey, payloadHash);
   if (existing) return jsonResponse({ submission: await readSubmission(db, existing.id), alreadyCreated: true });
 
-  const id = crypto.randomUUID();
-  const createdAt = nowIso();
+  // Commit the reservation independently: a rejected/failed financial batch
+  // must not recycle its number. Replays recover the same immutable identity.
+  const reserved = await reserveRequestNumber(db, { id: crypto.randomUUID(), createdBy: user.id,
+    type, createdAt: nowIso(), idempotencyKey, payloadHash });
+  const { id, requestNumber, createdAt } = reserved;
   try {
     const statements = [
       db.prepare(`
         INSERT INTO submissions
           (id, idempotency_key, payload_hash, created_by, type, status, amount_idr, date,
-           description, note, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-      `).bind(id, idempotencyKey, payloadHash, user.id, type, amount, date, description, note || '', createdAt, createdAt),
+           description, note, created_at, updated_at, request_number)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+      `).bind(id, idempotencyKey, payloadHash, user.id, type, amount, date, description, note || '', createdAt, createdAt, requestNumber),
       db.prepare(`
         INSERT INTO audit_events (actor_id, action, entity_type, entity_id, details_json, created_at)
         VALUES (?, 'submission.created', 'submission', ?, ?, ?)
-      `).bind(user.id, id, JSON.stringify({ type, amountIdr: amount }), createdAt)
+      `).bind(user.id, id, JSON.stringify({ type, amountIdr: amount, requestNumber }), createdAt)
     ];
     if (user.role === 'manager') {
       // Automatic acceptance is not a manual self-decision: resolved_by stays
@@ -1190,7 +1197,7 @@ async function* fullExportCsv(db, snapshotAt) {
       params.push(submissionCursor.createdAt, submissionCursor.createdAt, submissionCursor.id);
     }
     const result = await db.prepare(`
-      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
              s.decision_reason, s.created_at, s.created_by,
              creator.name AS created_by_name, creator.position AS created_by_position
       FROM submissions s
@@ -1376,7 +1383,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
   let ledgerCursor = null;
   while (true) {
     const rows = (await db.prepare(`
-      SELECT l.*, s.description AS description, s.note AS submission_note,
+      SELECT l.*, s.request_number AS request_number, s.description AS description, s.note AS submission_note,
              s.type AS submission_type, s.status AS submission_status,
              s.amount_idr AS submission_amount_idr, s.date AS submission_date,
              s.created_by AS submission_created_by, creator.name AS created_by_name,
@@ -1397,7 +1404,7 @@ async function fullFinancialReportData(db, snapshotAt, filters = parseReportFilt
     const cursorClause = submissionCursor ? 'AND (s.created_at < ? OR (s.created_at = ? AND s.id < ?))' : '';
     const cursorParams = submissionCursor ? [submissionCursor.created_at, submissionCursor.created_at, submissionCursor.id] : [];
     const rows = (await db.prepare(`
-      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note,
+      SELECT s.id, s.type, s.status, s.amount_idr, s.date, s.description, s.note, s.request_number,
              s.decision_reason, s.resolved_by, s.created_at, s.updated_at, s.created_by,
              creator.name AS created_by_name, creator.position AS created_by_position,
              creator.role AS created_by_role, resolver.name AS resolved_by_name,

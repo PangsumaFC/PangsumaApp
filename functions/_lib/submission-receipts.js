@@ -2,7 +2,7 @@ import { ApiError, ensureMethod, jsonResponse, readJson } from './http.js';
 import { sha256Hex } from './auth.js';
 import { decode as decodePng } from 'fast-png';
 import jpeg from 'jpeg-js';
-import { dropboxEnabled, dropboxPath, pushReceiptToDropbox, validateDropboxUrl } from './dropbox-receipts.js';
+import { dropboxEnabled, dropboxPath, isCanonicalRequestNumber, pushReceiptToDropbox, validateDropboxUrl } from './dropbox-receipts.js';
 
 export const RECEIPT_MAX_COUNT = 10;
 export const RECEIPT_MAX_BYTES = 512 * 1024;
@@ -37,6 +37,22 @@ async function visibleSubmission(db, actor, submissionId) {
   if (!row || (actor.role !== 'manager' && row.created_by !== actor.id)) throw new ApiError(404, 'submission_not_found', 'Pengajuan tidak ditemukan.');
   return row;
 }
+async function requestNumber(db, submissionId) {
+  try {
+    const row = await db.prepare('SELECT request_number FROM submissions WHERE id = ? LIMIT 1').bind(submissionId).first();
+    return { available: true, value: row?.request_number || null };
+  } catch (error) {
+    if (/no such column: request_number/i.test(String(error?.message || error))) return { available: false, value: null };
+    throw error;
+  }
+}
+function validatedExtension(filename, mime) {
+  const match = /\.(jpg|jpeg|png)$/i.exec(filename);
+  if (!match || (mime === 'image/png' && match[1].toLowerCase() !== 'png') ||
+      (mime === 'image/jpeg' && !['jpg', 'jpeg'].includes(match[1].toLowerCase())))
+    fail('invalid_filename', 'Ekstensi file harus cocok dengan MIME gambar.');
+  return `.${match[1].toLowerCase()}`;
+}
 function metadata(row) {
   return { id: row.id, submissionId: row.submission_id, filename: row.filename, mimeType: row.mime_type,
     sizeBytes: Number(row.size_bytes), width: Number(row.width), height: Number(row.height), sha256: row.sha256,
@@ -45,7 +61,7 @@ function metadata(row) {
     ...(row.dropbox_state ? { storageStatus: row.dropbox_state, ...(row.dropbox_state === 'ready' && validateDropboxUrl(row.dropbox_url) ? { dropboxUrl: row.dropbox_url } : {}) } : {}) };
 }
 const receiptSelect = `SELECT r.id,r.submission_id,r.uploaded_by,r.filename,r.mime_type,r.size_bytes,r.width,r.height,r.sha256,r.created_at,r.idempotency_key,r.payload_hash,u.name uploaded_by_name FROM submission_receipts r JOIN users u ON u.id=r.uploaded_by`;
-const receiptSelectWithDropbox = receiptSelect.replace(' FROM submission_receipts', ', dm.state dropbox_state, dm.public_url dropbox_url FROM submission_receipts') + ' LEFT JOIN receipt_dropbox_metadata dm ON dm.receipt_id=r.id';
+const receiptSelectWithDropbox = receiptSelect.replace(' FROM submission_receipts', ', dm.state dropbox_state, dm.public_url dropbox_url, dm.dropbox_path FROM submission_receipts') + ' LEFT JOIN receipt_dropbox_metadata dm ON dm.receipt_id=r.id';
 
 function crc32(bytes, start, end) {
   let c = 0xffffffff;
@@ -162,11 +178,23 @@ export async function createSubmissionReceipt(context, db, actor, submissionId) 
   }
   const duplicate=await query(db,`${enabled ? receiptSelectWithDropbox : receiptSelect} WHERE r.submission_id = ? AND r.sha256 = ? LIMIT 1`,submissionId,sha);
   if(duplicate)return resolveDuplicate(context, db, duplicate, a.id, key, payloadHash, enabled);
+  // Resolve existing idempotent/legacy jobs before enforcing new filename rules.
+  const fileExtension = enabled ? validatedExtension(filename, mime) : null;
   const id=crypto.randomUUID(), now=new Date().toISOString();
+  const numbered = await requestNumber(db, submissionId);
+  if (enabled && numbered.available && !isCanonicalRequestNumber(numbered.value))
+    throw new ApiError(503, 'receipt_storage_unavailable', 'Nomor pengajuan belum tersedia atau tidak valid.');
   try {
     if (enabled) await db.batch([
       db.prepare(`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash),
-      db.prepare(`INSERT INTO receipt_dropbox_metadata (receipt_id,dropbox_path,state,created_at) VALUES (?,?,?,?)`).bind(id,dropboxPath(id,mime),'pending',now)
+      numbered.available
+        ? db.prepare(`INSERT INTO receipt_dropbox_metadata (receipt_id,dropbox_path,state,created_at)
+            SELECT r.id, '/Pengajuan Pangsuma/' || s.request_number || '/' || r.id || '/' ||
+              s.request_number || CASE WHEN (SELECT COUNT(*) FROM submission_receipts WHERE submission_id=r.submission_id)>1
+                THEN '-' || printf('%02d',(SELECT COUNT(*) FROM submission_receipts WHERE submission_id=r.submission_id)-1) ELSE '' END || ?,
+              'pending', r.created_at
+            FROM submission_receipts r JOIN submissions s ON s.id=r.submission_id WHERE r.id=?`).bind(fileExtension,id)
+        : db.prepare(`INSERT INTO receipt_dropbox_metadata (receipt_id,dropbox_path,state,created_at) VALUES (?,?,?,?)`).bind(id,dropboxPath(id,mime),'pending',now)
     ]);
     else await run(db,`INSERT INTO submission_receipts (id,submission_id,uploaded_by,filename,mime_type,bytes_blob,size_bytes,width,height,sha256,created_at,idempotency_key,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,submissionId,a.id,filename,mime,image.bytes,image.bytes.length,image.width,image.height,sha,now,key,payloadHash);
   } catch(e){

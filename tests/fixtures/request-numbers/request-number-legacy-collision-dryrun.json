@@ -1,0 +1,27 @@
+{
+  "collision_count": 1,
+  "collisions": [
+    {
+      "id": "collision-b",
+      "kind": "duplicate_existing",
+      "other_id": "collision-a",
+      "request_number": "PC012028000001"
+    }
+  ],
+  "invalid": [],
+  "invalid_count": 0,
+  "mapped": 1,
+  "mapping": [
+    {
+      "id": "collision-missing",
+      "month": 1,
+      "request_number": "PC012028000002",
+      "sequence": 2,
+      "type": "petty_cash",
+      "year": 2028
+    }
+  ],
+  "preserved": 2,
+  "refusal": true,
+  "total": 3
+}

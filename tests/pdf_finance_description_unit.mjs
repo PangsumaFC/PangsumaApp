@@ -29,8 +29,9 @@ async function inspectPdf(bytes, name) {
   const path = join(evidenceDir, name);
   await writeFile(path, bytes);
   const { stdout: text } = await execFileAsync('pdftotext', ['-layout', path, '-'], { maxBuffer: 32 * 1024 * 1024 });
+  const { stdout: rawText } = await execFileAsync('pdftotext', ['-raw', path, '-'], { maxBuffer: 32 * 1024 * 1024 });
   const pdf = await PDFDocument.load(bytes);
-  return { text, pdf, path };
+  return { text, rawText, pdf, path };
 }
 function pageTexts(text) { return text.split(/\f/).filter(Boolean); }
 function imageCount(pdf, page) {
@@ -141,8 +142,10 @@ test('Both report types retain first-page-only headers, links, wrapping, and fin
     const title = reportType === 'finance_request' ? 'Laporan Request Finance' : 'Laporan Petty Cash';
     assert.equal((result.text.match(new RegExp(title, 'g')) || []).length, 1, 'report header is first-page only');
     assert.equal((result.text.match(new RegExp(`Multipage ${reportType}`, 'g')) || []).length, 1, 'period header is first-page only');
-    assert.match(result.text, /MULTIPAGE-DESCRIPTION-STAR/);
-    assert.match(result.text, /MULTIPAGE-DESCRIPTION-END/);
+    // Raw draw order keeps wrapped letters contiguous; layout extraction inserts
+    // neighboring numeric dashes between the two halves of long tokens.
+    assert.match(result.rawText.replace(/\s+/g, ''), /MULTIPAGE-DESCRIPTION-START/);
+    assert.match(result.rawText.replace(/\s+/g, ''), /MULTIPAGE-DESCRIPTION-END/);
     assert.equal((result.text.match(/DATA DEMO/g) || []).length, 1);
     assert.equal((result.text.match(/Yang mengajukan,/g) || []).length, 1);
     assert.equal((result.text.match(/Rahmat Saputro/g) || []).length, 1);

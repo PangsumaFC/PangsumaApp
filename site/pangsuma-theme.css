@@ -818,3 +818,5 @@ body.logged-out > .pwa-install-feedback { display: none; }
   .users-search-panel { padding: 16px; }
   .users-search-panel input[type="search"] { max-width: none; }
 }
+
+.item-request-number { display: block; margin-top: 5px; color: var(--blue-deep); font-size: 12px; font-weight: 700; letter-spacing: .02em; }

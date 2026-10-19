@@ -20,6 +20,7 @@ function row(id, overrides = {}) {
     balance_after_idr: id % 2 ? 100_000 + id : -100_000 - id,
     created_at: `2026-10-${String(Math.min(id, 28)).padStart(2, '0')}T03:00:00.000Z`,
     description: `DATA-ROW-${id}`,
+    request_number: `PC112026${String(id).padStart(6, '0')}`,
     ...overrides,
   };
 }
@@ -92,14 +93,14 @@ const base = {
     row(5, { description: longDescription, submission_id: 'linked-submission' }),
   ],
   submissions: [
-    { id: 'linked-submission', type: 'petty_cash', status: 'approved', date: '2026-10-05', amount_idr: 505, description: longDescription, dropbox_receipt_url: DEMO_URL },
-    { id: 'standalone-submission', type: 'finance_request', status: 'approved', date: '2026-10-06', amount_idr: 606, description: 'STANDALONE ELIGIBLE RECEIPT', dropbox_receipt_url: DEMO_URL },
+    { id: 'linked-submission', type: 'finance_request', status: 'approved', date: '2026-10-05', amount_idr: 505, description: longDescription, dropbox_receipt_url: DEMO_URL },
+    { id: 'standalone-submission', type: 'petty_cash', status: 'approved', date: '2026-10-06', amount_idr: 606, description: 'STANDALONE ELIGIBLE RECEIPT', dropbox_receipt_url: DEMO_URL },
     { id: 'unattached-ineligible', type: 'finance_request', status: 'pending', date: '2026-10-07', amount_idr: 707, description: 'INELIGIBLE MUST NOT INVENT OR ATTACH', dropbox_receipt_url: DEMO_URL },
   ],
 };
 
 test('Dropbox shared-file receipt links are exact URI annotations with provenance and no invented links', async () => {
-  const { pdf, text, bbox } = await inspect(await buildFinancialReport(base));
+  const { pdf, text, bbox } = await inspect(await buildFinancialReport({ ...base, reportType: 'finance_request' }));
   const links = annotationEntries(pdf);
   const streams = pdf.getPages().map((page) => pageStream(pdf, page)).join('\n');
   assert.equal(links.length, 3, 'ledger, linked submission, and standalone eligible submission each get one link');
@@ -112,19 +113,21 @@ test('Dropbox shared-file receipt links are exact URI annotations with provenanc
   for (const link of links) {
     assert.ok(link.rect, 'annotation has a rectangle');
     const [x1, y1, x2, y2] = link.rect;
-    assert.ok(x1 >= 498 && x2 <= 565 && x2 > x1, `Rect must stay inside Lampiran column: ${link.rect}`);
+    assert.ok(x1 >= 446 && x2 <= 565 && x2 > x1, `Rect must stay inside Lampiran column: ${link.rect}`);
     assert.ok(y1 > 38 && y2 > y1 && y2 < 810, `Rect must be content-row, not footer: ${link.rect}`);
     assert.equal(link.annotation.get(PDFName.of('Subtype'))?.toString(), '/Link');
   }
-  assert.equal((text.match(/Lampiran/g) || []).length, 4, 'header plus each valid receipt has the exact Lampiran label');
+  assert.equal((text.match(/Lampiran/g) || []).length, 2, 'header plus the unnumbered fallback attachment label');
   assert.match(text, /VALID LEDGER RECEIPT/);
   assert.match(text, /LONG-START/);
   assert.match(text, /STANDALONE ELIGIBLE RECEIPT/);
+  assert.match(text, /PC112026000001/);
+  assert.match(text, /PC112026000005/);
   assert.doesNotMatch(text, /PUBLIC FOLDER MUST NOT BE ATTACHED/);
   assert.doesNotMatch(text, /INELIGIBLE MUST NOT INVENT OR ATTACH/);
   const words = bboxWords(bbox);
   for (const word of words.filter((entry) => entry.word === 'Lampiran')) {
-    if (word.x > 490) assert.ok(word.x >= 498 && word.right <= 565, `Lampiran text must be in Lampiran column: ${JSON.stringify(word)}`);
+    if (word.x > 440) assert.ok(word.x >= 446 && word.right <= 565, `Lampiran text must be in Lampiran column: ${JSON.stringify(word)}`);
   }
 });
 
@@ -160,7 +163,7 @@ test('wide table boundaries, one grand total, no page subtotals, and final-only 
   assert.equal((text.match(/Subtotal halaman/g) || []).length, 0);
   assert.equal((text.match(/Total kas keseluruhan/g) || []).length, 1);
   assert.equal((text.match(/DATA DEMO/g) || []).length, 1);
-  assert.equal((text.match(/Lampiran/g) || []).length, 2, 'header and one attachment label');
+  assert.equal((text.match(/Lampiran/g) || []).length, 1, 'canonical numbered attachment does not repeat Lampiran');
   assert.match(text, /Lampiran/);
   const headers = text.split(/\f/).filter(Boolean).filter((page) => /Lampiran/.test(page));
   assert.equal(headers.length, 1, 'Lampiran header appears only on page one');
@@ -172,7 +175,7 @@ test('wide table boundaries, one grand total, no page subtotals, and final-only 
   assert.equal(imagePages[0].index, pdf.getPageCount() - 1);
   assert.equal(imagePages[0].count, 2);
   const streams = pdf.getPages().map((page) => pageStream(pdf, page)).join('\n');
-  for (const x of [30, 54, 112, 260, 336, 412, 498, 565]) {
+  for (const x of [30, 54, 112, 206, 326, 380, 434, 488, 565]) {
     assert.match(streams, new RegExp(`(?:^|\\n| )${x}(?:\\.0+)? \\-?\\d+(?:\\.\\d+)? m`), `missing table boundary x=${x}`);
   }
 });
@@ -196,7 +199,7 @@ test('multiple receipt arrays render distinct numbered links once per row and om
   const links = annotationEntries(pdf);
   assert.deepEqual(links.map((link) => link.uri), urls);
   assert.equal(links.length, urls.length, 'each deduplicated valid receipt gets one annotation, not a second transaction row');
-  assert.equal((text.match(/Lampiran/g) || []).length, 4, 'header plus all three file labels');
+  assert.equal((text.match(/Lampiran/g) || []).length, 1, 'canonical numbered attachments do not repeat Lampiran');
   assert.match(text, /LONG-START/);
   assert.match(text, /LONG-END/);
   assert.doesNotMatch(text, /nope|folder/);
@@ -206,7 +209,7 @@ test('multiple receipt arrays render distinct numbered links once per row and om
   ]);
   for (const link of links) {
     const [x1, y1, x2, y2] = link.rect;
-    assert.ok(x1 >= 498 && x2 <= 565 && y1 > 38 && y2 > y1);
+    assert.ok(x1 >= 446 && x2 <= 565.28 && y1 > 38 && y2 > y1);
   }
 });
 
@@ -221,8 +224,8 @@ for (const reportType of ['petty_cash', 'finance_request']) {
       snapshotAt: base.snapshotAt,
       managerName: base.managerName,
       submissions: [
-        { id: 'one', type: reportType, status: 'approved', date: '2026-10-01', created_at: '2026-10-01T03:00:00Z', amount_idr: 101, description: 'FIRSTROW', dropbox_receipt_urls: [first, 'https://www.dropbox.com/scl/fo/FOLDER', second] },
-        { id: 'two', type: reportType, status: 'approved', date: '2026-10-02', created_at: '2026-10-02T03:00:00Z', amount_idr: 202, description: 'SECONDROW', dropbox_receipt_urls: [third, 'javascript:alert(1)'] },
+        { id: 'one', type: reportType, status: 'approved', date: '2026-10-01', created_at: '2026-10-01T03:00:00Z', amount_idr: 101, description: 'FIRSTROW', request_number: `${reportType === 'petty_cash' ? 'PC' : 'RF'}112026000001`, dropbox_receipt_urls: [first, 'https://www.dropbox.com/scl/fo/FOLDER', second] },
+        { id: 'two', type: reportType, status: 'approved', date: '2026-10-02', created_at: '2026-10-02T03:00:00Z', amount_idr: 202, description: 'SECONDROW', request_number: `${reportType === 'petty_cash' ? 'PC' : 'RF'}112026000002`, dropbox_receipt_urls: [third, 'javascript:alert(1)'] },
       ],
       ledger: [],
     }));
@@ -232,7 +235,7 @@ for (const reportType of ['petty_cash', 'finance_request']) {
       'Lampiran baris 1, berkas 1', 'Lampiran baris 1, berkas 2', 'Lampiran baris 2, berkas 1',
     ]);
     assert.doesNotMatch(text, /Bukti\s*\d|ROWONEFILE|ROWTWOFILE|\.jpg|berkas \d/);
-    assert.equal((text.match(/Lampiran/g) || []).length, 4);
+    assert.equal((text.match(/Lampiran/g) || []).length, 1, 'header only when all attachments are numbered');
     const words = bboxWords(bbox);
     for (const [index, sentinel] of ['FIRSTROW', 'FIRSTROW', 'SECONDROW'].entries()) {
       const rowWord = words.find(word => word.word === sentinel);

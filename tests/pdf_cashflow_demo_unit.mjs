@@ -78,7 +78,7 @@ test('direct renderer merges eligible submissions with 48 ledger rows and preser
   const pages = await assertPortraitA4(bytes);
   assert.ok(pages >= 1 && pages <= 150);
   assert.match(text, /Laporan Petty Cash/);
-  assert.match(text, /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo\s+Lampiran/);
+  assert.match(text, /No\.\s+Tanggal\s+No\.\s+Pengajuan\s+Keterangan\s+Masuk\s+Keluar\s+Saldo\s+Lampiran/);
   assert.match(text, /Total kas keseluruhan\s+Rp[\d.]+\s+Rp[\d.]+/);
   assert.doesNotMatch(text, /Saldo akun awal|Saldo akun akhir|Masuk terpilih|Keluar terpilih|Total pengajuan|Baris laporan/);
   assert.match(text, /FINANCE-SENT-WITHOUT/);

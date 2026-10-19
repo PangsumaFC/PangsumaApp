@@ -45,3 +45,5 @@ jobs:
         run: |
           python3 -B tests/profile_schema_unit.py
           python3 -B tests/manager_submission_schema_unit.py
+          python3 -B tests/request_numbers_sqlite_test.py
+          python3 -B tests/request_numbers_migration_unit.py

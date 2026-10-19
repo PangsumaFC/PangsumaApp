@@ -1,0 +1,9 @@
+{"id":"s-pc-tie-b","type":"petty_cash","created_at":"2028-01-01T17:00:00Z"}
+{"id":"s-pc-tie-a","type":"petty_cash","created_at":"2028-01-01T17:00:00Z"}
+{"id":"s-pc-boundary","type":"petty_cash","created_at":"2028-01-31T17:00:00Z"}
+{"id":"s-rf-boundary","type":"finance_request","created_at":"2028-01-31T17:00:00Z"}
+{"id":"s-rf-feb","type":"finance_request","created_at":"2028-02-01T00:00:00Z"}
+{"id":"s-rf-year","type":"finance_request","created_at":"2028-12-31T17:00:00Z"}
+{"id":"s-pc-year","type":"petty_cash","created_at":"2028-12-31T16:59:59Z"}
+{"id":"s-rf-later","type":"finance_request","created_at":"2029-02-28T17:00:00Z"}
+{"id":"s-pc-later","type":"petty_cash","created_at":"2029-03-01T00:00:00Z"}

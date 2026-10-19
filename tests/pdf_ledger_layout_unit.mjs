@@ -54,11 +54,11 @@ test('multipage cashflow ledger has headers only on page one, no page subtotals,
   const pageTexts = text.split('\f').slice(0, pages);
   assert.match(pageTexts[0], /PANGSUMA FC/);
   assert.match(pageTexts[0], /Laporan Petty Cash/);
-  assert.match(pageTexts[0], /No\.\s+Tanggal\s+Keterangan\s+Masuk\s+Keluar\s+Saldo/);
+  assert.match(pageTexts[0], /No\.\s+Tanggal\s+No\.\s+Pengajuan\s+Keterangan\s+Masuk\s+Keluar\s+Saldo/);
   assert.doesNotMatch(pageTexts[0], /Filter:/);
   assert.doesNotMatch(pageTexts[0], /Saldo hanya kas tercatat|Tanggal: pencatatan kas/);
   assert.equal((text.match(/Laporan Petty Cash/g) || []).length, 1);
-  assert.equal((text.match(/No\./g) || []).length, 1);
+  assert.equal((text.match(/No\./g) || []).length, 2);
   for (const [index, pageText] of pageTexts.entries()) {
     assert.match(pageText, new RegExp(`Halaman ${index + 1} dari ${pages}`));
     if (index === 0) continue;
@@ -90,7 +90,7 @@ test('headerless continuation pages preserve every row, running balance and gran
   assert.equal(rowLines.length, ledger.length);
   ledger.forEach((row, index) => {
     const line = rowLines[index];
-    assert.match(line, new RegExp(`^\\s*${index + 1}\\s+01/10/2026\\s+${row.description}\\s+`));
+    assert.match(line, new RegExp(`^\\s*${index + 1}\\s+01/10/2026\\s+-\\s+${row.description}\\s+`));
     const cells = line.trim().split(/\s+/).slice(-4, -1);
     assert.deepEqual(cells, [row.direction === 'in' ? money(row.amount_idr) : '-', row.direction === 'out' ? money(row.amount_idr) : '-', money(row.balance_after_idr)]);
   });

@@ -141,7 +141,7 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   }
   if (result.text.includes('Keterangan')) {
     const grid = result.pdf.getPages().map(page => streamBytes(result.pdf, page)).join('\n');
-    for (const x of [30, 54, 112, 260, 336, 412, 498, 565]) assert.match(grid, new RegExp(`(?:^|\\n| )${x}(?:\\.0+)? \\-?\\d+(?:\\.\\d+)? m`), `grid boundary x=${x}`);
+    for (const x of [30, 54, 112, 206, 326, 380, 434, 488, 565]) assert.match(grid, new RegExp(`(?:^|\\n| )${x}(?:\\.0+)? \\-?\\d+(?:\\.\\d+)? m`), `grid boundary x=${x}`);
     assert.match(grid, /0\.4 w/);
   }
 }
@@ -252,11 +252,11 @@ test('large positive, negative, and bigint amounts use id-ID grouping and right-
   const grouped = 'Rp18.014.398.509.481.983';
   const signedGrouped = '-18.014.398.509.481.983';
   const words = bboxPages(result.bbox).flat();
-  for (const [prefix, left, right] of [['Rp', 264, 332], ['Rp', 340, 408], ['Rp', 416, 494]]) {
+  for (const [prefix, left, right] of [['Rp', 330, 376], ['Rp', 384, 430], ['Rp', 438, 484]]) {
     const prefixes = words.filter(w => w.word === prefix && w.x === left);
     assert.ok(prefixes.length, `currency prefix ${prefix} must start at x=${left}`);
-    assert.ok(words.some(w => w.right >= right - 1 && w.right <= right + 1 && w.word === grouped.replace('Rp', '')), `grouped numeric amount must end at x=${right}`);
+    assert.ok(words.some(w => w.right >= right - 1 && w.right <= right + 1 && w.word.replace(/\s+/g, '') === grouped.replace('Rp', '')), `grouped numeric amount must end at x=${right}`);
   }
-  assert.ok(words.some(w => w.word === signedGrouped && w.right >= 493 && w.right <= 495), 'signed grouped numeric amount must end at the balance right edge');
+  assert.ok(words.some(w => w.word.replace(/\s+/g, '') === signedGrouped && w.right >= 483 && w.right <= 485), 'signed grouped numeric amount must end at the balance right edge');
   assert.ok(words.every(w => w.x >= 29 && w.right <= 566), 'currency text must remain inside page margins');
 });

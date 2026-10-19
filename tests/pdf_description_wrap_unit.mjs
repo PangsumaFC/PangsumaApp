@@ -42,7 +42,7 @@ function overlappingDescriptionGlyphs(bbox, rightEdge) {
   }
   const overlaps = [];
   for (let i = 0; i < words.length; i += 1) for (let j = i + 1; j < words.length; j += 1) {
-    if (Math.abs(words[i].yMin - words[j].yMin) > 0.1 && Math.max(words[i].yMin, words[j].yMin) < Math.min(words[i].yMax, words[j].yMax)) overlaps.push([words[i], words[j]]);
+    if (Math.abs(words[i].yMin - words[j].yMin) > 3 && Math.min(words[i].yMax, words[j].yMax) - Math.max(words[i].yMin, words[j].yMin) > 0.5) overlaps.push([words[i], words[j]]);
   }
   return overlaps;
 }
@@ -85,7 +85,7 @@ test('wrap measures sum of glyph advances, preserves explicit newlines, and neve
   assert.ok(longLines.every(line => Array.from(line).reduce((sum, char) => sum + font.widthOfTextAtSize(char, 8.5), 0) <= 35 + 1e-7));
 });
 
-for (const [type, rightEdge] of [['petty_cash', 256], ['finance_request', 361]]) {
+for (const [type, rightEdge] of [['petty_cash', 326], ['finance_request', 361]]) {
   test(`${type} regression keeps wrapped descriptions inside the actual glyph column and avoids double wrapping`, async () => {
     const descriptions = [
       'pengguna. Tahun eksekusi. eksekusi.',

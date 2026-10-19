@@ -18,7 +18,7 @@ function valueOf(params, ...keys) {
 }
 const STATUS_ALIASES = new Map([
   ['pending', 'pending'], ['approved', 'approved'], ['rejected', 'rejected'], ['sent', 'sent'],
-  ['menunggu Manager', 'pending'],
+  ['menunggu manager', 'pending'],
   ['menunggu', 'pending'], ['disetujui', 'approved'], ['ditolak', 'rejected'],
   ['terkirim', 'sent'], ['terkirim ke finance', 'sent']
 ]);
@@ -87,8 +87,8 @@ export function buildSubmissionFilterSql(filters, { alias = 's', creatorAlias = 
     if (localizedStatus) { clauses.push(`${alias}.status = ?`); params.push(localizedStatus); }
     else {
       const like = `%${escapedLike(f.q)}%`;
-      clauses.push(`(${alias}.description LIKE ? ESCAPE '\\' OR ${alias}.note LIKE ? ESCAPE '\\' OR ${creatorAlias}.name LIKE ? ESCAPE '\\' OR ${alias}.date LIKE ? ESCAPE '\\')`);
-      params.push(like, like, like, like);
+      clauses.push(`(${alias}.description LIKE ? ESCAPE '\\' OR ${alias}.note LIKE ? ESCAPE '\\' OR ${creatorAlias}.name LIKE ? ESCAPE '\\' OR ${alias}.date LIKE ? ESCAPE '\\' OR ${alias}.request_number LIKE ? ESCAPE '\\')`);
+      params.push(like, like, like, like, like);
     }
   }
   return { where: clauses.length ? clauses.join(' AND ') : '1=1', clauses, params };

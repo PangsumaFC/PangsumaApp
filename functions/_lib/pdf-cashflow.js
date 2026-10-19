@@ -32,6 +32,11 @@ export function validateDropboxReceiptUrl(value) {
     return null;
   }
 }
+export function requestNumberOf(row) {
+  const value = row?.request_number ?? row?.requestNumber;
+  return typeof value === 'string' && /^(?:PC|RF)(?:0[1-9]|1[0-2])\d{4}(?!000000)\d{6}$/.test(value.trim()) ? value.trim() : null;
+}
+
 function receiptUrls(row) {
   const array = Array.isArray(row?.dropbox_receipt_urls) ? row.dropbox_receipt_urls
     : Array.isArray(row?.report_attachment_urls) ? row.report_attachment_urls : null;
@@ -63,7 +68,8 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
     const ledgerReceipts = receiptUrls(row);
     const linkedReceipts = receiptUrls(linkedSubmission);
     const attachmentUrls = ledgerReceipts.length ? ledgerReceipts : linkedReceipts;
-    return { ...row, report_key: `ledger-${row.id}`, report_at: row.created_at,
+    const request_number = requestNumberOf(linkedSubmission) || requestNumberOf(row);
+    return { ...row, request_number, report_key: `ledger-${row.id}`, report_at: row.created_at,
       report_description: display.description || '',
       known_demo: display.knownDemo,
       is_cash: true,
@@ -74,7 +80,7 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
   for (const submission of eligible) {
     if (represented.has(String(submission.id))) continue;
     const display = reportDisplayFields({ id: submission.id, description: submission.description, note: submission.note, applicant: submission.created_by_name });
-    rows.push({ known_demo: display.knownDemo, report_key: `submission-${submission.id}`,
+    rows.push({ request_number: requestNumberOf(submission), known_demo: display.knownDemo, report_key: `submission-${submission.id}`,
       report_at: submission.date ? `${submission.date}T00:00:00+07:00` : submission.created_at,
       report_description: display.description || '',
       is_cash: false, direction: '', amount_idr: 0, submission_amount_idr: submission.amount_idr ?? submission.amount ?? 0, balance_after_idr: null,

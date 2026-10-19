@@ -1,0 +1,84 @@
+{
+  "collision_count": 0,
+  "collisions": [],
+  "invalid": [],
+  "invalid_count": 0,
+  "mapped": 9,
+  "mapping": [
+    {
+      "id": "s-rf-boundary",
+      "month": 2,
+      "request_number": "RF022028000001",
+      "sequence": 1,
+      "type": "finance_request",
+      "year": 2028
+    },
+    {
+      "id": "s-rf-feb",
+      "month": 2,
+      "request_number": "RF022028000002",
+      "sequence": 2,
+      "type": "finance_request",
+      "year": 2028
+    },
+    {
+      "id": "s-rf-year",
+      "month": 1,
+      "request_number": "RF012029000001",
+      "sequence": 1,
+      "type": "finance_request",
+      "year": 2029
+    },
+    {
+      "id": "s-rf-later",
+      "month": 3,
+      "request_number": "RF032029000001",
+      "sequence": 1,
+      "type": "finance_request",
+      "year": 2029
+    },
+    {
+      "id": "s-pc-tie-a",
+      "month": 1,
+      "request_number": "PC012028000001",
+      "sequence": 1,
+      "type": "petty_cash",
+      "year": 2028
+    },
+    {
+      "id": "s-pc-tie-b",
+      "month": 1,
+      "request_number": "PC012028000002",
+      "sequence": 2,
+      "type": "petty_cash",
+      "year": 2028
+    },
+    {
+      "id": "s-pc-boundary",
+      "month": 2,
+      "request_number": "PC022028000001",
+      "sequence": 1,
+      "type": "petty_cash",
+      "year": 2028
+    },
+    {
+      "id": "s-pc-year",
+      "month": 12,
+      "request_number": "PC122028000001",
+      "sequence": 1,
+      "type": "petty_cash",
+      "year": 2028
+    },
+    {
+      "id": "s-pc-later",
+      "month": 3,
+      "request_number": "PC032029000001",
+      "sequence": 1,
+      "type": "petty_cash",
+      "year": 2029
+    }
+  ],
+  "preserved": 0,
+  "refusal": false,
+  "total": 9
+}

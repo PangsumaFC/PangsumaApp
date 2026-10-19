@@ -27,6 +27,6 @@ test('type/status/search/applicant hostile values fail closed and LIKE wildcards
   const filters = parse('q=100%_\\&applicant=Alpha%_\\');
   const sql = buildSubmissionFilterSql(filters);
   assert.match(sql.where, /ESCAPE '\\'/);
-  assert.deepEqual(sql.params.slice(-7), ['Alpha%_\\', '%Alpha\\%\\_\\\\%', '%Alpha\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%']);
+  assert.deepEqual(sql.params.slice(-8), ['Alpha%_\\', '%Alpha\\%\\_\\\\%', '%Alpha\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%', '%100\\%\\_\\\\%']);
   assert.match(sql.where, /s\.date LIKE/);
 });

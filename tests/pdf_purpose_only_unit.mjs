@@ -107,7 +107,7 @@ test('rendered finance PDF keeps genuine numeric prose, cleans note/status, pres
     ],
     ledger: [],
   }, 'finance.pdf');
-  assert.match(text, /2 unit @ Rp185\.000 \| Finance Disetujui Rp370\.000/);
+  assert.match(text, /2 unit @ Rp185\.000\s*\|\s*Finance Disetujui\s+Rp370\.000/);
   assert.match(text, /Sewa kendaraan 3 hari/);
   assert.doesNotMatch(text, /Catatan Finance jangan cetak|Catatan kedua jangan cetak/);
   assert.doesNotMatch(text, /Pengajuan Disetujui|Pengajuan Terkirim|Pemohon Sintetis/);

@@ -3,7 +3,37 @@ const DROPBOX_TIMEOUT_MS = 12_000;
 const HEX64 = /^[a-f0-9]{64}$/i;
 
 export function dropboxEnabled(env = {}) { return env?.DROPBOX_RECEIPTS_ENABLED === 'true'; }
-export function dropboxPath(receiptId, mimeType) { return `${DROPBOX_ROOT}/${receiptId}.${mimeType === 'image/png' ? 'png' : 'jpg'}`; }
+function extensionFor(mimeType, extension) {
+  if (extension === '.png' && mimeType === 'image/png') return extension;
+  if ((extension === '.jpg' || extension === '.jpeg') && mimeType === 'image/jpeg') return extension;
+  return mimeType === 'image/png' ? '.png' : '.jpg';
+}
+
+export function isCanonicalRequestNumber(value) {
+  if (typeof value !== 'string') return false;
+  const match = /^(PC|RF)(0[1-9]|1[0-2])\d{4}(?!0{6}$)\d{6}$/.exec(value);
+  return Boolean(match);
+}
+function canonicalRequestNumber(value) {
+  if (!isCanonicalRequestNumber(value)) return null;
+  return value;
+}
+
+/**
+ * New evidence is named from the immutable submission request number.  The
+ * receipt-id fallback is intentional: it keeps old callers/old rows exactly
+ * where they were and makes a missing pre-migration number fail closed rather
+ * than inventing a misleading request number.
+ */
+export function dropboxPath(receiptId, mimeType, requestNumber = null, ordinal = 0, extension = null) {
+  const number = canonicalRequestNumber(requestNumber);
+  if (!number) return `${DROPBOX_ROOT}/${receiptId}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+  const suffix = Number.isInteger(ordinal) && ordinal > 1 ? `-${String(ordinal - 1).padStart(2, '0')}` : '';
+  const filename = `${number}${suffix}${extensionFor(mimeType, extension)}`;
+  // A per-receipt directory gives every upload an immutable unique location.
+  // The visible evidence filename uses the exact compact request number.
+  return `${DROPBOX_ROOT}/${number}/${receiptId}/${filename}`;
+}
 
 export function validateDropboxUrl(value) {
   if (typeof value !== 'string' || value.length > 2048 || /^(?:https):\/\/[^/]*:/.test(value)) return null;
@@ -104,7 +134,7 @@ async function publicLink(env, path) {
 export async function pushReceiptToDropbox(env, receipt) {
   const bytes = bytesOf(receipt.bytes_blob); if (!bytes) throw safeError();
   const hash = await blockHash(bytes); if (!HEX64.test(hash)) throw safeError();
-  const path = receipt.dropbox_path || dropboxPath(receipt.id, receipt.mime_type);
+  const path = receipt.dropbox_path || dropboxPath(receipt.id, receipt.mime_type, receipt.request_number, receipt.receipt_ordinal, receipt.file_extension);
   const uploaded = await uploadFile(env, path, bytes, hash, bytes.byteLength);
   const link = await publicLink(env, path);
   return { path, fileId: link.fileId || uploaded.id || null, publicUrl: link.url };

@@ -22,10 +22,12 @@ const manager = {
 function fakeDb(actor = manager) {
   const calls = [];
   const submissions = new Map();
+  const reservations = new Map();
   const audits = [];
   const db = {
     calls,
     submissions,
+    reservations,
     audits,
     prepare(sql) {
       calls.push(sql);
@@ -45,6 +47,7 @@ function fakeDb(actor = manager) {
             const row = [...submissions.values()].find(item => item.created_by === args[0] && item.idempotency_key === args[1]);
             return row ? { id: row.id, payload_hash: row.payload_hash, type: row.type, amount_idr: row.amount_idr, date: row.date, description: row.description, note: row.note } : null;
           }
+          if (/FROM request_number_reservations/.test(sql)) return reservations.get(`${args[0]}\u0000${args[1]}`) || null;
           if (/SELECT id, status, created_by FROM submissions/.test(sql)) {
             const row = submissions.get(args[0]);
             return row ? { id: row.id, status: row.status, created_by: row.created_by } : null;
@@ -72,6 +75,14 @@ function fakeDb(actor = manager) {
       return statement;
     },
     async batch(statements) {
+      if (/request_number_sequences/.test(statements[0]?.__sql || '')) {
+        const reservation = statements[2].__args;
+        const [, prefix, month, year, type, createdBy, createdAt, key, payloadHash] = reservation;
+        const sequence = [...reservations.values()].filter(row => row.type === type && row.year === year && row.month === month).length + 1;
+        const row = { submission_id: reservation[0], request_number: `${prefix}/${String(month).padStart(2, '0')}/${year}/${String(sequence).padStart(6, '0')}`, type, created_by: createdBy, created_at: createdAt, idempotency_key: key, payload_hash: payloadHash, year, month, sequence };
+        reservations.set(`${createdBy}\u0000${key}`, row);
+        return [{ meta: { changes: 1 } }, { meta: { changes: 1 } }, { meta: { changes: 1 } }];
+      }
       const insert = statements[0];
       const values = insert.__args;
       if (!values) throw new Error('test fake missing bound INSERT arguments');
@@ -100,6 +111,7 @@ function fakeDb(actor = manager) {
   const originalPrepare = db.prepare;
   db.prepare = sql => {
     const statement = originalPrepare(sql);
+    statement.__sql = sql;
     const originalBind = statement.bind;
     statement.bind = (...values) => { statement.__args = values; originalBind(...values); return statement; };
     return statement;
@@ -164,7 +176,11 @@ test('Manager tetap tidak dapat menyetujui pengajuan miliknya sendiri', async ()
 
 test('Manager mendapat pesan migrasi yang jelas bila trigger database lama masih aktif', async () => {
   const db = fakeDb();
-  db.batch = async () => { throw new Error('D1_ERROR: only_user_accounts_may_submit: SQLITE_CONSTRAINT'); };
+  const normalBatch = db.batch;
+  db.batch = async statements => {
+    if (/request_number_sequences/.test(statements[0]?.__sql || '')) return normalBatch(statements);
+    throw new Error('D1_ERROR: only_user_accounts_may_submit: SQLITE_CONSTRAINT');
+  };
   const response = await call(db, '/submissions', 'POST', {
     type: 'finance_request', amountIdr: 125000, date: '2026-10-17', description: 'Pengajuan Manager sebelum migrasi'
   }, '33333333-3333-4333-8333-333333333333');
@@ -190,7 +206,9 @@ test('Pengajuan User tetap pending walaupun payload mencoba memaksakan approved'
 
 test('Saldo Manager tidak cukup menghasilkan 409 tanpa fallback pending', async () => {
   const db = fakeDb();
+  const normalBatch = db.batch;
   db.batch = async statements => {
+    if (/request_number_sequences/.test(statements[0]?.__sql || '')) return normalBatch(statements);
     assert.equal(statements.length, 3);
     throw new Error('D1_ERROR: insufficient_petty_cash_balance: SQLITE_CONSTRAINT');
   };
