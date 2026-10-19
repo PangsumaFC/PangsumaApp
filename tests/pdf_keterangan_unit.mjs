@@ -41,6 +41,10 @@ for (const type of ['petty_cash', 'finance_request']) {
         const path = join(dir, 'report.pdf');
         await writeFile(path, bytes);
         const { stdout: text } = await execFileAsync('pdftotext', ['-layout', path, '-']);
+        const header = text.split('\n').find(line => /^\s*No\.\s+Tanggal\s+/.test(line));
+        assert.equal(header?.trim().replace(/\s+/g, ' '), type === 'finance_request'
+          ? 'No. Tanggal Keterangan Nominal request Lampiran'
+          : 'No. Tanggal Keterangan Masuk Keluar Saldo Lampiran', 'description column heading is exactly Keterangan');
         assert.doesNotMatch(text, /Pengaju:|Asep|D20261018|Seed langsung/);
         assert.equal((text.match(/3\.5/g) || []).length, 2, 'only the real description and real note retain 3.5');
         assert.match(text, /Lampiran/);

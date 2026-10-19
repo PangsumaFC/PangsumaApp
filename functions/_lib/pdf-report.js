@@ -188,7 +188,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   function ledgerTable(rows) {
     const columns = reportType === 'finance_request' ? [
       { key: 'no', label: 'No.', width: 24 }, { key: 'date', label: 'Tanggal', width: 58 },
-      { key: 'description', label: 'Keterangan / pengaju', width: 253 },
+      { key: 'description', label: 'Keterangan', width: 253 },
       { key: 'in', label: 'Nominal request', width: 110, align: 'right' },
       { key: 'attachment', label: 'Lampiran', width: 90 },
     ] : [
