@@ -31,7 +31,7 @@ export async function ensureCashTopupsSchema(db) {
     }
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(503, 'migration_required', 'Database belum siap: migrasi 0005_cash_topups.sql harus diterapkan sebelum menambah saldo petty cash.');
+    throw new ApiError(503, 'migration_required', 'Database belum siap: migrasi 0005_cash_topups.sql harus diterapkan sebelum menambah saldo Petty Cash.');
   }
 }
 
@@ -71,7 +71,7 @@ async function findExisting(db, managerId, key, fingerprint) {
   `).bind(managerId, key).first();
   if (!row) return null;
   if (row.payload_hash !== fingerprint) {
-    throw new ApiError(409, 'idempotency_key_reused', 'Kunci top up sudah dipakai untuk isi yang berbeda.');
+    throw new ApiError(409, 'idempotency_key_reused', 'Kunci isi saldo sudah dipakai untuk isi yang berbeda.');
   }
   return row;
 }
@@ -88,9 +88,9 @@ export async function createCashTopup(context, db, actor) {
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_SAFE_IDR) {
     throw new ApiError(400, 'invalid_amount', 'Nominal harus berupa bilangan rupiah positif dan aman.');
   }
-  if (!note || note.length < 3) throw new ApiError(400, 'invalid_note', 'Keterangan top up wajib diisi 3–500 karakter.');
+  if (!note || note.length < 3) throw new ApiError(400, 'invalid_note', 'Keterangan isi saldo wajib diisi 3–500 karakter.');
   if (!key || key.length > MAX_KEY_LENGTH || /[\u0000-\u001F\u007F]/.test(key)) {
-    throw new ApiError(400, 'idempotency_required', 'Kunci top up tidak valid.');
+    throw new ApiError(400, 'idempotency_required', 'Kunci isi saldo tidak valid.');
   }
   const fingerprint = await sha256Hex(canonicalPayload(amount, note));
   const existing = await findExisting(db, actor.id, key, fingerprint);
@@ -109,7 +109,7 @@ export async function createCashTopup(context, db, actor) {
     ]);
   } catch (error) {
     if (String(error?.message || '').includes('cash_topup_balance_overflow')) {
-      throw new ApiError(409, 'balance_overflow', 'Saldo petty cash melebihi batas aman.');
+      throw new ApiError(409, 'balance_overflow', 'Saldo Petty Cash melebihi batas aman.');
     }
     const duplicate = await findExisting(db, actor.id, key, fingerprint).catch(error2 => {
       if (error2 instanceof ApiError) throw error2;

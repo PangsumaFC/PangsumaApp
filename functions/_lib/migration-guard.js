@@ -20,7 +20,7 @@ export async function ensureUserProfilesSchema(db) {
     throw new ApiError(
       503,
       'migration_required',
-      `Database belum siap: migrasi ${USER_PROFILES_MIGRATION} harus diterapkan sebelum login atau akses profil. Jalankan ${USER_PROFILES_MIGRATION_COMMAND} lalu ulangi request.`
+      `Database belum siap: migrasi ${USER_PROFILES_MIGRATION} harus diterapkan sebelum masuk atau mengakses profil. Jalankan ${USER_PROFILES_MIGRATION_COMMAND} lalu ulangi permintaan.`
     );
   }
 }

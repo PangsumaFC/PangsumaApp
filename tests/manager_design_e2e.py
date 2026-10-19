@@ -23,7 +23,7 @@ def main():
             page.reload(wait_until='networkidle')
             page.locator('#loginGate').wait_for(state='hidden', timeout=20_000)
             expect(page.locator('.account-users-button')).to_be_visible()
-            expect(page.get_by_role('button', name='Ganti password', exact=True)).to_be_visible()
+            expect(page.get_by_role('button', name='Ganti kata sandi', exact=True)).to_be_visible()
             assert page.locator('.account-password-label').is_hidden()
             assert page.locator('.mobile-nav.is-manager .nav-button').count() == 3
             assert page.locator('body').evaluate('(el) => el.scrollWidth <= window.innerWidth')
@@ -35,7 +35,7 @@ def main():
             assert len(ids) == len(set(ids)), ids
             page.locator('.account-users-button').click()
             expect(page.locator('#appContent')).to_contain_text('Pengguna')
-            page.get_by_role('button', name='Ganti password', exact=True).click()
+            page.get_by_role('button', name='Ganti kata sandi', exact=True).click()
             expect(page.locator('#passwordForm')).to_be_visible()
             page.locator('[data-page="overview"]:visible').first.click()
             page.screenshot(path=str(SCREENSHOTS / f'manager-design-{width}.png'), full_page=True)

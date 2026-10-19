@@ -27,7 +27,7 @@
   function base64ToBytes(value) {
     const text = String(value || '');
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) {
-      throw new Error('Parameter password tidak valid.');
+      throw new Error('Parameter kata sandi tidak valid.');
     }
     const binary = atob(text);
     return Uint8Array.from(binary, character => character.charCodeAt(0));
@@ -37,17 +37,17 @@
     const value = String(password ?? '');
     const minimum = allowEmpty ? 0 : MIN_PASSWORD_LENGTH;
     if (value.length < minimum || value.length > MAX_PASSWORD_LENGTH) {
-      throw new Error(`Password harus berisi ${allowEmpty ? 'maksimal' : '1–'}${MAX_PASSWORD_LENGTH} karakter.`);
+      throw new Error(`Kata sandi harus berisi ${allowEmpty ? 'maksimal' : '1–'}${MAX_PASSWORD_LENGTH} karakter.`);
     }
     return value;
   }
 
   function validateParameters(parameters) {
     if (!parameters || parameters.version !== VERSION || Number(parameters.iterations) !== ITERATIONS) {
-      throw new Error('Parameter password dari server tidak kompatibel.');
+      throw new Error('Parameter kata sandi dari server tidak kompatibel.');
     }
     const salt = base64ToBytes(parameters.salt);
-    if (salt.length !== SALT_BYTES) throw new Error('Salt password dari server tidak valid.');
+    if (salt.length !== SALT_BYTES) throw new Error('Salt kata sandi dari server tidak valid.');
     return { version: VERSION, iterations: ITERATIONS, salt };
   }
 

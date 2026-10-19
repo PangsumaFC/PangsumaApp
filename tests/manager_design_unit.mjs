@@ -17,7 +17,7 @@ test('manager navigation keeps overview approvals finance only', () => {
 test('header retains accessible users and password page selectors', () => {
   assert.match(html, /account-users-button[^>]+data-page="users"/);
   assert.match(html, /account-password-button[^>]+data-page="change-password"/);
-  assert.match(html, /aria-label="Ganti password"/);
+  assert.match(html, /aria-label="Ganti kata sandi"/);
   assert.match(html, /account-password-button[^>]*account-icon-button/);
 });
 

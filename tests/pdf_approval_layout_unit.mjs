@@ -109,12 +109,12 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   const bbox = bboxPages(result.bbox);
   assert.equal(pages.length, result.pdf.getPageCount(), 'pdftotext page count must match pdf-lib');
   if (expectPages) assert.equal(pages.length, expectPages);
-  assert.equal((result.text.match(/Yg mengajukan,/g) || []).length, 1);
+  assert.equal((result.text.match(/Yang mengajukan,/g) || []).length, 1);
   assert.equal((result.text.match(/Rahmat Saputro/g) || []).length, 1);
   assert.equal((result.text.match(/(?:^|\n)\s*Manager\s*(?:\n|$)/g) || []).length, 1);
   assert.equal((result.text.match(/DATA DEMO/g) || []).length, 1);
   assert.doesNotMatch(result.text, /Subtotal halaman/);
-  const approvalStart = result.text.indexOf('Yg mengajukan,');
+  const approvalStart = result.text.indexOf('Yang mengajukan,');
   const nameStart = result.text.indexOf('Rahmat Saputro', approvalStart);
   const order = [approvalStart, nameStart, result.text.indexOf('Manager', nameStart), result.text.indexOf('DATA DEMO', nameStart)];
   assert.ok(order.every(i => i >= 0) && order.every((v, i) => i === 0 || v > order[i - 1]), `approval text order: ${order}`);
@@ -129,7 +129,7 @@ function assertApprovalContract(result, { expectPages = null } = {}) {
   assert.equal(finalDraws.length, 2, 'both final-page PNGs must have observable Do transforms');
   for (const draw of finalDraws) assert.ok(draw.x > 300 && draw.y >= 38 && draw.y + draw.h <= 820, `approval image outside right-side block: ${JSON.stringify(draw)}`);
   const finalWords = bbox[finalIndex];
-  const approvalLabel = finalWords.find(w => w.word.includes('Yg'));
+  const approvalLabel = finalWords.find(w => w.word.includes('Yang'));
   assert.ok(approvalLabel, 'approval label must have a final-page bbox');
   assert.ok(finalWords.some(w => w.word.includes('Rahmat')), 'signature name must have a final-page bbox');
   assert.ok(finalWords.some(w => w.word === 'Manager'), 'manager role must have a final-page bbox');

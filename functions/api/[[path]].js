@@ -83,7 +83,7 @@ function requireDatabase(env) {
   return env.DB;
 }
 
-function requirePassword(value, name = 'Password') {
+function requirePassword(value, name = 'Kata sandi') {
   if (typeof value !== 'string' || value.length < 12 || value.length > 128) {
     throw new ApiError(400, 'password_policy', `${name} harus berisi 12–128 karakter.`);
   }
@@ -235,7 +235,7 @@ async function requireUser(request, db, options = {}) {
   const user = await getSessionUser(request, db);
   if (!user) throw new ApiError(401, 'authentication_required', 'Sesi berakhir. Silakan masuk kembali.');
   if (user.mustChangePassword && !options.allowPasswordChange) {
-    throw new ApiError(403, 'password_change_required', 'Buat password baru untuk melanjutkan.');
+    throw new ApiError(403, 'password_change_required', 'Buat kata sandi baru untuk melanjutkan.');
   }
   return user;
 }
@@ -344,11 +344,11 @@ async function login(context, db) {
       recordLoginFailure(db, ipKey, nowMs, LOGIN_IP_FAILURE_LIMIT),
       pruneLoginAttempts(db, nowMs)
     ]);
-    throw new ApiError(401, 'invalid_credentials', 'ID masuk atau password tidak sesuai.');
+    throw new ApiError(401, 'invalid_credentials', 'ID masuk atau kata sandi tidak sesuai.');
   }
   await db.prepare('DELETE FROM login_attempts WHERE rate_key = ?').bind(accountKey).run();
   const session = await createSession(db, user.id, { expectedPasswordHash: user.password_hash });
-  if (!session) throw new ApiError(401, 'invalid_credentials', 'ID masuk atau password tidak sesuai.');
+  if (!session) throw new ApiError(401, 'invalid_credentials', 'ID masuk atau kata sandi tidak sesuai.');
   return jsonResponse({
     ok: true,
     user: safeUser({ ...user, mustChangePassword: Boolean(user.must_change_password) }),
@@ -379,7 +379,7 @@ async function bootstrap(context, db) {
   }
   const body = await readJson(request);
   const managerCredential = body.managerCredential;
-  if (!managerCredential || typeof managerCredential !== 'object') throw new ApiError(400, 'invalid_credential', 'Kredensial password tidak valid.');
+  if (!managerCredential || typeof managerCredential !== 'object') throw new ApiError(400, 'invalid_credential', 'Kredensial kata sandi tidak valid.');
   const existing = await db.prepare('SELECT COUNT(*) AS count FROM users').first();
   if (Number(existing?.count || 0) > 0) {
     throw new ApiError(409, 'already_initialized', 'Akun awal sudah disiapkan.');
@@ -738,7 +738,7 @@ async function createSubmission(context, db) {
   const note = body.note === undefined || body.note === null || body.note === '' ? '' : cleanText(body.note, 500);
   const idempotencyKey = request.headers.get('Idempotency-Key') || '';
   if (!['petty_cash', 'finance_request'].includes(type)) {
-    throw new ApiError(400, 'invalid_submission_type', 'Pilih Petty cash atau Request Finance.');
+    throw new ApiError(400, 'invalid_submission_type', 'Pilih Petty Cash atau Request Finance.');
   }
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new ApiError(400, 'invalid_amount', 'Nominal harus berupa bilangan rupiah positif.');
@@ -783,7 +783,7 @@ async function createSubmission(context, db) {
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (String(error?.message || '').includes('insufficient_petty_cash_balance')) {
-      throw new ApiError(409, 'insufficient_petty_cash', 'Saldo petty cash tidak mencukupi. Minta pemilik mengonfirmasi saldo awal yang benar.');
+      throw new ApiError(409, 'insufficient_petty_cash', 'Saldo Petty Cash tidak mencukupi. Minta pemilik mengonfirmasi saldo awal yang benar.');
     }
     if (user.role === 'manager' && String(error?.message || '').includes('only_user_accounts_may_submit')) {
       throw new ApiError(503, 'migration_required', 'Pengajuan Manager belum tersedia. Administrator perlu menerapkan migrasi 0004_manager_submissions.sql.');
@@ -831,7 +831,7 @@ async function decideSubmission(context, db, id, action) {
     }
   } catch (error) {
     if (String(error?.message || '').includes('insufficient_petty_cash_balance')) {
-      throw new ApiError(409, 'insufficient_petty_cash', 'Saldo petty cash tidak mencukupi. Minta pemilik mengonfirmasi saldo awal yang benar.');
+      throw new ApiError(409, 'insufficient_petty_cash', 'Saldo Petty Cash tidak mencukupi. Minta pemilik mengonfirmasi saldo awal yang benar.');
     }
     if (String(error?.message || '').includes('self_decision_not_allowed')) {
       throw new ApiError(403, 'self_decision_not_allowed', 'Manager tidak dapat memutuskan pengajuan miliknya sendiri.');
@@ -1148,22 +1148,22 @@ async function changeOwnPassword(context, db) {
   const newCredential = body.newCredential;
   const row = await db.prepare('SELECT password_hash FROM users WHERE id = ? AND is_active = 1 LIMIT 1').bind(actor.id).first();
   if (!row?.password_hash || !await verifyClientCredential(currentCredential, row.password_hash, actor.email, context.env)) {
-    throw new ApiError(401, 'current_password_incorrect', 'Password saat ini tidak sesuai.');
+    throw new ApiError(401, 'current_password_incorrect', 'Kata sandi saat ini tidak sesuai.');
   }
   const encoded = await hashClientCredential(newCredential, actor.email, context.env);
   const currentParts = String(row.password_hash).split('$');
-  if (currentParts.length !== 4 || newCredential?.salt === currentParts[2]) throw new ApiError(400, 'password_salt_reused', 'Gunakan salt baru untuk password baru.');
+  if (currentParts.length !== 4 || newCredential?.salt === currentParts[2]) throw new ApiError(400, 'password_salt_reused', 'Gunakan salt baru untuk kata sandi baru.');
   if (typeof body.newCurrentDerived !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(body.newCurrentDerived)) {
-    throw new ApiError(400, 'invalid_credential', 'Bukti password baru tidak valid.');
+    throw new ApiError(400, 'invalid_credential', 'Bukti kata sandi baru tidak valid.');
   }
-  if (await verifyClientCredential({ ...newCredential, salt: currentParts[2], derived: body.newCurrentDerived }, row.password_hash, actor.email, context.env)) throw new ApiError(400, 'password_unchanged', 'Gunakan password baru yang berbeda.');
+  if (await verifyClientCredential({ ...newCredential, salt: currentParts[2], derived: body.newCurrentDerived }, row.password_hash, actor.email, context.env)) throw new ApiError(400, 'password_unchanged', 'Gunakan kata sandi baru yang berbeda.');
   const updatedAt = nowIso();
   const result = await db.prepare(`
     UPDATE users
     SET password_hash = ?, must_change_password = 0, updated_at = ?, updated_by = ?
     WHERE id = ? AND password_hash = ? AND is_active = 1
   `).bind(encoded, updatedAt, actor.id, actor.id, row.password_hash).run();
-  if (!resultChanges(result)) throw new ApiError(409, 'password_changed_elsewhere', 'Password berubah di sesi lain. Masuk kembali.');
+  if (!resultChanges(result)) throw new ApiError(409, 'password_changed_elsewhere', 'Kata sandi berubah di sesi lain. Masuk kembali.');
   const token = readSessionToken(request);
   if (token) {
     const currentSessionHash = await sha256Hex(token);
@@ -1564,7 +1564,7 @@ async function dispatch(context, db, path) {
   if (path === '/submissions') {
     if (request.method === 'GET') return listSubmissions(context, db);
     if (request.method === 'POST') return createSubmission(context, db);
-    throw new ApiError(405, 'method_not_allowed', 'Metode request tidak didukung.');
+    throw new ApiError(405, 'method_not_allowed', 'Metode pengajuan tidak didukung.');
   }
   if (path === '/profile') return profile(context, db, null);
   if (path === '/users') return users(context, db);

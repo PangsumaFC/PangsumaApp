@@ -56,12 +56,12 @@ function assertTrustedPost(request, env) {
   ensureMethod(request, 'POST');
   const { origin } = configuration(env);
   let requestOrigin = '';
-  try { requestOrigin = new URL(request.url).origin; } catch { throw new ApiError(400, 'invalid_request', 'Request tidak valid.'); }
+  try { requestOrigin = new URL(request.url).origin; } catch { throw new ApiError(400, 'invalid_request', 'Pengajuan tidak valid.'); }
   if (request.headers.get('Origin') !== origin || requestOrigin !== origin) {
-    throw new ApiError(403, 'origin_not_allowed', 'Asal request tidak diizinkan.');
+    throw new ApiError(403, 'origin_not_allowed', 'Asal permintaan tidak diizinkan.');
   }
   if (request.headers.get('Sec-Fetch-Site') === 'cross-site') {
-    throw new ApiError(403, 'origin_not_allowed', 'Asal request tidak diizinkan.');
+    throw new ApiError(403, 'origin_not_allowed', 'Asal permintaan tidak diizinkan.');
   }
 }
 

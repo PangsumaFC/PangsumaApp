@@ -49,7 +49,8 @@ function annotationEntries(pdf) {
       const action = annotation.lookup(PDFName.of('A'), PDFDict);
       const uri = action?.lookup(PDFName.of('URI'));
       const rect = annotation.lookup(PDFName.of('Rect'))?.asArray().map((n) => n.numberValue);
-      return { page, pageIndex, annotation, action, uri: uri?.decodeText?.() ?? String(uri ?? ''), rect };
+      const contents = annotation.lookup(PDFName.of('Contents'));
+      return { page, pageIndex, annotation, action, uri: uri?.decodeText?.() ?? String(uri ?? ''), contents: contents?.decodeText?.() ?? String(contents ?? ''), rect };
     });
   });
 }
@@ -100,8 +101,13 @@ const base = {
 test('Dropbox shared-file receipt links are exact URI annotations with provenance and no invented links', async () => {
   const { pdf, text, bbox } = await inspect(await buildFinancialReport(base));
   const links = annotationEntries(pdf);
+  const streams = pdf.getPages().map((page) => pageStream(pdf, page)).join('\n');
   assert.equal(links.length, 3, 'ledger, linked submission, and standalone eligible submission each get one link');
   assert.deepEqual(links.map((link) => link.uri), [DEMO_URL, DEMO_URL, DEMO_URL]);
+  assert.deepEqual(links.map((link) => link.contents), [
+    'Lampiran baris 1, berkas 1', 'Lampiran baris 5, berkas 1', 'Lampiran baris 6, berkas 1',
+  ], 'link accessibility context identifies the rendered row and file');
+  assert.match(streams, /0\.05 0\.25 0\.75 rg/, 'visible attachment labels use the PDF blue link color');
   assert.equal(new Set(links.map((link) => link.rect.join(','))).size, 3, 'long-row split must not duplicate annotation');
   for (const link of links) {
     assert.ok(link.rect, 'annotation has a rectangle');
@@ -110,15 +116,15 @@ test('Dropbox shared-file receipt links are exact URI annotations with provenanc
     assert.ok(y1 > 38 && y2 > y1 && y2 < 810, `Rect must be content-row, not footer: ${link.rect}`);
     assert.equal(link.annotation.get(PDFName.of('Subtype'))?.toString(), '/Link');
   }
-  assert.equal((text.match(/Bukti/g) || []).length, 3, 'each valid receipt has exactly one label');
+  assert.equal((text.match(/Lampiran/g) || []).length, 4, 'header plus each valid receipt has the exact Lampiran label');
   assert.match(text, /VALID LEDGER RECEIPT/);
   assert.match(text, /LONG-START/);
   assert.match(text, /STANDALONE ELIGIBLE RECEIPT/);
   assert.doesNotMatch(text, /PUBLIC FOLDER MUST NOT BE ATTACHED/);
   assert.doesNotMatch(text, /INELIGIBLE MUST NOT INVENT OR ATTACH/);
   const words = bboxWords(bbox);
-  for (const word of words.filter((entry) => entry.word === 'Bukti')) {
-    assert.ok(word.x >= 498 && word.right <= 565, `Bukti text must be in Lampiran column: ${JSON.stringify(word)}`);
+  for (const word of words.filter((entry) => entry.word === 'Lampiran')) {
+    if (word.x > 490) assert.ok(word.x >= 498 && word.right <= 565, `Lampiran text must be in Lampiran column: ${JSON.stringify(word)}`);
   }
 });
 
@@ -141,7 +147,7 @@ test('attachment policy accepts shared files but rejects folders, unsafe public 
     submissions: [],
   }), 'invalid-links.pdf');
   assert.equal(annotationEntries(pdf).length, 0);
-  assert.doesNotMatch(text, /Bukti/);
+  assert.equal((text.match(/Lampiran/g) || []).length, 1, 'invalid links leave only the table header');
 });
 
 test('wide table boundaries, one grand total, no page subtotals, and final-only approval assets remain stable', async () => {
@@ -154,11 +160,11 @@ test('wide table boundaries, one grand total, no page subtotals, and final-only 
   assert.equal((text.match(/Subtotal halaman/g) || []).length, 0);
   assert.equal((text.match(/Total kas keseluruhan/g) || []).length, 1);
   assert.equal((text.match(/DATA DEMO/g) || []).length, 1);
-  assert.equal((text.match(/Bukti/g) || []).length, 1);
+  assert.equal((text.match(/Lampiran/g) || []).length, 2, 'header and one attachment label');
   assert.match(text, /Lampiran/);
   const headers = text.split(/\f/).filter(Boolean).filter((page) => /Lampiran/.test(page));
   assert.equal(headers.length, 1, 'Lampiran header appears only on page one');
-  assert.equal((text.match(/Yg mengajukan,/g) || []).length, 1);
+  assert.equal((text.match(/Yang mengajukan,/g) || []).length, 1);
   assert.equal((text.match(/Rahmat Saputro/g) || []).length, 1);
   assert.equal((text.match(/(?:^|\n)\s*Manager\s*(?:\n|$)/g) || []).length, 1);
   const imagePages = pdf.getPages().map((page, index) => ({ index, count: imageCount(pdf, page) })).filter((entry) => entry.count);
@@ -190,16 +196,53 @@ test('multiple receipt arrays render distinct numbered links once per row and om
   const links = annotationEntries(pdf);
   assert.deepEqual(links.map((link) => link.uri), urls);
   assert.equal(links.length, urls.length, 'each deduplicated valid receipt gets one annotation, not a second transaction row');
-  assert.equal((text.match(/Bukti [123]/g) || []).length, 3);
-  assert.match(text, /Bukti 1/);
-  assert.match(text, /Bukti 2/);
-  assert.match(text, /Bukti 3/);
+  assert.equal((text.match(/Lampiran/g) || []).length, 4, 'header plus all three file labels');
   assert.match(text, /LONG-START/);
   assert.match(text, /LONG-END/);
   assert.doesNotMatch(text, /nope|folder/);
   assert.equal(new Set(links.map((link) => link.rect.join(','))).size, 3, 'row split must not duplicate link annotations');
+  assert.deepEqual(links.map((link) => link.contents), [
+    'Lampiran baris 1, berkas 1', 'Lampiran baris 1, berkas 2', 'Lampiran baris 1, berkas 3',
+  ]);
   for (const link of links) {
     const [x1, y1, x2, y2] = link.rect;
     assert.ok(x1 >= 498 && x2 <= 565 && y1 > 38 && y2 > y1);
   }
 });
+
+for (const reportType of ['petty_cash', 'finance_request']) {
+  test(`${reportType}: identical Lampiran labels preserve each approved row and file viewer target`, async () => {
+    const fileUrl = token => `https://www.dropbox.com/scl/fi/${token}/${token}.jpg?rlkey=${token}&dl=0`;
+    const first = fileUrl('ROWONEFILEONE');
+    const second = fileUrl('ROWONEFILETWO');
+    const third = fileUrl('ROWTWOFILEONE');
+    const { pdf, text, bbox } = await inspect(await buildFinancialReport({
+      reportType,
+      snapshotAt: base.snapshotAt,
+      managerName: base.managerName,
+      submissions: [
+        { id: 'one', type: reportType, status: 'approved', date: '2026-10-01', created_at: '2026-10-01T03:00:00Z', amount_idr: 101, description: 'FIRSTROW', dropbox_receipt_urls: [first, 'https://www.dropbox.com/scl/fo/FOLDER', second] },
+        { id: 'two', type: reportType, status: 'approved', date: '2026-10-02', created_at: '2026-10-02T03:00:00Z', amount_idr: 202, description: 'SECONDROW', dropbox_receipt_urls: [third, 'javascript:alert(1)'] },
+      ],
+      ledger: [],
+    }));
+    const links = annotationEntries(pdf);
+    assert.deepEqual(links.map(link => link.uri), [first, second, third]);
+    assert.deepEqual(links.map(link => link.contents), [
+      'Lampiran baris 1, berkas 1', 'Lampiran baris 1, berkas 2', 'Lampiran baris 2, berkas 1',
+    ]);
+    assert.doesNotMatch(text, /Bukti\s*\d|ROWONEFILE|ROWTWOFILE|\.jpg|berkas \d/);
+    assert.equal((text.match(/Lampiran/g) || []).length, 4);
+    const words = bboxWords(bbox);
+    for (const [index, sentinel] of ['FIRSTROW', 'FIRSTROW', 'SECONDROW'].entries()) {
+      const rowWord = words.find(word => word.word === sentinel);
+      assert.ok(rowWord, `${sentinel} must be visible`);
+      const link = links[index];
+      const lineTop = 841.89 - link.rect[3];
+      assert.ok(Math.abs(lineTop - rowWord.y) < 24, `${link.uri} must remain aligned with ${sentinel}`);
+      assert.equal(link.annotation.get(PDFName.of('Subtype'))?.toString(), '/Link');
+    }
+    const streams = pdf.getPages().map(page => pageStream(pdf, page)).join('\n');
+    assert.match(streams, /0\.05 0\.25 0\.75 rg/);
+  });
+}

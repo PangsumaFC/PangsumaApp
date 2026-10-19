@@ -68,7 +68,7 @@ function decodeBase64(value, expectedLength) {
 }
 function pepperBytes(env) {
   const bytes = decodeBase64(env?.PASSWORD_PEPPER, 32);
-  if (!bytes) throw new ApiError(503, 'password_service_unavailable', 'Layanan password belum dikonfigurasi.');
+  if (!bytes) throw new ApiError(503, 'password_service_unavailable', 'Layanan kata sandi belum dikonfigurasi.');
   return bytes;
 }
 async function hmacBase64(keyBytes, message) {
@@ -92,7 +92,7 @@ function credentialMessage(email, salt, derived) {
 }
 export async function hashClientCredential(credential, email, env) {
   const parsed = parseClientCredential(credential), normalizedEmail = normalizedCredentialEmail(email);
-  if (!parsed || !normalizedEmail) throw new ApiError(400, 'invalid_credential', 'Kredensial password tidak valid.');
+  if (!parsed || !normalizedEmail) throw new ApiError(400, 'invalid_credential', 'Kredensial kata sandi tidak valid.');
   const encodedHmac = await hmacBase64(pepperBytes(env), credentialMessage(normalizedEmail, parsed.salt, parsed.derived));
   return `${CLIENT_PASSWORD_VERSION}$${PASSWORD_ITERATIONS}$${bytesToBase64(parsed.salt)}$${encodedHmac}`;
 }
@@ -115,7 +115,7 @@ export async function getPasswordParameters(encodedHash, email, env) {
 
 export async function hashPassword(password) {
   if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
-    throw new ApiError(400, 'password_policy', 'Password harus berisi 12–128 karakter.');
+    throw new ApiError(400, 'password_policy', 'Kata sandi harus berisi 12–128 karakter.');
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const derived = await derivePassword(password, salt, PASSWORD_ITERATIONS);

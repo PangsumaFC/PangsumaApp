@@ -46,7 +46,7 @@ const monthLabel = key => {
   const [year, month] = String(key).split('-').map(Number);
   return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
 };
-const reportTypeLabel = type => type === 'petty_cash' ? 'Petty cash' : 'Request Finance';
+const reportTypeLabel = type => type === 'petty_cash' ? 'Petty Cash' : 'Request Finance';
 
 const icons = {
   overview: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 17h7m-3.5-3.5v7" stroke-linecap="round"/></svg>',
@@ -415,7 +415,7 @@ function cashInsightDailyRows(insight, limit = 14) {
 }
 function cashInsightsRegion() {
   const insight = state.cashInsights;
-  if (!insight) return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><p class="field-help">${state.cashInsightsError ? escapeHTML(state.cashInsightsError) : 'Memuat kesehatan petty cash…'}</p>${state.cashInsightsError ? '<button class="secondary-button" type="button" data-action="refresh-cash-insights">Coba lagi</button>' : ''}</section>`;
+  if (!insight) return `<section class="cash-insights-region" aria-label="Kesehatan Petty Cash"><p class="field-help">${state.cashInsightsError ? escapeHTML(state.cashInsightsError) : 'Memuat kesehatan Petty Cash…'}</p>${state.cashInsightsError ? '<button class="secondary-button" type="button" data-action="refresh-cash-insights">Coba lagi</button>' : ''}</section>`;
   const totals = insight.totals || {};
   const account = cashInsightInteger(insight.account?.balanceIdr);
   const expected = cashInsightInteger(insight.accounting?.expectedBalanceIdr);
@@ -433,7 +433,7 @@ function cashInsightsRegion() {
   const minimum = getCashInsightMinimum(insight);
   const minimumStatus = minimum === null ? 'Belum ada batas peringatan' : account < cashInsightInteger(minimum) ? 'Di bawah batas minimum' : 'Batas minimum terpenuhi';
   const equation = `<dl class="cash-health-equation"><div><dt>Saldo awal</dt><dd>${cashInsightMoney(totals.openingIdr)}</dd></div><span aria-hidden="true">+</span><div><dt>Penambahan</dt><dd>${cashInsightMoney(totals.topupsIdr)}</dd></div><span aria-hidden="true">−</span><div><dt>Pengeluaran</dt><dd>${cashInsightMoney(totals.outgoingIdr)}</dd></div><span aria-hidden="true">=</span><div><dt>Saldo hitung</dt><dd>${cashInsightMoney(expected)}</dd></div></dl>`;
-  return `<section class="cash-insights-region" aria-label="Kesehatan petty cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo ter-rekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>${cashInsightThresholdSourceLabel(insight)}</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (lokal, Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
+  return `<section class="cash-insights-region" aria-label="Kesehatan Petty Cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo terekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>${cashInsightThresholdSourceLabel(insight)}</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (lokal, Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
 }
 function renderCashInsightsRegion(force = false) {
   const form = $('#cashMinimumForm');
@@ -967,10 +967,10 @@ function submissionCard(item, options = {}) {
     const own = item.createdBy === state.user?.id;
     const enoughCash = item.type !== 'petty_cash' || item.amountIdr <= state.cashBalanceIdr;
     const cannotApprove = own || !enoughCash;
-    const approveLabel = item.type === 'petty_cash' ? 'Setujui & kurangi saldo' : 'Setujui request';
+    const approveLabel = item.type === 'petty_cash' ? 'Setujui & kurangi saldo' : 'Setujui pengajuan';
     const disableHint = own
       ? 'Manager tidak dapat memutuskan pengajuannya sendiri.'
-      : !enoughCash ? 'Saldo petty cash belum mencukupi.' : '';
+      : !enoughCash ? 'Saldo Petty Cash belum mencukupi.' : '';
     actions = `<div class="item-actions"><button class="primary-button" type="button" data-action="approve" data-id="${escapeHTML(item.id)}" ${cannotApprove ? 'disabled' : ''} ${disableHint ? `aria-describedby="hint-${escapeHTML(item.id)}" title="${escapeHTML(disableHint)}"` : ''}>${approveLabel}</button><button class="secondary-button" type="button" data-action="reject" data-id="${escapeHTML(item.id)}" ${own ? 'disabled' : ''}>Tolak</button></div>${disableHint ? `<p class="action-hint" id="hint-${escapeHTML(item.id)}">${escapeHTML(disableHint)}</p>` : ''}`;
   }
   if (options.financeActions && state.user?.role === 'manager' && item.type === 'finance_request' && item.status === 'approved') {
@@ -1006,7 +1006,7 @@ function managerOverview() {
   const pendingCount = state.summary.pending ?? 0;
   const todayCount = state.summary.today ?? 0;
   return `${welcomePanel()}
-    <section class="hero-panel balance-panel"><div><span>Saldo petty cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div></section>
+    <section class="hero-panel balance-panel"><div><span>Saldo Petty Cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div></section>
     <div id="financialControlsOverview">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderOverview() : ''}</div>
     <div class="section-row manager-action-row"><h2>Ringkasan operasional</h2><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount))}${metricCard('finance', 'Menunggu Finance', String(financeWaiting))}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
@@ -1024,8 +1024,8 @@ function managerApprovals() {
   const pending = Array.isArray(state.pendingSubmissions) ? state.pendingSubmissions : state.submissions.filter(item => item.status === 'pending');
   const history = state.submissions.filter(item => item.status !== 'pending');
   const audit = state.auditEvents;
-  return `${pageHeading('Persetujuan', 'Tinjau setiap pengajuan. Keputusan petty cash tercatat bersama perubahan saldo.')}
-    <div class="metric-row" aria-label="Ringkasan persetujuan">${metricCard('review', 'Menunggu', String(state.summary.pending ?? pending.length))}${metricCard('wallet', 'Saldo petty cash', compactMoney(state.cashBalanceIdr), 'overview', money(state.cashBalanceIdr))}${metricCard('report', 'Masuk hari ini', String(state.summary.today ?? 0))}</div>
+  return `${pageHeading('Persetujuan', 'Tinjau setiap pengajuan. Keputusan Petty Cash tercatat bersama perubahan saldo.')}
+    <div class="metric-row" aria-label="Ringkasan persetujuan">${metricCard('review', 'Menunggu', String(state.summary.pending ?? pending.length))}${metricCard('wallet', 'Saldo Petty Cash', compactMoney(state.cashBalanceIdr), 'overview', money(state.cashBalanceIdr))}${metricCard('report', 'Masuk hari ini', String(state.summary.today ?? 0))}</div>
     <div class="section-row"><div><h2>Antrian</h2></div></div>${state.pendingPage.error ? `<p class="inline-error" role="alert">${escapeHTML(state.pendingPage.error)}</p><button class="secondary-button" type="button" data-action="pending-retry">Coba lagi</button>` : ''}${pending.length ? `<div class="list-stack">${pending.map(item => submissionCard(item, { includeOwner: true, actions: true })).join('')}</div>` : emptyState('Belum ada pengajuan menunggu', 'Keputusan Manager yang selesai akan tetap ada di riwayat.')}<p class="field-help" role="status">${state.pendingPage.loading ? 'Memuat antrean…' : `Menampilkan ${pending.length} dari ${Number(state.pendingPage.total || state.summary.pending || 0)} pengajuan menunggu.`}</p><nav class="report-pagination" aria-label="Navigasi antrean">${state.pendingPage.hasPrevious ? '<button class="secondary-button" type="button" data-action="pending-previous">Sebelumnya</button>' : ''}${state.pendingPage.hasMore ? '<button class="secondary-button" type="button" data-action="pending-next">Lihat 5 berikutnya</button>' : ''}</nav>
     <div class="section-row"><div><h2>Riwayat keputusan</h2></div><span class="archive-total">${Math.max(0, Number(state.summary.total || 0) - Number(state.summary.pending || 0))} pengajuan</span></div>${history.length ? `<div class="list-stack">${history.map(item => submissionCard(item, { includeOwner: true })).join('')}</div>` : emptyState('Tidak ada keputusan pada halaman ini', 'Gunakan navigasi riwayat untuk melihat pengajuan lainnya.')}
     ${historyControls('submissions', 'pengajuan')}
@@ -1038,15 +1038,15 @@ function financePage() {
   const pdfFallback = isPangsumaApkWrapper()
     ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
     : '';
-  const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf" data-report-type="petty_cash">Unduh laporan Petty Cash</button><button class="secondary-button" type="button" data-action="download-pdf" data-report-type="finance_request">Unduh laporan Request</button>${pdfFallback}</div>`;
+  const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf" data-report-type="petty_cash">Unduh laporan Petty Cash</button><button class="secondary-button" type="button" data-action="download-pdf" data-report-type="finance_request">Unduh laporan Request Finance</button>${pdfFallback}</div>`;
   const cashActions = `<div class="heading-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
   return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.')}
     <section class="finance-section" aria-labelledby="financeReportsTitle"><div class="section-row"><h2 id="financeReportsTitle">Laporan</h2>${reportActions}</div>
     <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div></section>
     <section class="finance-section" aria-labelledby="financeCashTitle"><div class="section-row"><h2 id="financeCashTitle">Pengelolaan kas</h2>${cashActions}</div>
-    <details class="audit-panel" data-panel="cash-insights"><summary>Rincian saldo dan tren petty cash</summary>${cashInsightsRegion()}</details>
+    <details class="audit-panel" data-panel="cash-insights"><summary>Rincian saldo dan tren Petty Cash</summary>${cashInsightsRegion()}</details>
     <div id="financialControlsFinance">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderFinance() : ''}</div>
-    <details class="audit-panel" data-panel="cash-ledger"><summary>Ledger petty cash (${state.history.cashLedger.loaded} dari ${state.history.cashLedger.total})</summary>${ledgers.length ? `<ol class="audit-list">${ledgers.map(ledgerRow).join('')}</ol>` : `<p class="field-help">Belum ada transaksi saldo.</p>`}${historyControls('cashLedger', 'transaksi ledger')}</details></section>`;
+    <details class="audit-panel" data-panel="cash-ledger"><summary>Ledger Petty Cash (${state.history.cashLedger.loaded} dari ${state.history.cashLedger.total})</summary>${ledgers.length ? `<ol class="audit-list">${ledgers.map(ledgerRow).join('')}</ol>` : `<p class="field-help">Belum ada transaksi saldo.</p>`}${historyControls('cashLedger', 'transaksi ledger')}</details></section>`;
 }
 
 function auditRow(event) {
@@ -1058,7 +1058,7 @@ function auditRow(event) {
     'submission.created': 'Pengajuan dibuat',
     'submission.status_changed': `Status pengajuan: ${details.from || '?'} → ${details.to || '?'}`,
     'user.created': 'Akun User ditambahkan',
-    'user.password_changed': 'Password pengguna diperbarui',
+    'user.password_changed': 'Kata sandi pengguna diperbarui',
     'user.profile_updated': 'Profil dashboard diperbarui',
     'user.deactivated': 'Akses pengguna dinonaktifkan'
   };
@@ -1071,7 +1071,7 @@ function auditRow(event) {
 function ledgerRow(event) {
   const debit = event.direction === 'debit';
   const topup = event.event_type === 'cash_topup';
-  return `<li><div class="audit-main"><strong>${topup ? 'Petty cash ditambah' : debit ? 'Pengeluaran petty cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
+  return `<li><div class="audit-main"><strong>${topup ? 'Petty Cash ditambah' : debit ? 'Pengeluaran Petty Cash disetujui' : 'Saldo awal'}</strong><span>${debit ? '−' : '+'}${money(event.amount_idr)}</span></div><small>${escapeHTML(event.actor_name || 'Sistem')} · Saldo setelah transaksi ${money(event.balance_after_idr)} · ${escapeHTML(topup ? dateTimeWibFull(event.created_at) : dateTimeLong(event.created_at))}${event.note ? ` · ${escapeHTML(event.note)}` : ''}</small></li>`;
 }
 
 function asyncLifecycle() {
@@ -1147,12 +1147,12 @@ function accountDraftPresent() { const draft = readAccountDraft(); return Boolea
 function usersPage() {
   const userRows = state.users.map(user => {
     const passkeyCount = Number(user.passkeyCount || 0);
-    const credential = !user.active ? 'Akses nonaktif' : passkeyCount ? 'Passkey siap' : !user.passwordReady ? 'Password belum diatur' : user.mustChangePassword ? 'Wajib ganti password' : 'Siap masuk';
+    const credential = !user.active ? 'Akses nonaktif' : passkeyCount ? 'Passkey siap' : !user.passwordReady ? 'Kata sandi belum diatur' : user.mustChangePassword ? 'Wajib ganti kata sandi' : 'Siap masuk';
     const statusClass = !user.active ? 'status-neutral' : passkeyCount || (user.passwordReady && !user.mustChangePassword) ? 'status-ok' : 'status-wait';
     const passkeyLabel = passkeyCount ? `Passkey terdaftar (${passkeyCount})` : 'Belum ada passkey';
     const accessActions = user.role === 'manager' || !user.active
       ? ''
-      : `<div class="user-actions"><button class="secondary-button" type="button" data-action="reset-user-password" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Atur password</button><button class="danger-button" type="button" data-action="deactivate-user" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Nonaktifkan akses</button></div>`;
+      : `<div class="user-actions"><button class="secondary-button" type="button" data-action="reset-user-password" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Atur kata sandi</button><button class="danger-button" type="button" data-action="deactivate-user" data-id="${escapeHTML(user.id)}" data-name="${escapeHTML(user.name)}">Nonaktifkan akses</button></div>`;
     const actions = `<div class="user-actions"><button class="secondary-button" type="button" data-action="edit-user-profile" data-id="${escapeHTML(user.id)}">Atur profil</button>${accessActions}</div>`;
     return `<tr><td data-label="Pengguna"><div class="profile-user-cell">${profileAvatar(user, 'user-initial')}<div>${escapeHTML(user.name)}${user.nickname ? `<small class="profile-nickname">${escapeHTML(user.nickname)}</small>` : ''}</div></div></td><td data-label="Posisi dashboard">${escapeHTML(user.dashboardPosition ?? user.position ?? 'Belum diisi')}</td><td data-label="Peran"><span class="status status-neutral">${user.role === 'manager' ? 'Manager' : 'User'}</span></td><td data-label="ID masuk">${escapeHTML(user.email)}</td><td data-label="Status akses"><div class="user-access-state"><span class="status ${statusClass}">${credential}</span><small class="passkey-status">${passkeyLabel}</small></div></td><td data-label="Aksi">${actions}</td></tr>`;
   }).join('');
@@ -1161,7 +1161,7 @@ function usersPage() {
   const listStatus = state.usersPage.loading ? '<p class="field-help" role="status" aria-live="polite">Memuat daftar akun…</p>' : state.usersPage.error ? `<p class="field-error" role="alert">${escapeHTML(state.usersPage.error)} <button class="secondary-button" type="button" data-action="retry-users">Coba lagi</button></p>` : '';
   return `${pageHeading('Pengguna', 'Atur profil dashboard, foto, dan akses setiap akun, termasuk profil Anda.', actions)}
     <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" maxlength="100" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
-    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur password sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
+    <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur kata sandi sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
     ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users" aria-label="Halaman sebelumnya">Sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users" aria-label="Lihat 5 akun berikutnya">Lihat 5 berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
 }
@@ -1177,7 +1177,7 @@ function myReportsPage() {
   }
   const content = filtered.length ? [...groups.entries()].map(([month, items], index) => `<details class="archive-month" ${index === 0 ? 'open' : ''}><summary><span class="archive-month-copy"><strong>${escapeHTML(monthLabel(month))}</strong><small>${items.length} laporan</small></span><span class="archive-chevron" aria-hidden="true"></span></summary><div class="archive-month-content"><div class="list-stack">${items.map(item => submissionCard(item)).join('')}</div></div></details>`).join('') : emptyState(query || state.archiveType !== 'all' ? 'Tidak ada laporan yang cocok' : 'Belum ada laporan', query || state.archiveType !== 'all' ? 'Ubah kata kunci atau jenis laporan.' : 'Pengajuan yang Anda kirim akan tersimpan di akun Anda.');
   return `${pageHeading('Laporan', 'Riwayat pengajuan Anda.')}
-    <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Cari kebutuhan atau tanggal…" value="${escapeHTML(state.archiveSearch)}"></label><div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${state.archiveType === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="petty_cash" aria-pressed="${state.archiveType === 'petty_cash'}">Petty cash</button><button class="filter-chip" type="button" data-report-filter="finance_request" aria-pressed="${state.archiveType === 'finance_request'}">Request Finance</button></div></div><div class="archive-month-list" id="archiveResults">${content}</div>${historyControls('submissions', 'laporan')}`;
+    <div class="archive-controls"><label class="archive-search"><span class="sr-only">Cari laporan</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4 4" stroke-linecap="round"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Cari kebutuhan atau tanggal…" value="${escapeHTML(state.archiveSearch)}"></label><div class="archive-filter-row" role="group" aria-label="Jenis laporan"><button class="filter-chip" type="button" data-report-filter="all" aria-pressed="${state.archiveType === 'all'}">Semua</button><button class="filter-chip" type="button" data-report-filter="petty_cash" aria-pressed="${state.archiveType === 'petty_cash'}">Petty Cash</button><button class="filter-chip" type="button" data-report-filter="finance_request" aria-pressed="${state.archiveType === 'finance_request'}">Request Finance</button></div></div><div class="archive-month-list" id="archiveResults">${content}</div>${historyControls('submissions', 'laporan')}`;
 }
 
 function reportForm() {
@@ -1186,7 +1186,7 @@ function reportForm() {
   submissionIdempotencyKey = draft.idempotencyKey || '';
   return `${pageHeading('Buat pengajuan', 'Isi kebutuhan Anda. Nominal dan status akan tersimpan di server.')}
     <form id="reportForm" class="form-card surface"><div class="form-grid">
-      <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${state.user?.role === 'manager' ? (type === 'petty_cash' ? 'Otomatis disetujui; saldo petty cash langsung berkurang saat dikirim dan harus mencukupi.' : 'Otomatis disetujui dan langsung masuk daftar menunggu Finance.') : (type === 'petty_cash' ? 'Saldo petty cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.')}</div></div>
+      <div class="field field-full"><label for="reportType">Jenis pengajuan</label><select id="reportType" name="type" required><option value="petty_cash" ${type === 'petty_cash' ? 'selected' : ''}>Petty Cash</option><option value="finance_request" ${type === 'finance_request' ? 'selected' : ''}>Request Finance</option></select><div class="field-help" id="typeHelp">${state.user?.role === 'manager' ? (type === 'petty_cash' ? 'Otomatis disetujui; saldo Petty Cash langsung berkurang saat dikirim dan harus mencukupi.' : 'Otomatis disetujui dan langsung masuk daftar menunggu Finance.') : (type === 'petty_cash' ? 'Saldo Petty Cash berkurang setelah disetujui Manager.' : 'Request Finance masuk ke daftar Finance setelah disetujui.')}</div></div>
       <div class="field"><label for="reportDate">Tanggal</label><input id="reportDate" name="date" type="date" value="${escapeHTML(draft.date || todayISO())}" required></div>
       <div class="field"><label for="reportAmount">Nominal (rupiah)</label><input id="reportAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" value="${escapeHTML(draft.amountIdr || '')}" required placeholder="Contoh: 150000"></div>
       <div class="field field-full"><label for="reportDescription">Keperluan</label><input id="reportDescription" name="description" value="${escapeHTML(draft.description || '')}" required minlength="3" maxlength="150" placeholder="Jelaskan kebutuhan operasional"></div>
@@ -1197,21 +1197,21 @@ function reportForm() {
 function cashInfo() {
   if (state.user?.role !== 'manager') return userOverview();
   const approved = state.submissions.filter(item => item.type === 'petty_cash' && item.status === 'approved');
-  return `${pageHeading('Petty cash', 'Saldo berasal dari ledger server. Persetujuan pengeluaran mengurangi saldo satu kali.')}
+  return `${pageHeading('Petty Cash', 'Saldo berasal dari ledger server. Persetujuan pengeluaran mengurangi saldo satu kali.')}
     <div class="hero-panel balance-panel"><div><span>Saldo tersedia</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Setiap pengeluaran disetujui tersimpan pada ledger.'}</p></div></div>
     ${state.user.role === 'user' ? `<div class="section-row"><div><h2>Pengeluaran Anda</h2></div><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>` : ''}
-    ${approved.length ? `<div class="list-stack">${approved.map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada pengeluaran disetujui', state.cashBalanceIdr === 0 ? 'Saldo nol; pengajuan Petty cash belum dapat disetujui.' : 'Pengeluaran yang disetujui akan tampil di sini.')}${historyControls('submissions', 'pengajuan')}`;
+    ${approved.length ? `<div class="list-stack">${approved.map(item => submissionCard(item)).join('')}</div>` : emptyState('Belum ada pengeluaran disetujui', state.cashBalanceIdr === 0 ? 'Saldo nol; pengajuan Petty Cash belum dapat disetujui.' : 'Pengeluaran yang disetujui akan tampil di sini.')}${historyControls('submissions', 'pengajuan')}`;
 }
 
 function changePasswordPage() {
   const forced = state.user.mustChangePassword;
-  return `${pageHeading(forced ? 'Buat password baru' : 'Ganti password', forced ? 'Sebelum melanjutkan, ganti password sementara dengan password milik Anda.' : 'Gunakan password yang unik dan minimal 12 karakter.')}
+  return `${pageHeading(forced ? 'Buat kata sandi baru' : 'Ganti kata sandi', forced ? 'Sebelum melanjutkan, ganti kata sandi sementara dengan kata sandi milik Anda.' : 'Gunakan kata sandi yang unik dan minimal 12 karakter.')}
     <form id="passwordForm" class="form-card surface"><div class="form-grid">
       <div class="field field-full"><label for="currentPassword">Password saat ini</label><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></div>
-      <div class="field field-full"><label for="newPassword">Password baru</label><input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Panjang 12–128 karakter. Password tidak dikirim lewat email.</span></div>
+      <div class="field field-full"><label for="newPassword">Kata sandi baru</label><input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Panjang 12–128 karakter. Kata sandi tidak dikirim lewat email.</span></div>
       <div class="field field-full"><label for="confirmPassword">Ulangi password baru</label><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></div>
       <p class="field-error" id="passwordError" role="alert" hidden></p>
-    </div><div class="form-actions"><button class="primary-button" type="submit">Simpan password</button>${forced ? '' : '<button class="secondary-button" type="button" data-page="overview">Batal</button>'}</div></form>`;
+    </div><div class="form-actions"><button class="primary-button" type="submit">Simpan kata sandi</button>${forced ? '' : '<button class="secondary-button" type="button" data-page="overview">Batal</button>'}</div></form>`;
 }
 
 function renderApp() {
@@ -1328,7 +1328,7 @@ async function decodeProfilePhoto(file, mime = profilePhotoMime(file)) {
       // WebP must not fall through to Image.decode: some engines accept a
       // header-only WebP there. JPEG/PNG can still be valid when bitmap
       // decoding is unavailable for the selected gallery file.
-      if (mime === 'image/webp') throw new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+      if (mime === 'image/webp') throw new Error('Foto tidak dapat dibaca. Pilih berkas gambar yang valid.');
     }
   }
   // Some mobile browsers expose Image.decode but not createImageBitmap.
@@ -1347,7 +1347,7 @@ async function decodeProfilePhoto(file, mime = profilePhotoMime(file)) {
   }
   image.src = source;
   try { await image.decode(); } catch {
-    throw unsupportedNativePhotoError(mime) || new Error('Foto tidak dapat dibaca. Pilih file gambar yang valid.');
+    throw unsupportedNativePhotoError(mime) || new Error('Foto tidak dapat dibaca. Pilih berkas gambar yang valid.');
   }
   return image;
 }
@@ -1569,7 +1569,7 @@ async function performUserPasswordReset(event) {
   const form = $('#userPasswordForm');
   if (!form.reportValidity()) return;
   const button = $('#userPasswordSubmit');
-  setButtonBusy(button, true, 'Menyimpan password…');
+  setButtonBusy(button, true, 'Menyimpan kata sandi…');
   const targetId = resetTargetId;
   const target = state.users.find(user => user.id === targetId);
   const targetEmail = target?.email;
@@ -1584,7 +1584,7 @@ async function performUserPasswordReset(event) {
     closeDialogs();
     form.reset();
     resetTargetId = '';
-    await renderAfterMutation('Password tersimpan. Sampaikan secara terpisah kepada pengguna.', 'Password tersimpan. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
+    await renderAfterMutation('Kata sandi tersimpan. Sampaikan secara terpisah kepada pengguna.', 'Kata sandi tersimpan. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1600,14 +1600,14 @@ async function performPasswordChange(event) {
   const currentPassword = $('#currentPassword').value;
   const newPassword = $('#newPassword').value;
   if (newPassword !== $('#confirmPassword').value) {
-    errorBox.textContent = 'Password baru tidak sama. Periksa kembali kedua kolom.';
+    errorBox.textContent = 'Kata sandi baru tidak sama. Periksa kembali kedua kolom.';
     errorBox.hidden = false;
     $('#confirmPassword').focus();
     return;
   }
   errorBox.hidden = true;
   const button = form.querySelector('[type="submit"]');
-  setButtonBusy(button, true, 'Menyimpan password…');
+  setButtonBusy(button, true, 'Menyimpan kata sandi…');
   try {
     if (!state.user?.email) throw new Error('Sesi pengguna tidak tersedia. Masuk kembali lalu coba lagi.');
     const parameters = await api('/auth/password-parameters', {
@@ -1625,7 +1625,7 @@ async function performPasswordChange(event) {
     await refreshOverview();
     if (typeof navigateToPage === 'function') navigateToPage('overview', { replace: true });
     else { currentPage = 'overview'; renderApp(); }
-    showToast('Password diperbarui.');
+    showToast('Kata sandi diperbarui.');
   } catch (error) {
     errorBox.textContent = friendlyError(error);
     errorBox.hidden = false;
@@ -1648,7 +1648,7 @@ async function performNewUser(event) {
       position: String(data.get('position') || '').trim()
     } });
     clearDraft(accountDraftKey());
-    await renderAfterMutation('Akun User dibuat. Atur password sementara sebelum akses diberikan.', 'Akun User dibuat. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
+    await renderAfterMutation('Akun User dibuat. Atur kata sandi sementara sebelum akses diberikan.', 'Akun User dibuat. Daftar pengguna belum diperbarui; muat ulang saat koneksi tersedia.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {
@@ -1978,13 +1978,13 @@ async function handleAction(button) {
     const item = state.submissions.find(entry => entry.id === id);
     if (!item || item.createdBy === state.user.id) return;
     if (item.type === 'petty_cash' && item.amountIdr > state.cashBalanceIdr) {
-      showToast('Saldo petty cash tidak mencukupi.');
+      showToast('Saldo Petty Cash tidak mencukupi.');
       return;
     }
     const description = item.type === 'petty_cash'
-      ? `${money(item.amountIdr)} akan dipotong dari saldo petty cash setelah persetujuan. Keputusan akan tercatat di ledger.`
+      ? `${money(item.amountIdr)} akan dipotong dari saldo Petty Cash setelah persetujuan. Keputusan akan tercatat di ledger.`
       : `${money(item.amountIdr)} akan disetujui dan masuk ke daftar Finance. Keputusan akan tercatat.`;
-    setConfirm('approve', 'Setujui pengajuan?', `${item.description}. ${description}`, item.type === 'petty_cash' ? 'Setujui & kurangi saldo' : 'Setujui request', false, { id, successMessage: item.type === 'petty_cash' ? 'Pengajuan disetujui dan debit tercatat di ledger.' : 'Request disetujui dan masuk ke Finance.' });
+    setConfirm('approve', 'Setujui pengajuan?', `${item.description}. ${description}`, item.type === 'petty_cash' ? 'Setujui & kurangi saldo' : 'Setujui pengajuan', false, { id, successMessage: item.type === 'petty_cash' ? 'Pengajuan disetujui dan debit tercatat di ledger.' : 'Pengajuan disetujui dan masuk ke Finance.' });
   } else if (action === 'reject') {
     const item = state.submissions.find(entry => entry.id === id);
     if (!item || item.createdBy === state.user.id) return;
@@ -2009,7 +2009,7 @@ async function handleAction(button) {
     $('#userForm')?.reset();
   } else if (action === 'reset-user-password') {
     resetTargetId = id;
-    $('#userPasswordDescription').textContent = `Atur password sementara untuk ${button.dataset.name || 'akun User'}. Password tidak dikirim melalui email; pengguna wajib menggantinya saat masuk.`;
+    $('#userPasswordDescription').textContent = `Atur kata sandi sementara untuk ${button.dataset.name || 'akun User'}. Kata sandi tidak dikirim melalui email; pengguna wajib menggantinya saat masuk.`;
     $('#userPasswordForm').reset();
     openDialog('userPasswordDialog');
     $('#temporaryPassword').focus();
@@ -2334,7 +2334,7 @@ async function performCashTopup(event) {
     renderApp();
     showToast(!refreshed
       ? 'Penambahan saldo sudah tercatat. Ringkasan belum diperbarui; jangan kirim ulang.'
-      : result.alreadyApplied ? 'Penambahan saldo ini sudah pernah dicatat.' : 'Saldo petty cash bertambah dan riwayat tersimpan.');
+      : result.alreadyApplied ? 'Penambahan saldo ini sudah pernah dicatat.' : 'Saldo Petty Cash bertambah dan riwayat tersimpan.');
   } catch (error) {
     showToast(friendlyError(error));
   } finally {

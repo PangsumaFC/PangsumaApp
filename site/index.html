@@ -4,26 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f4f6">
-  <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, petty cash, dan Finance.">
-  <meta name="app-build" content="2026.10.19.3">
+  <meta name="description" content="Aplikasi operasional Pangsuma untuk laporan, Petty Cash, dan Finance.">
+  <meta name="app-build" content="2026.10.19.4">
   <title>Pangsuma App | Operasional klub</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2026.10.19.3">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2026.10.19.3">
-  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.19.3">
-  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.19.3">
-  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.19.3">
-  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.19.3">
-  <script src="/password-crypto.js?v=2026.10.19.3" defer></script>
-  <script src="/report-filters.js?v=2026.10.19.3" defer></script>
-  <script src="/financial-controls.js?v=2026.10.19.3" defer></script>
-  <script src="/report-evidence.js?v=2026.10.19.3" defer></script>
-  <script src="/bounded-history.js?v=2026.10.19.3" defer></script>
-  <script src="/mobile-viewport.js?v=2026.10.19.3" defer></script>
-  <link rel="stylesheet" href="/pwa-files.css?v=2026.10.19.3">
-  <script src="/pwa-files.js?v=2026.10.19.3" defer></script>
-  <script src="/pwa-install.js?v=2026.10.19.3" defer></script>
-  <script src="/app.js?v=2026.10.19.3" defer></script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2026.10.19.4">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2026.10.19.4">
+  <link rel="stylesheet" href="/pangsuma-theme.css?v=2026.10.19.4">
+  <link rel="stylesheet" href="/financial-controls.css?v=2026.10.19.4">
+  <link rel="stylesheet" href="/report-evidence.css?v=2026.10.19.4">
+  <link rel="stylesheet" href="/mobile-polish.css?v=2026.10.19.4">
+  <script src="/password-crypto.js?v=2026.10.19.4" defer></script>
+  <script src="/report-filters.js?v=2026.10.19.4" defer></script>
+  <script src="/financial-controls.js?v=2026.10.19.4" defer></script>
+  <script src="/report-evidence.js?v=2026.10.19.4" defer></script>
+  <script src="/bounded-history.js?v=2026.10.19.4" defer></script>
+  <script src="/mobile-viewport.js?v=2026.10.19.4" defer></script>
+  <link rel="stylesheet" href="/pwa-files.css?v=2026.10.19.4">
+  <script src="/pwa-files.js?v=2026.10.19.4" defer></script>
+  <script src="/pwa-install.js?v=2026.10.19.4" defer></script>
+  <script src="/app.js?v=2026.10.19.4" defer></script>
 </head>
 <body class="logged-out" aria-busy="true">
   <div class="pangsuma-preloader" id="pangsuma-preloader" role="status" aria-live="polite" aria-label="Memuat Pangsuma App">
@@ -53,26 +53,26 @@
         <div class="login-form-content">
           <p class="login-kicker">PANGSUMA FOOTBALL CLUB</p>
           <h1 id="loginTitle">Masuk</h1>
-          <p class="login-description">Gunakan ID masuk dan password akun Anda.</p>
+          <p class="login-description">Gunakan ID masuk dan kata sandi akun Anda.</p>
           <form class="login-form" id="loginForm" novalidate>
             <div class="login-field">
               <label for="loginIdentifier">ID masuk</label>
               <input id="loginIdentifier" name="email" type="text" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" maxlength="180" placeholder="nama@pangsumafc.com" required>
             </div>
             <div class="login-field">
-              <label for="loginPassword">Password</label>
+              <label for="loginPassword">Kata sandi</label>
               <input id="loginPassword" name="password" type="password" autocomplete="current-password" maxlength="128" required>
             </div>
             <p class="login-error" id="loginError" role="alert" hidden></p>
             <button class="primary-button login-submit" id="loginSubmit" type="submit">Masuk</button>
           </form>
-          <div class="app-version-controls"><span class="field-help">Versi 2026.10.19.3</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
+          <div class="app-version-controls"><span class="field-help">Versi 2026.10.19.4</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
             <section class="pwa-install-help" data-pwa-install-help aria-label="Pemasangan aplikasi">
               <button class="secondary-button" id="loginInstallButton" data-pwa-install type="button" hidden>Pasang Pangsuma</button>
               <p class="field-help" data-pwa-install-status role="status">Jika ikon membuka tab dengan toolbar Chrome, itu belum berjalan dalam mode aplikasi. Gunakan pilihan Instal aplikasi jika tersedia di menu browser; Tambahkan pintasan saja tidak menjamin mode aplikasi.</p>
             </section>
           <section class="passkey-controls" id="passkeyControls" aria-label="Akses passkey" hidden>
-            <p class="passkey-divider">Atau masuk tanpa password</p>
+            <p class="passkey-divider">Atau masuk tanpa kata sandi</p>
             <button class="secondary-button passkey-login-button" id="passkeyLoginButton" type="button">Masuk dengan passkey</button>
             <p class="field-help" id="passkeyAvailabilityMessage" role="status"></p>
             <p class="field-help" id="passkeyEnrollmentStatus" role="status" hidden></p>
@@ -92,7 +92,7 @@
 
   <header class="topbar">
     <div class="brand">
-      <img src="/pangsuma-icon-192.png?v=2026.10.19.3" alt="" width="192" height="192">
+      <img src="/pangsuma-icon-192.png?v=2026.10.19.4" alt="" width="192" height="192">
       <div class="brand-name">Pangsuma App</div>
     </div>
     <div class="top-actions">
@@ -103,9 +103,9 @@
       <button class="quiet-button account-icon-button account-users-button" type="button" data-page="users" aria-label="Pengguna" title="Pengguna" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3 2.3-4.5 5.5-4.5s5 1.5 5.5 4.5M17 8h4m-2-2v4m-2 6c2.1.2 3.4 1.2 4 3" stroke-linecap="round"/></svg>
       </button>
-      <button class="quiet-button account-password-button account-icon-button" type="button" data-page="change-password" aria-label="Ganti password" title="Ganti password">
+      <button class="quiet-button account-password-button account-icon-button" type="button" data-page="change-password" aria-label="Ganti kata sandi" title="Ganti kata sandi">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke-linecap="round"/></svg>
-        <span class="account-password-label">Password</span>
+        <span class="account-password-label">Kata sandi</span>
       </button>
       <button class="quiet-button logout-button" id="logoutButton" type="button">Keluar</button>
       <button class="install-button" id="installButton" data-pwa-install hidden type="button" aria-label="Pasang Pangsuma App">
@@ -131,7 +131,7 @@
     <main id="mainContent" tabindex="-1">
       <div class="main-inner">
         <div id="appContent" aria-live="off"></div>
-        <div class="app-version-controls"><span class="field-help">Versi 2026.10.19.3</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
+        <div class="app-version-controls"><span class="field-help">Versi 2026.10.19.4</span><button class="text-button" type="button" data-action="check-app-update">Cek pembaruan</button></div>
       </div>
     </main>
   </div>
@@ -176,11 +176,11 @@
 
   <dialog class="app-dialog" id="userPasswordDialog" aria-labelledby="userPasswordTitle">
     <form class="dialog-panel" id="userPasswordForm">
-      <div class="dialog-heading"><div><p class="choice-kicker">Akses pengguna</p><h2 id="userPasswordTitle">Atur password sementara</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <div class="dialog-heading"><div><p class="choice-kicker">Akses pengguna</p><h2 id="userPasswordTitle">Atur kata sandi sementara</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
       <p class="dialog-description" id="userPasswordDescription"></p>
-      <div class="field"><label for="temporaryPassword">Password sementara</label><input id="temporaryPassword" name="temporaryPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Minimal 12 karakter. Pengguna wajib menggantinya saat masuk pertama kali.</span></div>
-      <div class="form-note">Aplikasi tidak mengirim email atau pesan. Sampaikan password sementara secara terpisah melalui saluran yang disetujui.</div>
-      <div class="form-actions dialog-actions"><button class="primary-button" id="userPasswordSubmit" type="submit">Simpan password</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
+      <div class="field"><label for="temporaryPassword">Kata sandi sementara</label><input id="temporaryPassword" name="temporaryPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Minimal 12 karakter. Pengguna wajib menggantinya saat masuk pertama kali.</span></div>
+      <div class="form-note">Aplikasi tidak mengirim email atau pesan. Sampaikan kata sandi sementara secara terpisah melalui saluran yang disetujui.</div>
+      <div class="form-actions dialog-actions"><button class="primary-button" id="userPasswordSubmit" type="submit">Simpan kata sandi</button><button class="secondary-button" type="button" data-action="close-dialog">Batal</button></div>
     </form>
   </dialog>
   <dialog class="app-dialog" id="openingBalanceDialog" aria-labelledby="openingBalanceTitle" aria-describedby="openingBalanceDescription">
@@ -195,7 +195,7 @@
   </dialog>
   <dialog class="app-dialog" id="cashTopupDialog" aria-labelledby="cashTopupTitle" aria-describedby="cashTopupDescription">
     <form class="dialog-panel" id="cashTopupForm">
-      <div class="dialog-heading"><div><p class="choice-kicker">Keuangan operasional</p><h2 id="cashTopupTitle">Tambah / isi ulang petty cash</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
+      <div class="dialog-heading"><div><p class="choice-kicker">Keuangan operasional</p><h2 id="cashTopupTitle">Tambah/isi ulang Petty Cash</h2></div><button class="choice-close" type="button" data-action="close-dialog" aria-label="Tutup dialog">×</button></div>
       <p class="dialog-description" id="cashTopupDescription">Tambahan ini langsung menambah saldo kas nyata dan dicatat bersama waktu serta nama pencatat.</p>
       <div class="field"><label for="cashTopupAmount">Nominal (rupiah)</label><input id="cashTopupAmount" name="amountIdr" type="number" inputmode="numeric" min="1" step="1" required placeholder="Masukkan nominal"></div>
       <div class="field"><label for="cashTopupNote">Sumber / keterangan dana</label><textarea id="cashTopupNote" name="note" minlength="3" maxlength="500" required rows="3" placeholder="Contoh: Transfer pemilik untuk operasional Oktober"></textarea><span class="field-help">Wajib 3–500 karakter.</span></div>

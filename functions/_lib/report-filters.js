@@ -18,7 +18,7 @@ function valueOf(params, ...keys) {
 }
 const STATUS_ALIASES = new Map([
   ['pending', 'pending'], ['approved', 'approved'], ['rejected', 'rejected'], ['sent', 'sent'],
-  ['menunggu manager', 'pending'],
+  ['menunggu Manager', 'pending'],
   ['menunggu', 'pending'], ['disetujui', 'approved'], ['ditolak', 'rejected'],
   ['terkirim', 'sent'], ['terkirim ke finance', 'sent']
 ]);

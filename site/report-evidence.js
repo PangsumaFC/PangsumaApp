@@ -55,7 +55,7 @@
   async function normalizeImage(file) {
     if (!file || file.size > MAX_INPUT) throw new Error('Foto terlalu besar. Pilih foto hingga 10 MB.');
     const declared = String(file.type || '').toLowerCase(); if (declared === 'image/svg+xml' || declared === 'image/svg') throw new Error('Format SVG tidak didukung. Pilih foto JPG atau PNG.');
-    const type = ACCEPTED.has(declared) ? declared : await sniffImageType(file); if (!ACCEPTED.has(type)) throw new Error('Pilih file JPG atau PNG.');
+    const type = ACCEPTED.has(declared) ? declared : await sniffImageType(file); if (!ACCEPTED.has(type)) throw new Error('Pilih berkas JPG atau PNG.');
     const decodeFile = file.type === type ? file : file.slice(0, file.size, type);
     const image = await imageDecoder(decodeFile); const sourceWidth = Number(image.width || image.naturalWidth), sourceHeight = Number(image.height || image.naturalHeight);
     if (!sourceWidth || !sourceHeight || sourceWidth * sourceHeight > MAX_PIXELS) { image.close?.(); throw new Error('Resolusi foto terlalu besar. Pilih foto hingga 16 megapiksel.'); }

@@ -180,7 +180,7 @@
           objectUrl = root.URL.createObjectURL(blob);
           download.href = objectUrl;
           download.removeAttribute('aria-disabled');
-          setStatus('PDF siap. Pilih Simpan PDF untuk mengunduh file.', false);
+          setStatus('PDF siap. Pilih Simpan PDF untuk mengunduh berkas.', false);
         })
         .catch(function (error) { if (!closed && !(error && error.name === 'AbortError')) showError(error); });
     }

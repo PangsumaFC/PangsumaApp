@@ -23,7 +23,7 @@ export function jsonResponse(payload, status = 200, extraHeaders = {}) {
 
 export function ensureMethod(request, method) {
   if (request.method !== method) {
-    throw new ApiError(405, 'method_not_allowed', 'Metode request tidak didukung.');
+    throw new ApiError(405, 'method_not_allowed', 'Metode permintaan tidak didukung.');
   }
 }
 
@@ -33,10 +33,10 @@ export function ensureSameOrigin(request) {
   try {
     requestOrigin = new URL(request.url).origin;
   } catch {
-    throw new ApiError(400, 'invalid_request', 'Request tidak valid.');
+    throw new ApiError(400, 'invalid_request', 'Permintaan tidak valid.');
   }
   if (!origin || origin !== requestOrigin) {
-    throw new ApiError(403, 'origin_not_allowed', 'Asal request tidak diizinkan.');
+    throw new ApiError(403, 'origin_not_allowed', 'Asal permintaan tidak diizinkan.');
   }
 }
 
@@ -57,10 +57,10 @@ export async function readJson(request, maxBytes = 12_000) {
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    throw new ApiError(400, 'invalid_json', 'Isi request tidak dapat dibaca.');
+    throw new ApiError(400, 'invalid_json', 'Isi permintaan tidak dapat dibaca.');
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new ApiError(400, 'invalid_json', 'Isi request tidak dapat dibaca.');
+    throw new ApiError(400, 'invalid_json', 'Isi permintaan tidak dapat dibaca.');
   }
   return parsed;
 }

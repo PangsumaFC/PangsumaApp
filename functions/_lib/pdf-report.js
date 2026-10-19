@@ -220,7 +220,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
       const attachmentUrls = Array.isArray(row.attachment_urls) ? row.attachment_urls : (row.attachment_url ? [row.attachment_url] : []);
       const cells = columns.map(column => ['in', 'out', 'balance'].includes(column.key)
         ? [mark(row[column.key])]
-        : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map((_, i) => `Bukti ${i + 1}`) : ['-'])
+        : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map(() => 'Lampiran') : ['-'])
           : wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
       const lineCount = Math.max(...cells.map(cell => cell.length));
       let offset = 0;
@@ -249,6 +249,10 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
                   Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
                   Rect: [x + pad, lineY - 4, x + pad + labelWidth, lineY + fontSize + 2],
                   Border: [0, 0, 0],
+                  // Contents is the non-printing accessible name/tooltip for the
+                  // link. It keeps row/file provenance unique without adding
+                  // clutter to the visible PDF table.
+                  Contents: PDFString.of(`Lampiran baris ${row.no ?? rowIndex + 1}, berkas ${linkIndex + 1}`),
                   A: pdf.context.obj({ Type: PDFName.of('Action'), S: PDFName.of('URI'), URI: PDFString.of(url) }),
                 }));
                 const annotations = page.node.get(PDFName.of('Annots'));
@@ -290,7 +294,7 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     const blockX = MARGIN + 300;
     const blockW = CONTENT_W - 300;
     const centerX = blockX + blockW / 2;
-    page.drawText('Yg mengajukan,', { x: centerX - regular.widthOfTextAtSize('Yg mengajukan,', 8) / 2, y: blockTop - 12, size: 8, font: regular, color: MUTED });
+    page.drawText('Yang mengajukan,', { x: centerX - regular.widthOfTextAtSize('Yang mengajukan,', 8) / 2, y: blockTop - 12, size: 8, font: regular, color: MUTED });
     const sigW = 150; const sigH = sigW * 396 / 1200;
     const sigX = centerX - sigW / 2; const imageY = blockBottom + 60;
     page.drawImage(signatureImage, { x: sigX, y: imageY, width: sigW, height: sigH });
