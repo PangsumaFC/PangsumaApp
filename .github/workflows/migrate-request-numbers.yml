@@ -1,0 +1,37 @@
+name: Apply approved request-number migrations 0010 and 0011
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: 'Owner-approved write pause installed: enter MIGRATE-0010-0011'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  migrate:
+    if: inputs.approval == 'MIGRATE-0010-0011'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply only approved pending migrations with recovery and preservation checks
+        run: python3 -B scripts/migrate-request-numbers-0010-0011.py
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 37701bf94ab65e121e453b11a23077e9
+          REQUEST_NUMBER_MIGRATION_APPROVAL: ${{ inputs.approval }}
+          CI: 'true'
+      - name: Keep non-sensitive recovery and verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: request-number-production-migration
+          path: request-number-production-migration.json
+          if-no-files-found: ignore
+          retention-days: 30
