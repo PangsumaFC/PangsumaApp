@@ -22,6 +22,8 @@ test('site copy tidak memuat ejaan/status bahasa yang dilarang', () => {
     'Foto tidak dapat dibaca. Pilih file gambar yang valid.',
     'PDF siap. Pilih Simpan PDF untuk mengunduh file.',
     'Password diperbarui.',
+    '>Password saat ini</label>',
+    '>Ulangi password baru</label>',
     'Password belum diatur',
     'Wajib ganti password',
   ];
@@ -36,6 +38,8 @@ test('site copy snapshot istilah utama tetap EYD dan nama produk dipertahankan',
   assert.match(app, /Saldo terekonsiliasi/);
   assert.match(app, /Setujui pengajuan/);
   assert.match(app, /Kata sandi diperbarui/);
+  assert.match(app, />Kata sandi saat ini<\/label>/);
+  assert.match(app, />Ulangi kata sandi baru<\/label>/);
   assert.match(app, /Request Finance/);
   assert.match(index, /Gunakan ID masuk dan kata sandi akun Anda\./);
   assert.match(index, />Kata sandi<\/label>/);

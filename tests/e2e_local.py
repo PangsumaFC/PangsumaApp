@@ -132,7 +132,7 @@ def logout(page):
 
 
 def change_password(page, current: str, new: str):
-    page.get_by_role("heading", name="Buat password baru").wait_for(timeout=10_000)
+    page.get_by_role("heading", name="Buat kata sandi baru").wait_for(timeout=10_000)
     assert api(page, "/api/overview")["status"] == 403
     page.locator("#currentPassword").fill(current)
     page.locator("#newPassword").fill(new)
@@ -357,7 +357,7 @@ def main():
         manager_password = secrets["LOCAL_MANAGER_PASSWORD"]
         manager_new_password = manager_password + "-rotated"
         login(page, MANAGER_EMAIL, manager_password)
-        if page.get_by_role("heading", name="Buat password baru").count():
+        if page.get_by_role("heading", name="Buat kata sandi baru").count():
             change_password(page, manager_password, manager_new_password)
             manager_password = manager_new_password
         page.get_by_role("heading", name=re.compile("Selamat (pagi|siang|sore|malam), Rahmat")).wait_for()

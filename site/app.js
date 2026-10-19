@@ -1207,9 +1207,9 @@ function changePasswordPage() {
   const forced = state.user.mustChangePassword;
   return `${pageHeading(forced ? 'Buat kata sandi baru' : 'Ganti kata sandi', forced ? 'Sebelum melanjutkan, ganti kata sandi sementara dengan kata sandi milik Anda.' : 'Gunakan kata sandi yang unik dan minimal 12 karakter.')}
     <form id="passwordForm" class="form-card surface"><div class="form-grid">
-      <div class="field field-full"><label for="currentPassword">Password saat ini</label><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></div>
+      <div class="field field-full"><label for="currentPassword">Kata sandi saat ini</label><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></div>
       <div class="field field-full"><label for="newPassword">Kata sandi baru</label><input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><span class="field-help">Panjang 12–128 karakter. Kata sandi tidak dikirim lewat email.</span></div>
-      <div class="field field-full"><label for="confirmPassword">Ulangi password baru</label><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></div>
+      <div class="field field-full"><label for="confirmPassword">Ulangi kata sandi baru</label><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></div>
       <p class="field-error" id="passwordError" role="alert" hidden></p>
     </div><div class="form-actions"><button class="primary-button" type="submit">Simpan kata sandi</button>${forced ? '' : '<button class="secondary-button" type="button" data-page="overview">Batal</button>'}</div></form>`;
 }
