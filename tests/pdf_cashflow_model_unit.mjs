@@ -10,7 +10,9 @@ test('one chronological projection includes approved users, sent Finance, and ma
   assert.equal(result.totalSubmitted, 6000n);
   assert.equal(result.rows.filter(row => row.is_cash).length, 0);
   assert.ok(result.rows.every(row => row.amount_idr === 0 && row.balance_after_idr === null));
-  assert.match(result.rows.find(row => row.report_key === 'submission-sent').report_description, /Finance Terkirim Rp2\.000/);
+  const sent = result.rows.find(row => row.report_key === 'submission-sent');
+  assert.equal(sent.report_description, 'Request sent');
+  assert.equal(sent.submission_amount_idr, 2000);
 });
 test('linked petty cash appears once, while cash credit and non-cash Finance remain independent', () => {
   const submissions = [make('petty', { type: 'petty_cash', amount_idr: 2500 }), make('finance', { amount_idr: 5000 })];

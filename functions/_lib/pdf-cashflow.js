@@ -82,7 +82,9 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
     rows.push({ known_demo: display.knownDemo, report_key: `submission-${submission.id}`,
       report_at: submission.date ? `${submission.date}T00:00:00+07:00` : submission.created_at,
       report_description: [display.description, display.note,
-        `${finance ? 'Finance' : 'Pengajuan'} ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`].filter(Boolean).join(' | '),
+        // Finance status and nominal are structured fields, not request prose.
+        // Never scrub source text: user-entered numbers/notes remain verbatim.
+        finance ? '' : `Pengajuan ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`].filter(Boolean).join(' | '),
       is_cash: false, direction: '', amount_idr: 0, submission_amount_idr: submission.amount_idr ?? submission.amount ?? 0, balance_after_idr: null,
       dropbox_receipt_urls: receiptUrls(submission), report_attachment_urls: receiptUrls(submission),
       dropbox_receipt_url: receiptUrls(submission)[0] || null,
