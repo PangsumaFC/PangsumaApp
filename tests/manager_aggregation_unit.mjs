@@ -54,7 +54,7 @@ test('Finance fallback renders each report once and only approved finance reques
   for (const item of context.state.submissions) assert.equal(html.split(`<card>${item.id}</card>`).length - 1, 1);
   const sendIds = [...html.matchAll(/data-action="send-finance" data-id="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(sendIds, ['manager-finance', 'user-finance-approved']);
-  assert.match(html, /data-panel="cash-insights"/);
+  assert.match(html, /class="finance-insights-block"/);
 });
 
 test('filtered workspace is the only Finance list, without duplicate totals or cards', () => {

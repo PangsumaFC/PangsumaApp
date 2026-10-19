@@ -209,7 +209,7 @@ def main():
         # User cannot reset manager or access manager-only routes; no submissions/cash changed.
         login(target["email"], newer)
         assert api(f"/api/users/{users[-1]['id']}/password", "POST", {"credential": credential(newer)})["status"] in (401, 403)
-        assert api("/api/export.csv")["status"] in (401, 403)
+        assert api("/api/export.csv")["status"] == 404
         assert api("/api/overview")["data"].get("cashBalanceIdr", 0) == 0
         assert api("/api/submissions")["data"].get("total", 0) == 0
         logout()

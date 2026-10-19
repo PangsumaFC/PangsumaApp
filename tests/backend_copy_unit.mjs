@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { CSV_HEADERS } from '../functions/_lib/csv-export.js';
 
 const API_FILE = new URL('../functions/api/[[path]].js', import.meta.url);
 const PAGINATION_FILE = new URL('../functions/_lib/report-pagination.js', import.meta.url);
@@ -34,13 +33,4 @@ test('backend copy snapshot menggunakan nama produk dan peran yang konsisten', a
     'Hanya Manager yang dapat melihat laporan.', 'Aksi ini hanya tersedia untuk Manager.'
   ]) assert.ok(source.includes(message), `pesan backend hilang: ${message}`);
   assert.doesNotMatch(source, /Saldo petty cash|password tidak sesuai|Password saat ini|Metode request|Request tidak valid|Isi request|Asal request/);
-});
-
-test('label CSV laporan tetap dalam bahasa Indonesia dan urutannya stabil', () => {
-  assert.deepEqual(CSV_HEADERS, [
-    'Kategori', 'ID', 'Waktu', 'Tanggal laporan', 'Jenis', 'Status', 'Nominal IDR',
-    'Pengaju', 'Jabatan', 'Keperluan', 'Catatan', 'Alasan keputusan', 'Aktor',
-    'Arah ledger', 'Saldo setelah IDR', 'Aksi audit', 'Tipe entitas', 'ID entitas',
-    'Rincian audit'
-  ]);
 });

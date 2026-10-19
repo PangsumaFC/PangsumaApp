@@ -6,13 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { PDFDocument } from 'pdf-lib';
-import { CSV_HEADERS, csvCell, csvHeader, csvLine } from '../functions/_lib/csv-export.js';
 import { buildFinancialReport, amount, statusLabel, wrap } from '../functions/_lib/pdf-report.js';
 
 const exec = promisify(execFile);
 const evidenceDir = process.env.PANGSUMA_DEEP_EXPORT_EVIDENCE || fileURLToPath(new URL('../.evidence/deep-export/', import.meta.url));
 const manifest = [];
-const counts = { csv: { pass: 0, fail: 0, blocked: 0 }, pdf: { pass: 0, fail: 0, blocked: 0 }, policy: { pass: 0, fail: 0, blocked: 0 } };
+const counts = { pdf: { pass: 0, fail: 0, blocked: 0 }, policy: { pass: 0, fail: 0, blocked: 0 } };
 function scenario(domain, name, fn) {
   test(`${domain}: ${name}`, async () => {
     try { await fn(); manifest.push({ domain, name, status: 'pass' }); counts[domain].pass++; }
@@ -22,25 +21,6 @@ function scenario(domain, name, fn) {
 function row(i, extra = {}) { return { id: `s-${i}`, type: 'petty_cash', status: 'approved', date: `2026-10-${String((i % 9) + 1).padStart(2, '0')}`, created_at: `2026-10-${String((i % 9) + 1).padStart(2, '0')}T03:00:00Z`, amount_idr: i * 125000, description: `Keterangan ${i}`, request_number: `PC112026${String(i).padStart(6, '0')}`, created_by_name: 'Staff Sintetis', ...extra }; }
 async function pdfText(bytes, name) { await mkdir(evidenceDir, { recursive: true }); const path = join(evidenceDir, name); await writeFile(path, bytes); const { stdout } = await exec('pdftotext', ['-layout', path, '-']); return { text: stdout, path }; }
 async function pdfScenario(name, opts, checks) { const bytes = await buildFinancialReport({ snapshotAt: '2026-10-19T03:00:00Z', managerName: 'Manager Synthetic', ...opts }); assert.ok(bytes.byteLength > 500, 'PDF should contain bytes'); const loaded = await PDFDocument.load(bytes); assert.ok(loaded.getPageCount() >= 1); const out = await pdfText(bytes, `${name}.pdf`); checks(out.text, loaded.getPageCount()); }
-
-// CSV matrix (16 distinct serialization/schema/download-shape scenarios).
-scenario('csv', 'header has one BOM and 19 stable columns', () => { const h = csvHeader(); assert.equal(h[0], '\ufeff'); assert.equal(h.slice(1), csvLine(CSV_HEADERS)); assert.equal(CSV_HEADERS.length, 19); });
-scenario('csv', 'ordinary Unicode and Indonesian text round-trip quoting', () => assert.equal(csvCell('Keterangan: makan siang — pemain'), '"Keterangan: makan siang — pemain"'));
-scenario('csv', 'comma delimiter is quoted', () => assert.equal(csvCell('A, B, C'), '"A, B, C"'));
-scenario('csv', 'double quotes are doubled', () => assert.equal(csvCell('Dia berkata "ya"'), '"Dia berkata ""ya"""'));
-scenario('csv', 'LF is preserved in one quoted cell', () => assert.equal(csvCell('baris satu\nbaris dua'), '"baris satu\nbaris dua"'));
-scenario('csv', 'CRLF record termination', () => assert.match(csvLine(['a', 'b']), /a","b"\r\n$/));
-scenario('csv', 'null and undefined become empty cells', () => { assert.equal(csvCell(null), '""'); assert.equal(csvCell(undefined), '""'); });
-scenario('csv', 'zero and negative amounts remain numeric strings', () => { assert.equal(csvCell(0), '"0"'); assert.equal(csvCell(-125000), '"-125000"'); });
-scenario('csv', 'formula equals is neutralized', () => assert.equal(csvCell('=SUM(A1:A2)'), '"\'=SUM(A1:A2)"'));
-scenario('csv', 'formula plus is neutralized with leading spaces', () => assert.equal(csvCell('  +cmd'), '"\'  +cmd"'));
-scenario('csv', 'formula at-sign is neutralized', () => assert.equal(csvCell('@audit'), '"\'@audit"'));
-scenario('csv', 'formula minus is neutralized', () => assert.equal(csvCell('-2+3'), '"\'-2+3"'));
-scenario('csv', 'boolean and object values stringify deterministically', () => { assert.equal(csvCell(true), '"true"'); assert.equal(csvCell({ id: 1 }), '"[object Object]"'); });
-scenario('csv', 'empty row still emits column count and CRLF', () => { const line = csvLine(Array(CSV_HEADERS.length).fill('')); assert.equal(line.split(',').length, 19); assert.ok(line.endsWith('\r\n')); });
-scenario('csv', 'large ID and decimal-like string are not rounded', () => assert.equal(csvCell('9007199254740993'), '"9007199254740993"'));
-scenario('csv', 'mixed delimiters preserve field ordering', () => assert.equal(csvLine(['id-1', 'approved', '1,250', 'note\nnext']), '"id-1","approved","1,250","note\nnext"\r\n'));
-scenario('csv', 'very long Keterangan remains a single quoted cell', () => { const value = 'x'.repeat(10000); const encoded = csvCell(value); assert.equal(encoded.length, 10002); assert.equal(encoded[0] + encoded.at(-1), '""'); });
 
 // PDF matrix (24 distinct combinations including both report types, empty/boundary histories, layout and approval assets).
 scenario('pdf', 'empty petty cash renders explicit empty-history message', async () => pdfScenario('empty-petty-cash', { reportType: 'petty_cash', submissions: [], ledger: [] }, (text, pages) => { assert.match(text, /Tidak ada transaksi pada filter ini/); assert.match(text, /Laporan Petty Cash/); assert.equal(pages, 1); }));
@@ -72,13 +52,9 @@ scenario('pdf', 'wrap helper preserves empty fallback', () => { assert.deepEqual
 // Policy/cache/update/offline matrix: local static contract checks only; no network, login, Dropbox, migration, or writes.
 const apiSource = await readFile(new URL('../functions/api/[[path]].js', import.meta.url), 'utf8');
 const appSource = await readFile(new URL('../site/app.js', import.meta.url), 'utf8');
-scenario('policy', 'CSV route is manager-gated', () => { assert.match(apiSource, /if \(path === '\/export\.csv'\) return exportCsv/); assert.match(apiSource, /manager_required/); });
 scenario('policy', 'PDF route is manager-gated', () => { assert.match(apiSource, /if \(path === '\/export\.pdf'\) return exportPdf/); assert.match(apiSource, /requireManager/); });
-scenario('policy', 'unauthenticated export path has explicit authentication error', () => assert.match(apiSource, /authentication_required/));
+scenario('policy', 'removed CSV path is not exposed', () => assert.doesNotMatch(apiSource, /exportCsv|fullExportCsv|collectCsv|csv-export/));
 scenario('policy', 'export response declares downloadable content disposition', () => assert.match(apiSource, /Content-Disposition/));
-scenario('policy', 'offline/update behavior is not coupled to export helper', () => { assert.doesNotMatch(apiSource.slice(apiSource.indexOf('async function exportCsv'), apiSource.indexOf('async function exportPdf')), /fetch\(/); assert.match(appSource, /async function downloadPdf\(/); });
-scenario('policy', 'CSV content type is explicit', () => assert.match(apiSource, /text\/csv/));
 scenario('policy', 'PDF content type is explicit', () => assert.match(apiSource, /application\/pdf/));
-scenario('policy', 'export code has no Dropbox upload/write call', () => { const exportCode = apiSource.slice(apiSource.indexOf('async function exportCsv'), apiSource.indexOf('async function exportPdf') + 3000); assert.doesNotMatch(exportCode, /upload|dropbox\.com\/2\/files/); });
 
 after(async () => { await mkdir(evidenceDir, { recursive: true }); const report = { generatedAt: new Date().toISOString(), baseline: '494a5bf', localOnly: true, counts, total: manifest.length, scenarios: manifest, notes: ['All scenarios ran against local source/helpers only.', 'Policy checks are static contract checks; no browser, prod login/data, Dropbox, migrations, or external writes were used.'] }; await writeFile(join(evidenceDir, 'scenario-manifest.json'), JSON.stringify(report, null, 2)); });

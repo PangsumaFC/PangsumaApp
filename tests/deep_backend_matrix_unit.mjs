@@ -108,7 +108,7 @@ const scenarios = [
   ['password route wrong method', async f => expectStatus(f.db,'/account/password',f.userAToken,405)],
   ['reports manager only', async f => expectStatus(f.db,'/reports',f.userAToken,403)],
   ['reports manager empty result', async f => { const r=await call(f.db,'/reports',f.managerToken); assert.equal(r.response.status,200); assert.ok(Array.isArray(r.body.items)); }],
-  ['export CSV manager only', async f => expectStatus(f.db,'/export.csv',f.userAToken,403)],
+  ['removed export CSV route is unavailable', async f => expectStatus(f.db,'/export.csv',f.userAToken,404)],
   ['export PDF rejects invalid report type', async f => { const r=await call(f.db,'/export.pdf',f.managerToken,{query:'?laporan=bad'}); assert.equal(r.body.error.code,'invalid_report_type'); }],
   ['method guard submissions GET', async f => expectStatus(f.db,'/submissions',f.userAToken,405,{method:'PUT'})],
   ['concurrent distinct idempotency keys preserve IDs', async f => { const rs=await Promise.all([...Array(8)].map((_,i)=>makeSubmission(f.db,f.userAToken,{description:`Concurrent ${i}`}))); assert.equal(new Set(rs.map(r=>r.body.submission.id)).size,8); assert.equal(f.db.db.prepare('SELECT COUNT(*) n FROM submissions').get().n,8); }],

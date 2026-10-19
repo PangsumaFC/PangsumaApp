@@ -43,6 +43,6 @@ test('Frontend copy keeps product names and capitalization consistent', () => {
   assert.match(copy, /\bPetty Cash\b/);
   assert.match(copy, /\bRequest Finance\b/);
   assert.match(index, />Tambah\/isi ulang Petty Cash<\/h2>/);
-  assert.match(app, />Unduh laporan Request Finance<\/button>/);
+  assert.match(app, />Request Finance PDF<\/button>/);
   assert.match(pdfBrowser, /Petty Cash atau Request Finance/);
 });

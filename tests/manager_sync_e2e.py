@@ -76,8 +76,9 @@ def main():
             assert 'cashBalanceIdr' not in own['data'] and 'cashLedger' not in own['data']
             assert all(item['createdBy'] == target['id'] for item in own['data']['submissions'])
             assert {item['type'] for item in own['data']['submissions']} == {'finance_request', 'petty_cash'}
-        for path in ('/api/history/cash-ledger', '/api/history/audit-events', '/api/export.csv'):
+        for path in ('/api/history/cash-ledger', '/api/history/audit-events'):
             assert api(user, path)['status'] == 403
+        assert api(user, '/api/export.csv')['status'] == 404
         assert manager.evaluate('window.__syncToastCount') == 0
         SCREENSHOTS.mkdir(parents=True, exist_ok=True)
         manager.screenshot(path=str(SCREENSHOTS / 'manager-auto-new-submissions.png'), full_page=True)
