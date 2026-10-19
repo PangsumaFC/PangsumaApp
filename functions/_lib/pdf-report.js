@@ -88,34 +88,35 @@ function statusLabel(value) {
   return ({ pending: 'Menunggu', approved: 'Disetujui', sent: 'Terkirim', rejected: 'Ditolak', cancelled: 'Dibatalkan' }[key] || (key ? safeText(value) : '-'));
 }
 
+// Standard-font drawText emits Tj without kerning adjustments. Measuring the
+// whole string includes kerning pairs, so sum glyph advances to match the PDF.
+function renderedWidth(value, font, size) {
+  return Array.from(value).reduce((sum, char) => sum + font.widthOfTextAtSize(char, size), 0);
+}
 function wrap(text, font, size, maxWidth) {
-  const value = safeText(text);
+  const value = safeText(text).replace(/\r\n?/g, '\n');
   if (!value) return ['-'];
   const lines = [];
-  let line = '';
-  const words = value.split(/\s+/);
-  const splitWord = (word) => {
-    const parts = [];
-    let rest = word;
-    while (rest) {
-      let lo = 1; let hi = rest.length; let best = 1;
-      while (lo <= hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        if (font.widthOfTextAtSize(rest.slice(0, mid), size) <= maxWidth) { best = mid; lo = mid + 1; } else hi = mid - 1;
+  for (const paragraph of value.split('\n')) {
+    let line = '';
+    const words = paragraph.trim().split(/[^\S\n]+/).filter(Boolean);
+    if (!words.length) { lines.push(''); continue; }
+    for (const word of words) {
+      if (line && renderedWidth(`${line} ${word}`, font, size) <= maxWidth) {
+        line += ` ${word}`;
+        continue;
       }
-      parts.push(rest.slice(0, best)); rest = rest.slice(best);
+      if (line) { lines.push(line); line = ''; }
+      // Split identifiers/URLs only when no word boundary fits. No truncation.
+      for (const char of word) {
+        if (line && renderedWidth(line + char, font, size) > maxWidth) {
+          lines.push(line); line = '';
+        }
+        line += char;
+      }
     }
-    return parts;
-  };
-  for (const word of words) {
-    const chunks = font.widthOfTextAtSize(word, size) <= maxWidth ? [word] : splitWord(word);
-    for (const chunk of chunks) {
-      const candidate = line ? `${line} ${chunk}` : chunk;
-      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) line = candidate;
-      else { if (line) lines.push(line); line = chunk; }
-    }
+    if (line) lines.push(line);
   }
-  if (line) lines.push(line);
   return lines.length ? lines : ['-'];
 }
 
@@ -168,7 +169,9 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
     const width = opts.maxWidth;
     const measured = font.widthOfTextAtSize(valueText, size);
     const xx = opts.align === 'right' && width ? x + width - measured : x;
-    page.drawText(valueText, { x: xx, y: yy, size, font, color, maxWidth: width });
+    // All table lines are prewrapped. A second maxWidth wrap here uses a
+    // different algorithm and the default 24pt leading, invisible to row height.
+    page.drawText(valueText, { x: xx, y: yy, size, font, color });
   }
   const ledgers = [...(Array.isArray(ledger) ? ledger : [])].sort((a, b) => num(a.id) - num(b.id));
   const signed = row => isIncoming(row.direction) ? integerIdr(row.amount_idr ?? row.amount) : isOutgoing(row.direction) ? -integerIdr(row.amount_idr ?? row.amount) : 0n;
@@ -223,6 +226,10 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
         : column.key === 'attachment' ? (attachmentUrls.length ? attachmentUrls.map(() => 'Lampiran') : ['-'])
           : wrap(mark(row[column.key]), regular, fontSize, column.width - pad * 2));
       const lineCount = Math.max(...cells.map(cell => cell.length));
+      const fullHeight = Math.max(22, lineCount * lineH + 8);
+      if (fullHeight <= PAGE_H - MARGIN - 38 && y - fullHeight < 38) {
+        footer(); newPage();
+      }
       let offset = 0;
       while (offset < lineCount) {
         const remaining = lineCount - offset;

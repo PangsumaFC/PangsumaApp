@@ -22,12 +22,13 @@ test('linked petty cash appears once, while cash credit and non-cash Finance rem
   assert.equal(result.rows.filter(row => /Request petty/.test(row.report_description)).length, 1);
   assert.equal(result.rows.filter(row => row.direction === 'debit').reduce((sum, row) => sum + row.amount_idr, 0), 2500);
 });
-test('report-level example marker replaces repeated words without editing source records or amounts', () => {
+test('unknown simulation prose is preserved without editing source records or amounts', () => {
   const source = { submissions: [make('demo', { description: 'SIMULASI | Perlengkapan latihan', note: 'SIMULASI: catatan', status: 'sent' })], ledger: [] };
   const before = JSON.stringify(source);
   const result = unifiedReportRows(source);
   assert.equal(result.hasSimulation, true);
-  assert.doesNotMatch(result.rows[0].report_description, /simulasi/i);
+  assert.match(result.rows[0].report_description, /SIMULASI \| Perlengkapan latihan/);
+  assert.match(result.rows[0].report_description, /SIMULASI: catatan/);
   assert.match(result.rows[0].report_description, /Perlengkapan latihan/);
   assert.equal(JSON.stringify(source), before);
   assert.equal(result.totalSubmitted, 1000n);

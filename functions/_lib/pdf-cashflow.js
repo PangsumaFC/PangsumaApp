@@ -1,3 +1,4 @@
+import { reportDisplayFields } from './pdf-demo-provenance.js';
 // Report-only projection. Never changes submission state, ledger or balances.
 export function isReportSubmission(row) {
   const type = String(row.type ?? '').toLowerCase();
@@ -62,11 +63,13 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
       || (row.event_type === 'opening_balance' ? 'Saldo awal kas' : row.event_type === 'cash_topup' ? 'Tambah kas' : row.event_type);
     const note = submission?.note || row.submission_note || row.note;
     const applicant = row.created_by_name || submission?.created_by_name;
+    const display = reportDisplayFields({ id: row.submission_id, topupId: row.topup_id, description, note, applicant });
     const ledgerReceipts = receiptUrls(row);
     const linkedReceipts = receiptUrls(linkedSubmission);
     const attachmentUrls = ledgerReceipts.length ? ledgerReceipts : linkedReceipts;
     return { ...row, report_key: `ledger-${row.id}`, report_at: row.created_at,
-      report_description: [description, note && note !== description ? note : '', applicant ? `Pengaju: ${applicant}` : ''].filter(Boolean).join(' | '),
+      report_description: [display.description, display.note && display.note !== display.description ? display.note : '', applicant ? `Pengaju: ${applicant}` : ''].filter(Boolean).join(' | '),
+      known_demo: display.knownDemo,
       is_cash: true,
       dropbox_receipt_urls: attachmentUrls, report_attachment_urls: attachmentUrls,
       dropbox_receipt_url: attachmentUrls[0] || null,
@@ -75,9 +78,10 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
   for (const submission of eligible) {
     if (represented.has(String(submission.id))) continue;
     const finance = String(submission.type).toLowerCase() === 'finance_request';
-    rows.push({ report_key: `submission-${submission.id}`,
+    const display = reportDisplayFields({ id: submission.id, description: submission.description, note: submission.note, applicant: submission.created_by_name });
+    rows.push({ known_demo: display.knownDemo, report_key: `submission-${submission.id}`,
       report_at: submission.date ? `${submission.date}T00:00:00+07:00` : submission.created_at,
-      report_description: [submission.description, submission.note,
+      report_description: [display.description, display.note,
         `${finance ? 'Finance' : 'Pengajuan'} ${status(submission.status)} ${nominal(submission.amount_idr ?? submission.amount)}`,
         submission.created_by_name ? `Pengaju: ${submission.created_by_name}` : ''].filter(Boolean).join(' | '),
       is_cash: false, direction: '', amount_idr: 0, submission_amount_idr: submission.amount_idr ?? submission.amount ?? 0, balance_after_idr: null,
@@ -85,10 +89,9 @@ export function unifiedReportRows({ submissions = [], ledger = [] } = {}) {
       dropbox_receipt_url: receiptUrls(submission)[0] || null,
     });
   }
-  const hasSimulation = rows.some(row => /simulasi/i.test(row.report_description));
-  // Presentation only: one clear report-level marker replaces repeated row labels.
-  // Keep source records untouched, and never infer real transactions from examples.
-  if (hasSimulation) for (const row of rows) row.report_description = row.report_description.replace(/\bSIMULASI\b[ \t]*[|:-]?[ \t]*/gi, '').trim();
+  const hasSimulation = rows.some(row => row.known_demo || /simulasi/i.test(row.report_description));
+  // Unknown prose is never scrubbed by substring, including the word SIMULASI.
+  // Only the identity + exact templates above permit PDF-only cleanup.
   rows.sort((a, b) => (new Date(a.report_at).getTime() - new Date(b.report_at).getTime())
     || (a.is_cash && b.is_cash ? Number(a.id) - Number(b.id) : a.report_key.localeCompare(b.report_key)));
   return { rows, hasSimulation, totalSubmitted: eligible.reduce((sum, row) => sum + reportInteger(row.amount_idr ?? row.amount), 0n), submissionCount: eligible.length };
