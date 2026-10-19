@@ -50,7 +50,7 @@ function annotations(pdf) {
 
 // This is intentionally a projection-level contract: no cleanup regex may erase
 // legitimate numeric, unit, or status-like prose supplied by the user.
-test('Finance approved/sent keeps description and note only; petty keeps Pengajuan suffix and inputs immutable', () => {
+test('Finance approved/sent and petty keep purpose only and inputs immutable', () => {
   const submissions = [
     finance('approved', { description: 'Perlengkapan latihan', note: '' }),
     finance('sent', {
@@ -68,15 +68,15 @@ test('Finance approved/sent keeps description and note only; petty keeps Pengaju
   assert.equal(totalSubmitted, 1_110_000n);
   assert.deepEqual(rows.map(row => row.report_key), ['submission-approved', 'submission-sent', 'submission-petty']);
   assert.equal(rows[0].report_description, 'Perlengkapan latihan');
-  assert.equal(rows[1].report_description, '2 unit @ Rp185.000 | Finance Disetujui Rp370.000 | Catatan terpisah: 370000 unit; status-like text tetap milik pengguna');
-  assert.match(rows[2].report_description, /^Kas kecil normal \| Nota petty asli \| Pengajuan Disetujui Rp370\.000$/);
+  assert.equal(rows[1].report_description, '2 unit @ Rp185.000 | Finance Disetujui Rp370.000');
+  assert.equal(rows[2].report_description, 'Kas kecil normal');
   assert.doesNotMatch(rows[0].report_description, /Finance Disetujui/);
   assert.match(rows[1].report_description, /Finance Disetujui Rp370\.000/);
   assert.doesNotMatch(rows[1].report_description, /\| Finance Terkirim/);
   assert.equal(JSON.stringify(source), JSON.stringify(before), 'projection must not mutate source rows');
 });
 
-test('Finance PDF has clean description, exact Rp370.000 row/total, note, sent eligibility, and no Finance suffix even under petty renderer', async () => {
+test('Finance PDF has purpose-only description, exact row/total amounts, sent eligibility, and no generated suffix under either renderer', async () => {
   const submissions = [
     finance('finance-approved', { description: 'Perlengkapan latihan', note: '' }),
     finance('finance-sent', {
@@ -95,17 +95,17 @@ test('Finance PDF has clean description, exact Rp370.000 row/total, note, sent e
     assert.match(result.text, /Perlengkapan latihan/);
     assert.match(result.text, /Status approved 2 unit \/ 370000/);
     assert.match(result.text, /user-entered/);
-    assert.match(result.text, /Cat[a\n]?tan terpisah/);
-    assert.match(result.text, /370000 unit/);
+    assert.doesNotMatch(result.text, /Cat[a\n]?tan terpisah/);
+    assert.doesNotMatch(result.text, /370000 unit/);
     assert.match(result.text, /Kas kecil normal/);
-    assert.match(result.text, /Nota petty asli/);
+    assert.doesNotMatch(result.text, /Nota petty asli/);
     const amountCount = (result.text.match(/370\.000/g) || []).length;
-    assert.equal(amountCount, reportType === 'finance_request' ? 4 : 1, reportType === 'finance_request' ? 'three right-column request amounts plus unchanged petty suffix' : 'only petty suffix retains its amount');
+    assert.equal(amountCount, reportType === 'finance_request' ? 3 : 0, 'amounts appear only in numeric columns, not in purpose text');
     if (reportType === 'finance_request') {
       assert.match(result.text, /Total request disetujui\s+Rp\s+1\.110\.000/);
     }
     assert.doesNotMatch(result.text, /Finance (Disetujui|Terkirim)/, 'generated Finance suffix is absent in either report type');
-    assert.match(result.text, /Pengajuan Disetujui[\s\S]{0,80}370\.000/, 'petty content remains unchanged');
+    assert.doesNotMatch(result.text, /Pengajuan Disetujui/, 'petty purpose excludes generated status and amount too');
     assert.equal(annotations(result.pdf).length, 1, 'the synthetic Dropbox receipt remains linked exactly once');
   }
   assert.deepEqual(submissions, before, 'PDF generation must not mutate authoritative submissions');

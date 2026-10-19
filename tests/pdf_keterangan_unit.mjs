@@ -46,11 +46,12 @@ for (const type of ['petty_cash', 'finance_request']) {
           ? 'No. Tanggal Keterangan Nominal request Lampiran'
           : 'No. Tanggal Keterangan Masuk Keluar Saldo Lampiran', 'description column heading is exactly Keterangan');
         assert.doesNotMatch(text, /Pengaju:|Asep|D20261018|Seed langsung/);
-        assert.equal((text.match(/3\.5/g) || []).length, 2, 'only the real description and real note retain 3.5');
+        assert.equal((text.match(/3\.5/g) || []).length, 1, 'the real purpose retains 3.5; optional note is not rendered');
         assert.match(text, /Lampiran/);
         assert.match(text, /Rahmat Saputro/);
         assert.equal((text.match(/DATA DEMO/g) || []).length, 1);
-        assert.match(text, /125\.000/);
+        if (linked || type === 'finance_request') assert.match(text, /125\.000/);
+        else assert.doesNotMatch(text, /125\.000/, 'non-ledger petty amount must not reappear as generated prose');
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -63,5 +64,5 @@ test('real names, applicant-like prose and decimal quantities in source text are
   const description = 'Beli 3.5 meter; Pengaju: Vendor Asep';
   const note = 'Konfirmasi Asep Zainal Arifin; ukuran 3.5';
   const result = unifiedReportRows({ submissions: [{ id: 'real', type: 'petty_cash', status: 'approved', amount_idr: 12000, description, note, created_by_name: applicant }] });
-  assert.equal(result.rows[0].report_description, `${description} | ${note} | Pengajuan Disetujui Rp12.000`);
+  assert.equal(result.rows[0].report_description, description);
 });

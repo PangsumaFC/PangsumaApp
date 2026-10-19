@@ -31,13 +31,13 @@ test('PDF rejects more than 1000 unified rows even when each section is within 6
 
 test('PDF rejects rendered report descriptions over 80000 characters', async () => {
   const { db, managerToken } = await seededFinancialDb();
-  for (let i = 0; i < 200; i++) insertSubmission(db, { id: id('62000000', i), createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-01-01', description: `Description ${i} ${'x'.repeat(130)}`, note: 'y'.repeat(300), amount: 1 });
+  for (let i = 0; i < 580; i++) insertSubmission(db, { id: id('62000000', i), createdBy: 'user-a', type: 'petty_cash', status: 'approved', date: '2025-01-01', description: `Description ${i} ${'x'.repeat(130)}`, note: 'y'.repeat(300), amount: 1 });
   const response = await exportResponse(db, managerToken);
   assert.equal(response.status, 413); const body = await response.json(); assert.equal(body.error.code, 'report_too_large'); assert.match(body.error.message, /80\.000 karakter/);
 });
 
 test('renderer enforces a caller page limit below its 150-page ceiling without partial output', async () => {
-  const submissions = Array.from({ length: 8 }, (_, i) => ({ id: id('63000000', i), type: 'finance_request', status: 'approved', amount_idr: 1, date: '2025-01-01', description: `Complete row ${i}`, note: 'long rendered note '.repeat(500), created_by_name: 'User' }));
+  const submissions = Array.from({ length: 8 }, (_, i) => ({ id: id('63000000', i), type: 'finance_request', status: 'approved', amount_idr: 1, date: '2025-01-01', description: `Complete row ${i} ${'long rendered purpose '.repeat(500)}`, note: 'not rendered', created_by_name: 'User' }));
   await assert.rejects(buildFinancialReport({ submissions, snapshotAt: '2025-02-01T00:00:00.000Z', maxPages: 2 }), error => error.status === 413 && error.code === 'report_too_large' && /2 halaman/.test(error.message));
 });
 

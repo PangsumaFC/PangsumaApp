@@ -58,5 +58,5 @@ test('real user text containing SIMULASI or provenance phrases is never scrubbed
   const text = 'Kegiatan SIMULASI bencana\nCatatan: bukan pengajuan asli pengguna adalah kutipan.';
   const result = unifiedReportRows({ submissions: [{ id: 'real', type: 'finance_request', status: 'approved', date: '2026-10-18', description: text, note: 'Seed langsung oleh Manager tercetak di bukti.', created_by_name: applicant }] });
   assert.ok(result.rows[0].report_description.includes(text));
-  assert.match(result.rows[0].report_description, /Seed langsung oleh Manager tercetak di bukti\./);
+  assert.doesNotMatch(result.rows[0].report_description, /Seed langsung oleh Manager tercetak di bukti\./);
 });

@@ -92,7 +92,7 @@ const base = {
     row(5, { description: longDescription, submission_id: 'linked-submission' }),
   ],
   submissions: [
-    { id: 'linked-submission', type: 'petty_cash', status: 'approved', date: '2026-10-05', amount_idr: 505, description: 'LINKED SUBMISSION PROVENANCE', dropbox_receipt_url: DEMO_URL },
+    { id: 'linked-submission', type: 'petty_cash', status: 'approved', date: '2026-10-05', amount_idr: 505, description: longDescription, dropbox_receipt_url: DEMO_URL },
     { id: 'standalone-submission', type: 'finance_request', status: 'approved', date: '2026-10-06', amount_idr: 606, description: 'STANDALONE ELIGIBLE RECEIPT', dropbox_receipt_url: DEMO_URL },
     { id: 'unattached-ineligible', type: 'finance_request', status: 'pending', date: '2026-10-07', amount_idr: 707, description: 'INELIGIBLE MUST NOT INVENT OR ATTACH', dropbox_receipt_url: DEMO_URL },
   ],

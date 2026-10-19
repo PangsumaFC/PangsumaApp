@@ -30,7 +30,7 @@ test('unknown simulation prose is preserved without editing source records or am
   const result = unifiedReportRows(source);
   assert.equal(result.hasSimulation, true);
   assert.match(result.rows[0].report_description, /SIMULASI \| Perlengkapan latihan/);
-  assert.match(result.rows[0].report_description, /SIMULASI: catatan/);
+  assert.doesNotMatch(result.rows[0].report_description, /SIMULASI: catatan/);
   assert.match(result.rows[0].report_description, /Perlengkapan latihan/);
   assert.equal(JSON.stringify(source), before);
   assert.equal(result.totalSubmitted, 1000n);

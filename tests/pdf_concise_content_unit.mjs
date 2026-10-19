@@ -49,19 +49,19 @@ const submissions = [
 
 const audits = [{ id: 77, created_at: '2026-10-06T04:00:00.000Z', action: 'submission.rejected', actor_name: 'Raka', entity_type: 'finance_request', entity_id: 'RF-201', details_json: { audit_sentinel: 'AUDIT-KEPT-77', reason: 'anggaran' } }];
 
-test('cashflow report keeps filters, totals and ledger notes but excludes submission and audit dumps', async () => {
+test('cashflow report keeps purpose and totals but excludes optional notes and audit dumps', async () => {
   const { text } = await render({ submissions, ledger, audits, filterDescription: 'Status: disetujui; Pemohon: Dina', periodLabel: '01-06 Oktober 2026' });
   assert.match(text, /Tanggal cetak/);
   assert.doesNotMatch(text, /Filter:|Status: disetujui; Pemohon: Dina/);
   assert.doesNotMatch(text, /Saldo hanya kas tercatat|Tanggal: pencatatan kas/);
   assert.doesNotMatch(text, /Tanggal cetak:.*\d{2}:\d{2}/);
-  assert.match(text, /Top up kas Oktober/);
-  assert.match(text, /Beli tinta printer/);
+  assert.match(text, /Tinta printer/);
+  assert.doesNotMatch(text, /Beli tinta printer/);
   assert.match(text, /Rp500\.000/);
   assert.match(text, /Total kas keseluruhan\s+Rp1\.500\.000\s+Rp125\.000/);
   assert.doesNotMatch(text, /Saldo awal\s+Rp|Saldo akhir\s+Rp|Masuk\s+Rp|Keluar\s+Rp/);
   assert.match(text, /Total kas keseluruhan\s+Rp1\.500\.000\s+Rp125\.000/);
-  assert.match(text, /Catatan nyata:/);
+  assert.doesNotMatch(text, /Catatan nyata:/);
   assert.doesNotMatch(text, /Pengaju:|Dina|Budi/);
   for (const excluded of ['Keputusan nyata', 'AUDIT-KEPT-77', 'Lampiran Audit', 'Finance disetujui']) assert.ok(!text.includes(excluded), excluded);
   assert.match(text, /Halaman 1 dari \d+/);
@@ -95,7 +95,7 @@ test('long descriptions paginate without dropping unique beginning and ending se
   assert.ok(pages > 1, `expected pagination, got ${pages} page(s)`);
   assert.match(text, /LONG-START-9/);
   assert.match(text, /LONG-END-9/);
-  assert.match(text, /LONG-NOTE-9/);
+  assert.doesNotMatch(text, /LONG-NOTE-9/);
   assert.doesNotMatch(text, /LONG-DECISION-9/);
   assert.match(text, /Rp99\.000/);
   assert.match(text, /Halaman \d+ dari \d+/);
