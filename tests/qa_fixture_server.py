@@ -53,7 +53,10 @@ def make_handler(site: pathlib.Path = SITE):
     class FixtureHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs): super().__init__(*args, directory=str(site), **kwargs)
         def log_message(self, *_args): return
-        def _role(self): return "user" if "qa-role=user" in self.headers.get("Cookie", "") else "manager"
+        def _role(self):
+            cookie = self.headers.get("Cookie", "")
+            if "qa-role=none" in cookie: return "none"
+            return "user" if "qa-role=user" in cookie else "manager"
         def do_GET(self):  # noqa: N802
             parsed = urlsplit(self.path)
             if parsed.path in ("/manager", "/user", "/login-mock"):
@@ -80,8 +83,11 @@ def make_handler(site: pathlib.Path = SITE):
             if path.endswith("/receipts"): return _json(self, {"items": [], "count": 0, "maxCount": 10, "canUpload": True})
             if path == "cash/insights": return _json(self, {"balanceIdr": "100000", "daily": [], "monthly": [], "topExpenses": [], "recentTopups": [], "summary": {"incomingIdr": "100000", "outgoingIdr": "0"}, "alerts": []})
             return _json(self, {})
+        def do_POST(self):  # noqa: N802
+            if urlsplit(self.path).path == "/api/logout":
+                return _json(self, {"ok": True})
+            return self._reject_write()
         def _reject_write(self): return _json(self, {"error": {"code": "qa_read_only", "message": "Simulasi lokal: tidak ada data yang disimpan."}}, 503)
-        do_POST = lambda self: self._reject_write()  # noqa: E731
         do_PUT = lambda self: self._reject_write()  # noqa: E731
         do_PATCH = lambda self: self._reject_write()  # noqa: E731
         do_DELETE = lambda self: self._reject_write()  # noqa: E731

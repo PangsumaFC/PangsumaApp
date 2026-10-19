@@ -114,7 +114,19 @@ def main():
             "newCredential": credential("another-new-local"), "newCurrentDerived": "not-base64-proof",
         })
         assert malformed_rotation["status"] == 400, malformed_rotation
-        users = [u for u in overview.get("users", []) if u.get("role") == "user" and u.get("active", u.get("is_active", 1))]
+        # Overview is a bounded dashboard snapshot, not the complete account list.
+        all_users = []
+        user_page = 1
+        while True:
+            account_page = api(f"/api/users?page={user_page}&limit=5")
+            assert account_page["status"] == 200, account_page
+            all_users.extend(account_page["data"]["users"])
+            if not account_page["data"].get("hasMore"):
+                break
+            user_page += 1
+            assert user_page <= 20, "unexpected unbounded account pagination"
+        assert len({u["id"] for u in all_users}) == len(all_users)
+        users = [u for u in all_users if u.get("role") == "user" and u.get("active", u.get("is_active", 1))]
         assert len(users) == 9, users
         assert sum(1 for u in users if (u.get("position") or "").upper() == "COO") == 1
         page.locator("[data-page='users']").first.click()
@@ -143,7 +155,9 @@ def main():
             new = f"New-{index:02d}-local-{secrets.token_urlsafe(10)}"
             passwords[email] = (temp, new)
             page.locator("[data-action='reset-user-password']").filter(has=page.locator("xpath=..")) if False else None
+            page.locator("#usersSearch").fill(email)
             row = page.locator("tbody tr").filter(has_text=user["name"])
+            row.wait_for(state="visible", timeout=10_000)
             assert row.count() == 1, email
             row.locator("[data-action='reset-user-password']").click()
             page.locator("#userPasswordDialog").wait_for(state="visible")
@@ -180,7 +194,9 @@ def main():
         page.locator("[data-page='users']").first.click()
         page.locator("tbody tr").first.wait_for(timeout=10_000)
         newer = "Reset-again-local-" + secrets.token_urlsafe(12)
+        page.locator("#usersSearch").fill(target["email"])
         row = page.locator("tbody tr").filter(has_text=target["name"])
+        row.wait_for(state="visible", timeout=10_000)
         row.locator("[data-action='reset-user-password']").click()
         page.locator("#userPasswordDialog").wait_for(state="visible")
         page.locator("#temporaryPassword").fill(newer)

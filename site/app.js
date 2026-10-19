@@ -1517,6 +1517,7 @@ function setButtonBusy(button, busy, label = '') {
 
 function friendlyError(error) {
   if (error instanceof ApiFailure) return error.message;
+  if (error?.code === 'CONSENT_REQUIRED') return 'Setujui bahwa foto dapat dilihat melalui tautan publik sebelum melanjutkan.';
   return 'Koneksi ke layanan gagal. Periksa koneksi lalu coba lagi.';
 }
 
