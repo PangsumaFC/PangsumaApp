@@ -136,8 +136,10 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   pdf.setSubject(reportType === 'finance_request' ? 'Request Finance yang disetujui Manager' : 'Buku kas Petty Cash dan laporan yang disetujui Manager');
   pdf.setCreator('Pangsuma App');
   const snapshot = snapshotAt || new Date().toISOString();
-  const unified = unifiedReportRows({ submissions, ledger });
-  const dates = unified.rows.map(row => row.report_at).map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
+  const unified = unifiedReportRows({ submissions, ledger, reportType });
+  const dates = unified.rows.map(row => row.report_at)
+    .filter(value => reportType !== 'finance_request' || (typeof value === 'string' && value.trim()))
+    .map(value => new Date(value)).filter(date => Number.isFinite(date.getTime()));
   const earliest = dates.length ? dates.reduce((a, b) => a < b ? a : b) : new Date(snapshot);
   const latest = dates.length ? dates.reduce((a, b) => a > b ? a : b) : new Date(snapshot);
   const periodDate = date => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
@@ -330,7 +332,8 @@ export async function buildFinancialReport({ submissions = [], ledger = [], snap
   if (unified.rows.length) {
     ledgerTable(unified.rows.map((l, i) => ({
       no: i + 1,
-      date: shortDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(l.report_at))),
+      date: reportType === 'finance_request' && !Number.isFinite(Date.parse(l.report_at)) ? '-'
+        : shortDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(l.report_at))),
       description: l.report_description,
       request_number: requestNumberOf(l) || null,
       in: reportType === 'finance_request' ? amount(l.submission_amount_idr ?? l.amount_idr ?? l.amount) : (isIncoming(l.direction) ? amount(l.amount_idr ?? l.amount) : '-'),

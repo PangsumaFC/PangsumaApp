@@ -192,6 +192,7 @@ let confirmAction = null;
 let resetTargetId = '';
 let profileDraft = null;
 let profileSelection = 0;
+let avatarPreviewTrigger = null;
 let profileSyncBusy = false;
 let managerSyncBusy = false;
 let managerSyncLastAt = 0;
@@ -339,6 +340,15 @@ function profileAvatar(user, className = 'welcome-avatar') {
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase();
   return `<span class="${className}" aria-hidden="true"><span>${escapeHTML(initials)}</span>${user.photoUrl ? `<img src="${escapeHTML(user.photoUrl)}" alt="" width="80" height="80">` : ''}</span>`;
 }
+function openAvatarPreview(trigger) {
+  if (!state.user || state.user.mustChangePassword) return;
+  avatarPreviewTrigger = trigger || document.activeElement;
+  const name = state.user.nickname || state.user.name || 'Pengguna';
+  $('#avatarPreviewTitle').textContent = `Foto profil ${name}`;
+  $('#avatarPreviewBody').innerHTML = profileAvatar(state.user, 'avatar-preview-image');
+  openDialog('avatarPreviewDialog');
+  $('#avatarPreviewClose')?.focus({ preventScroll: true });
+}
 
 function welcomeClock(now = new Date()) {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(now));
@@ -396,7 +406,7 @@ function cashInsightThresholdLabel(insight) {
 }
 function cashInsightThresholdSourceLabel(insight) {
   const source = cashInsightMinimumSource(insight);
-  return source === 'local' ? 'Batas minimum perangkat ini (lokal)' : source === 'server' ? 'Batas default server' : 'Batas minimum perangkat ini (lokal)';
+  return source === 'local' ? 'Batas minimum perangkat ini (lokal)' : source === 'server' ? 'Batas minimum bawaan' : 'Batas minimum perangkat ini (lokal)';
 }
 function cashInsightTrendText(insight) {
   if (!insight?.trend) return 'Belum ada data tren.';
@@ -433,7 +443,7 @@ function cashInsightsRegion() {
   const minimum = getCashInsightMinimum(insight);
   const minimumStatus = minimum === null ? 'Belum ada batas peringatan' : account < cashInsightInteger(minimum) ? 'Di bawah batas minimum' : 'Batas minimum terpenuhi';
   const equation = `<dl class="cash-health-equation"><div><dt>Saldo awal</dt><dd>${cashInsightMoney(totals.openingIdr)}</dd></div><span aria-hidden="true">+</span><div><dt>Penambahan</dt><dd>${cashInsightMoney(totals.topupsIdr)}</dd></div><span aria-hidden="true">−</span><div><dt>Pengeluaran</dt><dd>${cashInsightMoney(totals.outgoingIdr)}</dd></div><span aria-hidden="true">=</span><div><dt>Saldo hitung</dt><dd>${cashInsightMoney(expected)}</dd></div></dl>`;
-  return `<section class="cash-insights-region" aria-label="Kesehatan Petty Cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo terekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>${cashInsightThresholdSourceLabel(insight)}</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (lokal, Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Ledger per hari · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
+  return `<section class="cash-insights-region" aria-label="Kesehatan Petty Cash"><article class="cash-health-card"><div><p class="cash-insights-kicker">Kesehatan saldo</p><h2>${balanced ? 'Saldo terekonsiliasi' : 'Perlu rekonsiliasi'}</h2>${equation}<p class="cash-health-status">Saldo akun ${cashInsightMoney(account)} · Ekspektasi ${cashInsightMoney(expected)} · Selisih ${cashInsightMoney(discrepancy)}</p></div><div class="cash-health-threshold"><span>${cashInsightThresholdSourceLabel(insight)}</span><strong>${cashInsightThresholdLabel(insight)}</strong><p class="cash-minimum-status" role="status">${escapeHTML(minimumStatus)}</p><button class="text-button" type="button" data-action="configure-cash-minimum" aria-expanded="false" aria-controls="cashMinimumForm">Atur batas</button><form id="cashMinimumForm" class="cash-minimum-form" hidden><label for="cashMinimumInput">Batas minimum perangkat ini (lokal, Rp)</label><input id="cashMinimumInput" name="minimumIdr" inputmode="numeric" pattern="[0-9]*" maxlength="16" value="${escapeHTML(getCashInsightMinimum(insight) || '')}" aria-describedby="cashMinimumHelp"><span id="cashMinimumHelp" class="field-help">Simpan hanya di perangkat ini. Kosongkan untuk menghapus.</span><div class="form-actions"><button class="primary-button" type="submit">Simpan</button><button class="secondary-button" type="button" data-action="clear-cash-minimum">Hapus batas</button></div></form></div></article><article class="cash-trend-card"><div class="section-row"><div><h2>Arus keluar</h2><p>${cashInsightMoney(insight.trend?.outgoingIdr || '0')} · ${coverage}</p></div><strong class="cash-trend-change">${escapeHTML(cashInsightTrendText(insight))}</strong></div><details><summary>Lihat grafik dan rincian harian</summary><p class="cash-chart-caption">Arus keluar per hari, WIB. Nilai grafik diskalakan hanya untuk visual; angka pada tabel disajikan presisi.</p><svg class="cash-trend-chart" viewBox="0 0 100 82" role="img" aria-labelledby="cashTrendTitle"><title id="cashTrendTitle">Grafik arus keluar 30 hari hingga ${escapeHTML(insight.trend?.window?.end || '')}</title><line x1="0" y1="76" x2="100" y2="76"></line>${bars}</svg><div class="cash-chart-legend"><span><i aria-hidden="true"></i> Pengeluaran</span><span>Total: ${cashInsightMoney(insight.trend?.outgoingIdr || '0')}</span><span>Periode: ${escapeHTML(coverage)}</span><span>Sebelumnya: ${cashInsightMoney(insight.trend?.precedingOutgoingIdr || '0')} (${escapeHTML(window.previousStart || '')} – ${escapeHTML(window.previousEnd || '')} WIB)</span></div><div class="table-wrap"><table class="cash-daily-table"><caption>Riwayat kas harian · Seluruh riwayat (WIB)</caption><thead><tr><th scope="col">Tanggal</th><th scope="col">Pembukaan</th><th scope="col">Masuk</th><th scope="col">Keluar</th><th scope="col">Saldo akhir</th></tr></thead><tbody>${rows.map(r => `<tr><th scope="row">${escapeHTML(dateLong(r.day))}</th><td>${cashInsightMoney(r.openingIdr)}</td><td>${cashInsightMoney(r.incomingIdr)}</td><td>${cashInsightMoney(r.outgoingIdr)}</td><td>${cashInsightMoney(r.endingIdr)}</td></tr>`).join('') || '<tr><td colspan="5">Belum ada aktivitas pada periode ini.</td></tr>'}</tbody></table></div><p class="field-help">Menampilkan ${rows.length} hari terbaru dari ${Array.isArray(insight.daily) ? insight.daily.length : rows.length} hari yang tersedia dari server.</p>${Array.isArray(insight.daily) && rows.length < insight.daily.length ? '<button class="secondary-button" type="button" data-action="load-more-cash-days">Muat hari berikutnya</button>' : ''}</details></article></section>`;
 }
 function renderCashInsightsRegion(force = false) {
   const form = $('#cashMinimumForm');
@@ -930,9 +940,7 @@ function welcomePanel() {
   const name = user.nickname || (user.name || 'Pengguna').trim().split(/\s+/)[0];
   const clock = welcomeClock();
   const position = user.dashboardPosition ?? user.position;
-  const avatar = user.role === 'manager'
-    ? `<button class="welcome-avatar-button" type="button" data-action="edit-user-profile" data-id="${escapeHTML(user.id)}" aria-label="Ubah foto dan profil dashboard">${profileAvatar(user)}</button>`
-    : profileAvatar(user);
+  const avatar = `<button class="welcome-avatar-button" type="button" data-action="preview-avatar" aria-label="Lihat foto profil">${profileAvatar(user)}</button>`;
   return `<section class="welcome-card">${avatar}<div class="welcome-copy"><p class="welcome-date">${escapeHTML(clock.date)}</p><h1>${clock.greeting}, ${escapeHTML(name)}</h1><p class="welcome-role">${escapeHTML(position || (user.role === 'manager' ? 'Manager Pangsuma' : 'User Pangsuma'))}</p>${user.quote ? `<p class="welcome-quote">${escapeHTML(user.quote)}</p>` : ''}</div></section>`;
 }
 function metricCard(icon, label, value, page = '', detail = '') {
@@ -1010,7 +1018,7 @@ function managerOverview() {
   const pendingCount = state.summary.pending ?? 0;
   const todayCount = state.summary.today ?? 0;
   return `${welcomePanel()}
-    <section class="hero-panel balance-panel"><div><span>Saldo Petty Cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo dikelola melalui keputusan dan ledger.'}</p></div></section>
+    <section class="hero-panel balance-panel"><div><span>Saldo Petty Cash</span><strong>${money(state.cashBalanceIdr)}</strong><p>${state.cashBalanceIdr === 0 ? 'Saldo awal tetap nol sampai pemilik mengonfirmasi angka aktual.' : 'Saldo tersedia'}</p><div class="balance-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button></div></div></section>
     <div id="financialControlsOverview">${typeof FinancialControls !== 'undefined' ? FinancialControls.renderOverview() : ''}</div>
     <div class="section-row manager-action-row"><h2>Ringkasan operasional</h2><button class="primary-button" type="button" data-action="open-report-choice">Buat pengajuan</button></div>
     <div class="metric-row" aria-label="Ringkasan operasional">${metricCard('review', 'Menunggu persetujuan', String(pendingCount))}${metricCard('finance', 'Menunggu Finance', String(financeWaiting))}${metricCard('report', 'Pengajuan hari ini', String(todayCount))}</div>
@@ -1043,8 +1051,8 @@ function financePage() {
     ? '<p class="field-help pdf-apk-status">Unduh PDF langsung memerlukan APK yang diperbarui.</p>'
     : '';
   const reportActions = `<div class="heading-actions"><button class="primary-button" type="button" data-action="download-pdf" data-report-type="petty_cash">Unduh laporan Petty Cash</button><button class="secondary-button" type="button" data-action="download-pdf" data-report-type="finance_request">Unduh laporan Request Finance</button>${pdfFallback}</div>`;
-  const cashActions = `<div class="heading-actions"><button class="secondary-button" type="button" data-action="open-cash-topup">Tambah Petty Cash</button>${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
-  return `${pageHeading('Finance', 'Pantau Request Finance dan laporan terfilter.')}
+  const cashActions = `<div class="heading-actions">${openingConfigured ? '' : '<button class="secondary-button" type="button" data-action="open-opening-balance">Tetapkan saldo awal</button>'}</div>`;
+  return `${pageHeading('Finance', 'Laporan dan kas.')}
     <section class="finance-section" aria-labelledby="financeReportsTitle"><div class="section-row"><h2 id="financeReportsTitle">Laporan</h2>${reportActions}</div>
     <div id="managerReportsRegion">${typeof ManagerReportFilters !== 'undefined' ? ManagerReportFilters.render() : `<div class="list-stack">${state.submissions.map(item => submissionCard(item, { includeOwner: true, financeActions: true })).join('')}</div>${historyControls('submissions', 'pengajuan')}`}</div></section>
     <section class="finance-section" aria-labelledby="financeCashTitle"><div class="section-row"><h2 id="financeCashTitle">Pengelolaan kas</h2>${cashActions}</div>
@@ -1169,7 +1177,7 @@ function usersPage() {
     <section class="users-search-panel form-card surface" aria-labelledby="usersSearchTitle"><h2 id="usersSearchTitle">Cari akun</h2><label for="usersSearch">Nama atau ID masuk</label><input id="usersSearch" type="search" maxlength="100" value="${escapeHTML(query)}" placeholder="Cari nama atau ID masuk…" autocomplete="off" spellcheck="false" aria-describedby="usersSearchHint"><p id="usersSearchHint" class="field-help" role="status" aria-live="polite">${query ? `Hasil untuk “${escapeHTML(query)}”` : 'Cari di seluruh daftar akun, bukan hanya halaman yang sudah dimuat.'}</p>${listStatus}</section>
     <section class="form-card surface add-user-card" id="addUserCard" hidden><h2>Tambah akun User</h2><form id="userForm"><div class="form-grid"><div class="field"><label for="userName">Nama</label><input id="userName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="userLoginId">ID masuk</label><input id="userLoginId" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="180" required><span class="field-help">Gunakan ID seperti alamat akun; aplikasi tidak mengirim email.</span></div><div class="field field-full"><label for="userPosition">Jabatan (opsional)</label><input id="userPosition" name="position" maxlength="80"></div></div><p class="form-note">Akun baru berperan sebagai User. Atur kata sandi sementara secara terpisah setelah akun dibuat.</p><div class="form-actions"><button class="primary-button" type="submit">Simpan pengguna</button><button class="secondary-button" type="button" data-action="cancel-add-user">Batal</button></div></form></section>
     <div class="section-row"><div><h2>Daftar akun</h2></div><span class="archive-total">${state.usersPage.total ? `Halaman ${Number(state.usersPage.page || 1)} · ${state.users.length} dari ${Number(state.usersPage.total)} akun` : `${state.users.length}${state.usersPage.hasMore ? '+' : ''} akun dimuat`}</span></div>
-    ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users" aria-label="Halaman sebelumnya">Sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users" aria-label="Lihat 5 akun berikutnya">Lihat 5 berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Daftar akun dimuat dari server setelah bootstrap disetujui.')}`;
+    ${state.usersPage.loading || state.usersPage.error ? '' : state.users.length ? `<div class="table-wrap"><table><thead><tr><th>Pengguna</th><th>Posisi dashboard</th><th>Peran</th><th>ID masuk</th><th>Status akses</th><th>Aksi</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="form-actions">${state.usersPage.page > 1 ? '<button class="secondary-button" type="button" data-action="previous-users" aria-label="Halaman sebelumnya">Sebelumnya</button>' : ''}${state.usersPage.hasMore ? '<button class="secondary-button" type="button" data-action="load-more-users" aria-label="Lihat 5 akun berikutnya">Lihat 5 berikutnya</button>' : ''}</div>` : (state.usersPage.loading || state.usersPage.error) ? '' : emptyState(query ? 'Tidak ada hasil' : 'Belum ada akun', query ? 'Coba nama atau ID masuk lain.' : 'Belum ada pengguna.')}`;
 }
 
 function myReportsPage() {
@@ -1975,6 +1983,8 @@ async function handleAction(button) {
     if (button.closest('#userProfileDialog') && profileDraft?.saving) return;
     const dialog = button.closest('dialog');
     if (canCloseAppDialog(dialog)) dialog?.close();
+  } else if (action === 'preview-avatar') {
+    openAvatarPreview(button);
   } else if (action === 'edit-user-profile') {
     openUserProfile(id);
   } else if (action === 'remove-profile-photo') {
@@ -2241,6 +2251,11 @@ function bindEvents() {
   });
   $('#userProfileDialog').addEventListener('cancel', event => {
     if (!canCloseAppDialog(event.currentTarget)) event.preventDefault();
+  });
+  $('#avatarPreviewDialog').addEventListener('close', () => {
+    const trigger = avatarPreviewTrigger;
+    avatarPreviewTrigger = null;
+    trigger?.focus?.({ preventScroll: true });
   });
   $('#userProfileDialog').addEventListener('close', () => {
     profileSelection += 1;

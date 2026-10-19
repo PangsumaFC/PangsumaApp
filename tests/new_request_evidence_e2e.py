@@ -120,7 +120,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         file_input.set_input_files({"name": "synthetic-receipt.png", "mimeType": "image/png", "buffer": PNG})
         expect(evidence.locator(".receipt-preview")).to_be_visible(timeout=5000)
         # Draft survives navigation and reload, scoped by owner and type.
-        evidence.locator(".receipt-consent input").check()
+        assert not evidence.locator(".receipt-consent input").count()
         page.evaluate("navigateToPage('overview')")
         page.evaluate("navigateToPage('new-report')")
         expect(page.locator(".new-request-evidence .receipt-preview")).to_be_visible()
@@ -128,7 +128,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         page.reload(wait_until="networkidle")
         page.evaluate("navigateToPage('new-report')")
         expect(page.locator(".new-request-evidence .receipt-preview")).to_be_visible()
-        expect(page.locator(".receipt-consent input")).to_be_checked()
+        assert not page.locator(".receipt-consent input").count()
 
         # First submit commits the report but loses its response. Retry must use
         # exactly one idempotency key and identical payload, then receipt fails.

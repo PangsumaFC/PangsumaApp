@@ -67,30 +67,26 @@ function seededDraft(overrides = {}) {
   return { ownerId: 'u1', type: 'petty_cash', dataBase64: 'AQID', filename: 'nota.jpg', mimeType: 'image/jpeg', width: 2, height: 2, publicConsent: false, uploadKey: 'photo-key', ...overrides };
 }
 
-test('missing consent is an inline, focused validation failure and never starts API/submit lock', async () => {
+test('stored drafts default public consent and prepare without API or a consent prompt', async () => {
   let calls = 0;
   const h = harness({ draft: seededDraft(), api: () => { calls++; return Promise.resolve({}); } });
-  await assert.rejects(h.evidence.prepareDraftSubmission(h.form), error => error.code === 'CONSENT_REQUIRED');
-  assert.match(h.ctx.consentError.textContent, /tautan publik/);
-  assert.equal(h.ctx.consentError.hidden, false);
-  assert.equal(h.ctx.consent.getAttribute('aria-invalid'), 'true');
-  assert.equal(h.ctx.consent.focused, true);
+  assert.equal(h.ctx.draft.publicConsent, true);
+  const prepared = await h.evidence.prepareDraftSubmission(h.form);
+  assert.equal(prepared.hasPhoto, true);
+  assert.equal(h.ctx.draft.publicConsent, true);
   assert.equal(calls, 0);
-  assert.equal(h.ctx.preparedForSubmission, false);
+  assert.equal(h.ctx.preparedForSubmission, true);
   assert.equal(h.ctx.uploading, false);
 });
 
-test('consent change clears inline error and aria-invalid, while remove resets the draft completely', async () => {
+test('remove resets the draft completely without a consent control', async () => {
   const h = harness({ draft: seededDraft() });
-  h.ctx.consentError.textContent = 'error'; h.ctx.consentError.hidden = false; h.ctx.consent.setAttribute('aria-invalid', 'true');
-  h.ctx.consent.checked = true; await h.ctx.consent.dispatch('change');
-  assert.equal(h.ctx.consentError.hidden, true); assert.equal(h.ctx.consentError.textContent, ''); assert.equal(h.ctx.consent.getAttribute('aria-invalid'), undefined);
-  h.ctx.previewUrl = 'blob:test-existing'; h.ctx.preview.src = h.ctx.previewUrl; h.ctx.preview.hidden = false; h.ctx.name.textContent = 'nota.jpg'; h.ctx.status.textContent = 'Siap.';
-  h.ctx.consent.checked = true; h.ctx.input.value = 'selected'; h.ctx.draft.publicConsent = true;
+  h.ctx.previewUrl = 'blob:test-existing'; h.ctx.preview.src = h.ctx.previewUrl; h.ctx.preview.hidden = false; h.ctx.status.textContent = 'Siap.';
+  h.ctx.input.value = 'selected'; h.ctx.draft.publicConsent = true;
   await h.ctx.remove.dispatch('click');
-  assert.equal(h.ctx.draft, null); assert.equal(h.ctx.status.textContent, ''); assert.equal(h.ctx.name.textContent, '');
+  assert.equal(h.ctx.draft, null); assert.equal(h.ctx.status.textContent, '');
   assert.equal(h.ctx.preview.src, ''); assert.equal(h.ctx.preview.hidden, true); assert.ok(h.revoked.includes('blob:test-existing'));
-  assert.equal(h.ctx.consent.checked, false); assert.equal(h.ctx.input.value, ''); assert.equal(h.storage.size, 0); assert.equal(h.evidence.hasPending(h.form), false);
+  assert.equal(h.ctx.input.value, ''); assert.equal(h.storage.size, 0); assert.equal(h.evidence.hasPending(h.form), false);
 });
 
 test('remove is guarded while processing/uploading or after prepared submission is locked', async () => {

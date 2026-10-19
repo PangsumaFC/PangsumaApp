@@ -52,7 +52,7 @@ test('threshold label distinguishes device override from server default without 
   let stored = null;
   const context = vm.createContext({ state: { user: { id: 'm' } }, localStorage: { getItem: () => stored } });
   load(context, ['cashInsightMinimumKey', 'getCashInsightMinimum', 'cashInsightThresholdSourceLabel']);
-  assert.match(context.cashInsightThresholdSourceLabel({ minimumIdr: '1000' }), /server/i);
+  assert.match(context.cashInsightThresholdSourceLabel({ minimumIdr: '1000' }), /bawaan/i);
   stored = '200'; assert.match(context.cashInsightThresholdSourceLabel({ minimumIdr: '1000' }), /lokal/i);
   assert.equal(context.getCashInsightMinimum({ minimumIdr: '1000' }), '200');
   stored = null; assert.equal(context.getCashInsightMinimum({ minimumIdr: null }), null);

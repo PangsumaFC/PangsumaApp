@@ -70,7 +70,7 @@ test('filtered workspace is the only Finance list, without duplicate totals or c
   assert.equal((html.match(/data-action="download-pdf"/g) || []).length, 2);
   assert.equal((html.match(/data-report-type="petty_cash"/g) || []).length, 1);
   assert.equal((html.match(/data-report-type="finance_request"/g) || []).length, 1);
-  assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 1);
+  assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 0, 'top up hanya di dashboard Manager');
 });
 
 test('Finance APK fallback is status only, even without PwaFiles helper', () => {

@@ -372,3 +372,48 @@ main:has(.add-user-card) .user-access-state { display: grid; gap: 6px; min-width
 .app-version-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line); }
 .app-version-controls .field-help { margin: 0; font-variant-numeric: tabular-nums; }
 .app-version-controls .text-button { min-height: 44px; padding: 8px 0; }
+
+/* Manager report pagination: keep page movement together, then wrap the reset
+   action as its own group so narrow phones never create a crowded button row. */
+.manager-report-filters .report-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 18px;
+}
+.manager-report-filters .report-pagination-pages,
+.manager-report-filters .report-pagination-start {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.manager-report-filters .report-pagination button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  line-height: 1.25;
+  white-space: normal;
+}
+.manager-report-filters .report-pagination-start {
+  flex: 0 1 auto;
+}
+
+@media (max-width: 480px) {
+  .manager-report-filters .report-pagination-pages {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .manager-report-filters .report-pagination-start {
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .manager-report-filters .report-pagination-start button {
+    width: 100%;
+  }
+}

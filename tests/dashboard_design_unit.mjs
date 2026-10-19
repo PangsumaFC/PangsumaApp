@@ -7,7 +7,7 @@ const source = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8
 function helpers() {
   const context = { document: { querySelector: () => null }, Intl, Date, String, Number, Boolean, Array, JSON, Math };
   vm.createContext(context);
-  const injected = source.replace('initialize();', 'globalThis.__dashboard = { submissionTimeline, managerOverview, userOverview, navByRole };');
+  const injected = source.replace('initialize();', 'globalThis.__dashboard = { submissionTimeline, managerOverview, financePage, userOverview, navByRole };');
   vm.runInContext(injected, context);
   return context.__dashboard;
 }
@@ -30,14 +30,15 @@ test('managerOverview renders server summary pending count before action queue a
   const context = helpers();
   void context;
   // Re-evaluate with a controllable state by extracting the function's lexical scope.
-  const sandbox = { document: { querySelector: () => null }, Intl, Date };
+  const sandbox = { document: { querySelector: () => null }, window: {}, Intl, Date };
   vm.createContext(sandbox);
   vm.runInContext(source.replace('initialize();', "state.user={id:'m',role:'manager',name:'Manager'}; state.cashBalanceIdr=125000; state.submissions=[]; state.summary={pending:7,financeWaiting:3,today:4}; globalThis.__html=managerOverview();"), sandbox);
   const html = sandbox.__html;
   assert.match(html, /125\.000/);
   assert.match(html, /Menunggu persetujuan/);
   assert.match(html, />7<\/strong>/);
-  assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 0, 'top up is canonical in Finance, not the overview');
+  assert.equal((html.match(/data-action="open-cash-topup"/g) || []).length, 1, 'top up appears once on the Manager overview');
+  assert.ok(html.indexOf('Saldo tersedia') < html.indexOf('data-action="open-cash-topup"'), 'top up sits below the balance description');
   assert.doesNotMatch(html, />Lihat Finance</, 'overview does not mirror the Finance navigation link');
   assert.ok(html.indexOf('Saldo petty cash') < html.indexOf('Buat pengajuan'));
   assert.doesNotMatch(html, /Antrean tindakan|Lihat Finance/);
@@ -45,12 +46,21 @@ test('managerOverview renders server summary pending count before action queue a
   assert.equal((html.match(/class=\"item-row\"/g) || []).length, 0);
 });
 
+test('financePage removes the duplicate petty cash top-up action while retaining opening balance action', () => {
+  const sandbox = { document: { querySelector: () => null }, window: {}, Intl, Date };
+  vm.createContext(sandbox);
+  vm.runInContext(source.replace('initialize();', "state.user={id:'m',role:'manager'}; state.cashFlow={openingConfigured:false}; globalThis.__finance=financePage();"), sandbox);
+  assert.equal((sandbox.__finance.match(/data-action=\"open-cash-topup\"/g) || []).length, 0);
+  assert.match(sandbox.__finance, /data-action=\"open-opening-balance\"/);
+});
+
 test('userOverview keeps report creation canonical in navigation without a duplicate CTA', () => {
-  const sandbox = { document: { querySelector: () => null }, Intl, Date };
+  const sandbox = { document: { querySelector: () => null }, window: {}, Intl, Date };
   vm.createContext(sandbox);
   vm.runInContext(source.replace('initialize();', "state.user={id:'u',role:'user',name:'User'}; state.submissions=[]; state.summary={}; globalThis.__html=userOverview();"), sandbox);
   const html = sandbox.__html;
   assert.equal((html.match(/data-action=\"open-report-choice\"/g) || []).length, 0);
+  assert.equal((html.match(/data-action=\"open-cash-topup\"/g) || []).length, 0, 'User tidak melihat action Manager');
   assert.match(html, /Buat laporan/);
   assert.doesNotMatch(html, /status metadata/i);
   assert.equal((html.match(/class=\"user-status-section\"/g) || []).length, 1);
@@ -70,7 +80,7 @@ test('offline notice copy is explicit that no queued data is promised', () => {
 
 
 test('submission cards expose finance action only for manager-approved finance requests', () => {
-  const sandbox = { document: { querySelector: () => null }, Intl, Date }; vm.createContext(sandbox);
+  const sandbox = { document: { querySelector: () => null }, window: {}, Intl, Date }; vm.createContext(sandbox);
   vm.runInContext(source.replace('initialize();', "state.user={id:'m',role:'manager'}; globalThis.__approved=submissionCard({id:'approved',type:'finance_request',status:'approved',description:'Approved',amountIdr:1000,date:'2026-10-18',createdAt:'2026-10-18T01:00:00Z'}, {financeActions:true}); globalThis.__pending=submissionCard({id:'pending',type:'petty_cash',status:'approved',description:'Petty',amountIdr:1000,date:'2026-10-18',createdAt:'2026-10-18T01:00:00Z'}, {financeActions:true});"), sandbox);
   assert.match(sandbox.__approved, /data-action=\"send-finance\"/);
   assert.doesNotMatch(sandbox.__pending, /send-finance/);

@@ -13,20 +13,18 @@ const uploadMarkup = source.slice(source.indexOf('const owner = userCanUpload'),
 const prepareBlock = source.slice(source.indexOf('const prepare = async'), source.indexOf('if (ctx.input) ctx.input.addEventListener'));
 const uploadHandler = source.slice(source.indexOf("if (ctx.file) ctx.file.addEventListener('click'"), source.indexOf('const dialog = container.closest'));
 
-test('disclosure is rendered immediately before the upload action', () => {
-  const disclosure = 'Foto disimpan di Dropbox; siapa pun yang memiliki tautannya dapat melihatnya.';
-  assert.match(uploadMarkup, new RegExp(disclosure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.ok(uploadMarkup.indexOf('receipt-dropbox-disclosure') < uploadMarkup.indexOf('receipt-upload'));
-  assert.match(uploadMarkup, /Setuju &amp; unggah foto/);
+test('approved public-link flow hides disclosure, consent controls, and filenames', () => {
+  assert.doesNotMatch(uploadMarkup, /receipt-dropbox-disclosure|receipt-consent|receipt-file-name/);
+  assert.doesNotMatch(uploadMarkup, /Setuju|tautan publik|Dropbox/);
 });
 
-test('preparing a preview does not call the API or grant consent', () => {
+test('preparing a preview does not call the API and retains automatic consent', () => {
   assert.doesNotMatch(prepareBlock, /apiCall\(/);
-  assert.doesNotMatch(prepareBlock, /dropboxPublicConsent/);
-  assert.equal((source.match(/dropboxPublicConsent/g) || []).length, 2);
+  assert.doesNotMatch(prepareBlock, /ctx\.name\.textContent/);
   const draftPrepare = source.slice(source.indexOf('async function prepareDraftSubmission('), source.indexOf('async function completeDraftSubmission('));
-  assert.doesNotMatch(draftPrepare, /apiCall\(|dropboxPublicConsent/);
-  assert.match(draftPrepare, /if \(!ctx\.draft\.publicConsent\)/);
+  assert.doesNotMatch(draftPrepare, /apiCall\(|CONSENT_REQUIRED|consentError/);
+  assert.match(draftPrepare, /ctx\.draft\.publicConsent = true/);
+  assert.match(source, /publicConsent: true/);
 });
 
 test('upload requires a prepared preview and sends consent only from the click handler', () => {
@@ -48,7 +46,7 @@ test('Dropbox links accept only HTTPS per-file share URLs and reject unsafe URLs
   ]) assert.equal(evidence.validateDropboxUrl(value), '', value);
 });
 
-test('ready Dropbox link is safely rendered as a new-tab external link', () => {
-  assert.match(source, /dropboxUrl\(item\.dropboxUrl\)/);
-  assert.match(source, /href="\$\{esc\(shared\)\}" target="_blank" rel="noopener noreferrer"/);
+test('ready Dropbox links are not rendered in the receipt UI', () => {
+  assert.doesNotMatch(source, /dropboxUrl\(item\.dropboxUrl\)/);
+  assert.doesNotMatch(source, /Buka di Dropbox|noopener noreferrer/);
 });

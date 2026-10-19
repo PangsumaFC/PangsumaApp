@@ -1,50 +1,50 @@
-const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.19.13';
+const CACHE_NAME = 'pangsuma-app-shell-v27-2026.10.20.1';
 const APP_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.19.13',
-  '/password-crypto.js?v=2026.10.19.13',
-  '/app.js?v=2026.10.19.13',
-  '/pwa-install.js?v=2026.10.19.13',
-  '/pwa-updates.js?v=2026.10.19.13',
-  '/pwa-files.js?v=2026.10.19.13',
-  '/pwa-files.css?v=2026.10.19.13',
-  '/report-filters.js?v=2026.10.19.13',
-  '/financial-controls.js?v=2026.10.19.13',
-  '/financial-controls.css?v=2026.10.19.13',
-  '/report-evidence.js?v=2026.10.19.13',
-  '/report-evidence.css?v=2026.10.19.13',
-  '/bounded-history.js?v=2026.10.19.13',
-  '/mobile-polish.css?v=2026.10.19.13',
-  '/mobile-viewport.js?v=2026.10.19.13',
+  '/pangsuma-theme.css?v=2026.10.20.1',
+  '/password-crypto.js?v=2026.10.20.1',
+  '/app.js?v=2026.10.20.1',
+  '/pwa-install.js?v=2026.10.20.1',
+  '/pwa-updates.js?v=2026.10.20.1',
+  '/pwa-files.js?v=2026.10.20.1',
+  '/pwa-files.css?v=2026.10.20.1',
+  '/report-filters.js?v=2026.10.20.1',
+  '/financial-controls.js?v=2026.10.20.1',
+  '/financial-controls.css?v=2026.10.20.1',
+  '/report-evidence.js?v=2026.10.20.1',
+  '/report-evidence.css?v=2026.10.20.1',
+  '/bounded-history.js?v=2026.10.20.1',
+  '/mobile-polish.css?v=2026.10.20.1',
+  '/mobile-viewport.js?v=2026.10.20.1',
   '/pangsuma-login-crest-384.png',
   '/pangsuma-loading-logo.png',
   '/pangsuma-loading-emblem.png',
   '/manifest.webmanifest',
-  '/favicon-32.png?v=2026.10.19.13',
-  '/apple-touch-icon.png?v=2026.10.19.13',
-  '/pangsuma-icon-192.png?v=2026.10.19.13',
-  '/pangsuma-icon-512.png?v=2026.10.19.13',
-  '/pangsuma-icon-maskable-192.png?v=2026.10.19.13',
-  '/pangsuma-icon-maskable-512.png?v=2026.10.19.13'
+  '/favicon-32.png?v=2026.10.20.1',
+  '/apple-touch-icon.png?v=2026.10.20.1',
+  '/pangsuma-icon-192.png?v=2026.10.20.1',
+  '/pangsuma-icon-512.png?v=2026.10.20.1',
+  '/pangsuma-icon-maskable-192.png?v=2026.10.20.1',
+  '/pangsuma-icon-maskable-512.png?v=2026.10.20.1'
 ];
 const SHELL_ASSETS = new Set(APP_SHELL.filter(path => path !== '/').map(path => path.split('?')[0]));
 // These assets are required for the core app and its report/authentication flows
 // to remain usable offline. Branding and cosmetic enhancements are optional.
 const MANDATORY_SHELL = [
   '/',
-  '/pangsuma-theme.css?v=2026.10.19.13',
-  '/password-crypto.js?v=2026.10.19.13',
-  '/app.js?v=2026.10.19.13',
-  '/pwa-install.js?v=2026.10.19.13',
-  '/pwa-updates.js?v=2026.10.19.13',
-  '/pwa-files.js?v=2026.10.19.13',
-  '/pwa-files.css?v=2026.10.19.13',
-  '/report-filters.js?v=2026.10.19.13',
-  '/financial-controls.js?v=2026.10.19.13',
-  '/financial-controls.css?v=2026.10.19.13',
-  '/report-evidence.js?v=2026.10.19.13',
-  '/report-evidence.css?v=2026.10.19.13',
-  '/bounded-history.js?v=2026.10.19.13',
+  '/pangsuma-theme.css?v=2026.10.20.1',
+  '/password-crypto.js?v=2026.10.20.1',
+  '/app.js?v=2026.10.20.1',
+  '/pwa-install.js?v=2026.10.20.1',
+  '/pwa-updates.js?v=2026.10.20.1',
+  '/pwa-files.js?v=2026.10.20.1',
+  '/pwa-files.css?v=2026.10.20.1',
+  '/report-filters.js?v=2026.10.20.1',
+  '/financial-controls.js?v=2026.10.20.1',
+  '/financial-controls.css?v=2026.10.20.1',
+  '/report-evidence.js?v=2026.10.20.1',
+  '/report-evidence.css?v=2026.10.20.1',
+  '/bounded-history.js?v=2026.10.20.1',
 ];
 const OPTIONAL_SHELL = APP_SHELL.filter(path => !MANDATORY_SHELL.includes(path));
 
@@ -99,7 +99,7 @@ self.addEventListener('activate', event => {
     .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
     .then(() => self.clients.claim())
     .then(() => self.clients.matchAll?.({ type: 'window', includeUncontrolled: true }))
-    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.19.13' }))));
+    .then(clients => (clients || []).forEach(client => client.postMessage({ type: 'APP_UPDATE_AVAILABLE', build: '2026.10.20.1' }))));
 });
 
 self.addEventListener('fetch', event => {

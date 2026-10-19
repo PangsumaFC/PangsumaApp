@@ -28,6 +28,16 @@ test('normalizer rejects SVG before decoding and oversized input', async () => {
 
 test('picker accept list is aligned with decoder-supported JPEG and PNG types', () => {
   const source = fs.readFileSync(new URL('../site/report-evidence.js', import.meta.url), 'utf8');
-  assert.match(source, /accept=\"image\/jpeg,image\/png\"/);
-  assert.doesNotMatch(source, /accept=\"image\/jpeg,image\/png,image\/webp\"/);
+  assert.match(source, /accept="image\/jpeg,image\/png"/);
+  assert.doesNotMatch(source, /accept="image\/jpeg,image\/png,image\/webp"/);
+});
+
+test('approved public-link flow hides Dropbox disclosure, consent checkbox, and filenames', () => {
+  const source = fs.readFileSync(new URL('../site/report-evidence.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /receipt-dropbox-disclosure/);
+  assert.doesNotMatch(source, /receipt-consent/);
+  assert.doesNotMatch(source, /receipt-file-name/);
+  assert.doesNotMatch(source, /Buka di Dropbox/);
+  assert.match(source, /dropboxPublicConsent: true/);
+  assert.match(source, /publicConsent: true/);
 });
