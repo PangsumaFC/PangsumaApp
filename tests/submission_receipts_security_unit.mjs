@@ -67,17 +67,19 @@ test('validation errors explain the failing stage and never store an invalid pho
   assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submissions').get().n, 1);
 });
 
-test('valid 2048-square 4:4:4 JPEG reports decoder resource limit without changing receipts or submissions', async () => {
+test('valid 2048-square 4:4:4 JPEG uploads and retries without redundant RGB allocation', async () => {
   const d = db();
   const bytes = jpeg.encode({ width: 2048, height: 2048, data: new Uint8Array(2048 * 2048 * 4).fill(255) }, 70).data;
   assert.ok(bytes.length < 512 * 1024);
   const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: false, maxMemoryUsageInMB: 128 });
   assert.deepEqual([decoded.width, decoded.height], [2048, 2048]);
-  await assert.rejects(() => upload(d, bytes), error => {
-    assert.equal(error.code, 'receipt_decode_limit');
-    assert.match(error.message, /batas pemrosesan server/); return true;
-  });
-  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submission_receipts').get().n, 0);
+  const first = await upload(d, bytes);
+  assert.equal(first.status, 201);
+  const receipt = await first.json();
+  const retry = await upload(d, bytes);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).id, receipt.id);
+  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submission_receipts').get().n, 1);
   assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submissions').get().n, 1);
 });
 

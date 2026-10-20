@@ -1,0 +1,3 @@
+# Preserve upstream decoder/license bytes; do not reformat third-party sources.
+functions/_vendor/receipt-jpeg-decoder.js -whitespace
+functions/_vendor/jpeg-js-LICENSE -whitespace

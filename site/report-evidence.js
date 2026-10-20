@@ -6,7 +6,12 @@
   const contexts = new Set(), formContexts = new WeakMap();
   let config = { getUser: () => null, api: null, notify: () => {}, newKey: () => root.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}` };
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  const clampName = name => String(name || 'nota').replace(/[\u0000-\u001f\\/]/g, '_').slice(0, 180) || 'nota';
+  const clampName = name => String(name || 'nota').replace(/[\u0000-\u001f\u007f\\/]/g, '_').slice(0, 180) || 'nota';
+  function outputFilename(name, mime) {
+    const extension = mime === 'image/png' ? '.png' : '.jpg';
+    const sanitized = clampName(name).replace(/\.[^.]*$/, '') || 'nota';
+    return sanitized.slice(0, Math.max(1, 180 - extension.length)) + extension;
+  }
   const apiCall = (path, options = {}) => typeof config.api === 'function' ? config.api(path, options) : Promise.reject(new Error('API belum tersedia.'));
   function userCanSee(submission) { const user = typeof config.getUser === 'function' ? config.getUser() : null; return !!(user && submission && (user.role === 'manager' || String(user.id) === String(submission.createdById ?? submission.createdBy ?? submission.ownerId ?? ''))); }
   function userCanUpload(submission) { const user = typeof config.getUser === 'function' ? config.getUser() : null; return !!(user && submission && String(user.id) === String(submission.createdById ?? submission.createdBy ?? submission.ownerId ?? '')); }
@@ -68,7 +73,7 @@
       while (blob.size > MAX_BYTES && Math.max(width, height) > 800) { const factor = Math.max(.88, 800 / Math.max(width, height)); width = Math.max(1, Math.round(width * factor)); height = Math.max(1, Math.round(height * factor)); blob = await canvasBlob(image, outputMime, outputMime === 'image/jpeg' ? .7 : undefined, width, height); if (!blob) throw new Error('Foto tidak dapat diproses.'); }
     } finally { image.close?.(); }
     if (blob.size > MAX_BYTES) throw new Error('Foto belum cukup ringan. Pilih potongan/foto lebih jelas.'); const bytes = new Uint8Array(await blob.arrayBuffer());
-    return { blob, bytes, mimeType: outputMime, width, height, sha256: await digest(bytes), filename: clampName(file.name).replace(/\.[^.]+$/, '') + (outputMime === 'image/png' ? '.png' : '.jpg') };
+    return { blob, bytes, mimeType: outputMime, width, height, sha256: await digest(bytes), filename: outputFilename(file.name, outputMime) };
   }
   function readBase64(bytes) { let binary = ''; for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(binary); }
   function receiptMarkup(items) { if (!items.length) return '<p class="receipt-empty">Belum ada foto nota pada pengajuan ini.</p>'; return `<ul class="receipt-list">${items.map(item => { const url = receiptUrl(item.url); return url ? `<li class="receipt-item"><img loading="lazy" src="${esc(url)}" alt="Pratinjau foto nota"><div class="receipt-item-info"><a href="${esc(url)}" target="_blank" rel="noopener">Buka foto</a><span>${formatBytes(Number(item.sizeBytes) || 0)} · ${esc(item.actorName || item.uploadedByName || 'Pengguna')}</span></div></li>` : ''; }).join('')}</ul>`; }

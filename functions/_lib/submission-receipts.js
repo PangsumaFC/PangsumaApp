@@ -1,7 +1,7 @@
 import { ApiError, ensureMethod, jsonResponse, readJson } from './http.js';
 import { sha256Hex } from './auth.js';
 import { decode as decodePng } from 'fast-png';
-import jpeg from 'jpeg-js';
+import validateReceiptJpeg from '../_vendor/receipt-jpeg-decoder.js';
 import { dropboxEnabled, dropboxPath, isCanonicalRequestNumber, pushReceiptToDropbox, validateDropboxUrl } from './dropbox-receipts.js';
 
 export const RECEIPT_MAX_COUNT = 10;
@@ -98,20 +98,112 @@ function pngSanitize(b, info) {
   const out = new Uint8Array(chunks.reduce((n,x)=>n+x.length,0)); let q=0; for(const x of chunks){out.set(x,q);q+=x.length;} return out;
 }
 function jpegInfo(input) {
-  const b=input; if (b.length<4||b[0]!==0xff||b[1]!==0xd8) return null; let p=2,w=0,h=0,sawSof=false;
+  const b = input;
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+  let p = 2, width = 0, height = 0, sawSOF = false, sawSOS = false;
+  let frameMarker = 0;
+  const componentIds = new Set();
+  const coefficientBits = new Map();
+  const metadataRanges = [];
+  const marker = () => {
+    if (p >= b.length || b[p++] !== 0xff) return null;
+    while (p < b.length && b[p] === 0xff) p++;
+    if (p >= b.length) return null;
+    return b[p++];
+  };
+  const entropyEnd = () => {
+    while (p < b.length) {
+      if (b[p++] !== 0xff) continue;
+      const start = p - 1;
+      while (p < b.length && b[p] === 0xff) p++;
+      if (p >= b.length) return null;
+      const code = b[p++];
+      if (code === 0x00) continue; // byte stuffing is entropy, not a marker
+      if (code >= 0xd0 && code <= 0xd7) continue; // restart marker in entropy
+      p = start;
+      return true;
+    }
+    return null;
+  };
   while (p < b.length) {
-    if (b[p++]!==0xff) return null; while (b[p]===0xff) p++; const m=b[p++];
-    if (m===0xd9) return sawSof && p===b.length ? {width:w,height:h,bytes:b} : null;
-    if (m===0xda) { if (p+2>b.length) return null; const n=(b[p]<<8)|b[p+1]; if(n<2||p+n>b.length) return null; p+=n; while(p+1<b.length){ if(b[p]===0xff && b[p+1]!==0){ if(b[p+1]===0xd9){ if(p+2!==b.length)return null; return sawSof?{width:w,height:h,bytes:b}:null;} return null; } p++; } return null; }
-    if (m===0x01 || (m>=0xd0&&m<=0xd7)) continue;
-    if (p+2>b.length) return null; const n=(b[p]<<8)|b[p+1]; if(n<2||p+n>b.length)return null;
-    if ((m>=0xc0&&m<=0xc3)||(m>=0xc5&&m<=0xc7)||(m>=0xc9&&m<=0xcb)||(m>=0xcd&&m<=0xcf)) { if(n<8||b[p+2]!==8)return null; h=(b[p+3]<<8)|b[p+4];w=(b[p+5]<<8)|b[p+6];if(!w||!h||w>4096||h>4096||w*h>16_000_000)return null;sawSof=true; }
-    p+=n;
-  } return null;
+    const start = p, m = marker();
+    if (m === null) return null;
+    if (m === 0xd9) {
+      if (!sawSOF || !sawSOS || p !== b.length) return null;
+      // Allocated component buffers are not proof of decoded image coverage.
+      // Require every component's coefficients to have an initial scan; track
+      // refinement order rather than accepting zero-filled missing components.
+      if ([...coefficientBits.values()].some(bits => bits.some(bit => bit < 0))) return null;
+      return { width, height, bytes: b, metadataRanges };
+    }
+    if (m === 0xda) {
+      if (!sawSOF) return null;
+      if (p + 2 > b.length) return null;
+      const n = (b[p] << 8) | b[p + 1];
+      if (n < 6 || p + n > b.length) return null;
+      const count = b[p + 2], scanIds = new Set();
+      if (!count || count > componentIds.size || n !== 6 + 2 * count) return null;
+      for (let i = 0; i < count; i++) {
+        const id = b[p + 3 + 2 * i], tables = b[p + 4 + 2 * i];
+        if (!componentIds.has(id) || scanIds.has(id) || (tables >> 4) > 3 || (tables & 15) > 3) return null;
+        scanIds.add(id);
+      }
+      const ss = b[p + n - 3], se = b[p + n - 2], ah = b[p + n - 1] >> 4, al = b[p + n - 1] & 15;
+      if (ss > se || se > 63 || ah > 13 || al > 13) return null;
+      if (frameMarker !== 0xc2 && (ss !== 0 || se !== 63 || ah || al)) return null;
+      if (frameMarker === 0xc2 && ((ss === 0 && se !== 0) || (ss > 0 && count !== 1) || (ah && ah !== al + 1))) return null;
+      for (const id of scanIds) {
+        const bits = coefficientBits.get(id);
+        for (let coefficient = ss; coefficient <= se; coefficient++) {
+          if (ah === 0 ? bits[coefficient] !== -1 : bits[coefficient] !== ah) return null;
+          bits[coefficient] = al;
+        }
+      }
+      p += n;
+      sawSOS = true;
+      if (!entropyEnd()) return null;
+      continue;
+    }
+    if (m === 0x01) continue;
+    if (p + 2 > b.length) return null;
+    const n = (b[p] << 8) | b[p + 1];
+    if (n < 2 || p + n > b.length) return null;
+    const end = p + n;
+    if (m === 0xe1 || m === 0xed) metadataRanges.push([start, end]);
+    if (m === 0xc0 || m === 0xc1 || m === 0xc2) {
+      if (sawSOF || n < 8 || b[p + 2] !== 8) return null;
+      const count = b[p + 7];
+      if (![1, 3, 4].includes(count) || n !== 8 + 3 * count) return null;
+      for (let i = 0; i < count; i++) {
+        const id = b[p + 8 + 3 * i], sampling = b[p + 9 + 3 * i], table = b[p + 10 + 3 * i];
+        if (componentIds.has(id) || !(sampling >> 4) || (sampling >> 4) > 4 || !(sampling & 15) || (sampling & 15) > 4 || table > 3) return null;
+        componentIds.add(id);
+        coefficientBits.set(id, new Int8Array(64).fill(-1));
+      }
+      frameMarker = m;
+      height = (b[p + 3] << 8) | b[p + 4];
+      width = (b[p + 5] << 8) | b[p + 6];
+      if (!width || !height || width > 4096 || height > 4096 || width * height > 16_000_000) return null;
+      sawSOF = true;
+    } else if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      return null;
+    }
+    p = end;
+  }
+  return null;
 }
 function sanitizeJpeg(b, info) {
-  const chunks=[b.slice(0,2)]; let p=2;
-  while(p<b.length){ if(b[p++]!==0xff)return b; while(b[p]===0xff)p++; const m=b[p++]; if(m===0xda){chunks.push(b.slice(p-2)); return concat(chunks);} if(m===0xd9){chunks.push(b.slice(p-2));break;} if(m===1||(m>=0xd0&&m<=0xd7)){chunks.push(b.slice(p-2));continue;} const n=(b[p]<<8)|b[p+1]; if(!n||p+n>b.length)return b; if(m!==0xe1&&m!==0xed)chunks.push(b.slice(p-2,p+n)); p+=n; } return concat(chunks); }
+  if (!info?.metadataRanges?.length) return b;
+  const chunks = [b.slice(0, 2)];
+  let p = 2;
+  for (const [start, end] of info.metadataRanges) {
+    if (start < p || end > b.length || start > end) return b;
+    if (start > p) chunks.push(b.slice(p, start));
+    p = end;
+  }
+  if (p < b.length) chunks.push(b.slice(p));
+  return concat(chunks);
+}
 function concat(parts,last=new Uint8Array(0)){const out=new Uint8Array(parts.reduce((n,x)=>n+x.length,0)+last.length);let p=0;for(const x of parts){out.set(x,p);p+=x.length;}out.set(last,p);return out;}
 
 async function parseImage(mime, bytes) {
@@ -120,7 +212,7 @@ async function parseImage(mime, bytes) {
   if (!info) fail('invalid_receipt_image');
   if (mime === 'image/jpeg') {
     try {
-      const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: false, tolerantDecoding: false, maxResolutionInMP: 16, maxMemoryUsageInMB: 64 });
+      const decoded = validateReceiptJpeg(bytes);
       if (decoded.width !== info.width || decoded.height !== info.height) fail('invalid_receipt_image');
     } catch (error) {
       if (/maxMemoryUsageInMB|maxResolutionInMP|Could not allocate enough memory/.test(String(error?.message || ''))) fail('receipt_decode_limit');

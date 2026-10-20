@@ -136,6 +136,12 @@ def run_combo(role: str, kind: str, browser, index: int):
         page.evaluate("navigateToPage('new-report')")
         expect(page.locator(".new-request-evidence .receipt-preview")).to_be_visible()
         assert not page.locator(".receipt-consent input").count()
+        preview_base64 = page.evaluate("""async () => {
+          const source = document.querySelector('.new-request-evidence .receipt-preview').src;
+          const bytes = new Uint8Array(await (await fetch(source)).arrayBuffer());
+          let raw = ''; for (const byte of bytes) raw += String.fromCharCode(byte);
+          return btoa(raw);
+        }""")
 
         # First submit commits the report but loses its response. Retry must use
         # exactly one idempotency key and identical payload, then receipt fails.
@@ -172,6 +178,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         assert len({w["key"] for w in receipt_writes}) == 1
         assert len({w["submission"] for w in receipt_writes}) == 1
         assert receipt_writes[0]["body"] == receipt_writes[1]["body"] == receipt_writes[2]["body"]
+        assert all(w["body"]["dataBase64"] == preview_base64 for w in receipt_writes)
         assert len([w for w in writes if w["kind"] == "submission"]) == 2
 
         # SVG is rejected before any new network write.
