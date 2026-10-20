@@ -140,7 +140,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         assert len(submission_writes) == 1
         page.locator("#reportForm button[type=submit]").click()
         page.wait_for_timeout(250)
-        expect(page.locator("body")).to_contain_text("Pengajuan tersimpan")
+        expect(page.locator("body")).to_contain_text("Pengajuan sudah tersimpan")
         submission_writes = [w for w in writes if w["kind"] == "submission"]
         assert len(submission_writes) == 2
         assert submission_writes[0]["key"] == submission_writes[1]["key"]
@@ -148,11 +148,13 @@ def run_combo(role: str, kind: str, browser, index: int):
         assert len([w for w in writes if w["kind"] == "receipt"]) == 1, writes
 
         # Retry after receipt failure: the dedicated upload retry must skip a
-        # second submission POST, preserve upload key and payload, then replay
-        # after a deliberately lost upload response.
+        # second submission POST, preserve upload key and payload, and retain
+        # the browser's specific offline error after renderDraft() runs in
+        # finally.  The next retry then replays the identical upload.
         page.locator(".new-request-evidence .receipt-retry").click()
         page.wait_for_timeout(250)
-        expect(page.locator("body")).to_contain_text("Pengajuan tersimpan")
+        expect(page.locator(".new-request-evidence .receipt-status")).to_contain_text("Failed to fetch")
+        assert not page.locator(".new-request-evidence .receipt-status").inner_text().startswith("Pengajuan tersimpan")
         assert len([w for w in writes if w["kind"] == "submission"]) == 2
         page.locator(".new-request-evidence .receipt-retry").click()
         page.wait_for_timeout(250)
@@ -160,6 +162,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         receipt_writes = [w for w in writes if w["kind"] == "receipt"]
         assert len(receipt_writes) == 3, receipt_writes
         assert len({w["key"] for w in receipt_writes}) == 1
+        assert len({w["submission"] for w in receipt_writes}) == 1
         assert receipt_writes[0]["body"] == receipt_writes[1]["body"] == receipt_writes[2]["body"]
         assert len([w for w in writes if w["kind"] == "submission"]) == 2
 

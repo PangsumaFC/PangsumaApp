@@ -180,7 +180,7 @@
     if (ctx.remove) { ctx.remove.hidden = !ctx.draft?.dataBase64 || !!locked; ctx.remove.disabled = !!locked || ctx.processing; }
     if (ctx.input) ctx.input.disabled = !!locked || ctx.processing || ctx.uploading;
     if (ctx.retry) { ctx.retry.disabled = ctx.processing || ctx.uploading; ctx.retry.textContent = ctx.draft?.submissionId ? 'Coba lagi unggah foto' : 'Coba lagi kirim pengajuan'; }
-    if (ctx.status && locked && !ctx.uploading) ctx.status.textContent = ctx.draft?.submissionId ? 'Pengajuan tersimpan. Foto belum terkonfirmasi; coba lagi tanpa membuat pengajuan baru.' : 'Pengiriman belum terkonfirmasi. Coba lagi dengan draf yang sama agar tidak tercatat dua kali.';
+    if (ctx.status && locked && !ctx.uploading) ctx.status.textContent = ctx.draftUploadError || (ctx.draft?.submissionId ? 'Pengajuan tersimpan. Foto belum terkonfirmasi; coba lagi tanpa membuat pengajuan baru.' : 'Pengiriman belum terkonfirmasi. Coba lagi dengan draf yang sama agar tidak tercatat dua kali.');
   }
   function renderDraft(ctx) {
     const d = ctx.draft;
@@ -214,7 +214,7 @@
     if (!d.submissionId) { d.submissionId = String(submissionResultId || ''); persistDraft(ctx); }
     if (!d.submissionId) throw draftError('ID pengajuan diperlukan untuk mengunggah foto.', 'SUBMISSION_REQUIRED');
     if (ctx.uploading) return ctx.uploadPromise;
-    ctx.uploading = true; renderDraft(ctx); if (ctx.status) ctx.status.textContent = 'Mengunggah foto…';
+    ctx.draftUploadError = ''; ctx.uploading = true; renderDraft(ctx); if (ctx.status) ctx.status.textContent = 'Mengunggah foto…';
     const uploadKey = d.uploadKey || (d.uploadKey = String(config.newKey())); persistDraft(ctx);
     ctx.uploadPromise = (async () => {
       try {
@@ -222,7 +222,7 @@
         await apiCall(`/submissions/${encodeURIComponent(d.submissionId)}/receipts`, { method: 'POST', headers: { 'Idempotency-Key': uploadKey }, body: { filename: d.filename, mimeType: d.mimeType, dataBase64: d.dataBase64, dropboxPublicConsent: true } });
         if (!draftOwnerOk(ctx)) throw draftError('Sesi pengguna berubah setelah unggah.', 'OWNER_CHANGED');
         clearDraftEvidence(form, ctx.type); if (ctx.status) ctx.status.textContent = 'Foto berhasil diunggah.'; return { uploaded: true, submissionId: d.submissionId };
-      } catch (error) { if (ctx.status) ctx.status.textContent = error?.message || 'Foto belum berhasil diunggah. Coba lagi.'; throw error; }
+      } catch (error) { ctx.draftUploadError = error?.message || 'Foto belum berhasil diunggah. Coba lagi.'; if (ctx.status) ctx.status.textContent = ctx.draftUploadError; throw error; }
       finally { ctx.uploading = false; ctx.uploadPromise = null; renderDraft(ctx); }
     })(); return ctx.uploadPromise;
   }

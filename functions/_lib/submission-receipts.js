@@ -9,7 +9,15 @@ export const RECEIPT_MAX_BYTES = 512 * 1024;
 const REQUEST_MAX_BYTES = 800 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const text = (b, a, n) => String.fromCharCode(...b.subarray(a, a + n));
-const fail = (code, message = 'Lampiran tidak valid.') => { throw new ApiError(400, code, message); };
+const validationMessages = {
+  invalid_mime_type: 'Jenis lampiran tidak didukung. Gunakan foto JPG atau PNG.',
+  invalid_filename: 'Nama file foto tidak valid. Pilih kembali foto dengan nama hingga 180 karakter.',
+  invalid_base64: 'Data foto kosong, rusak, atau melebihi batas 512 KB setelah diproses. Pilih kembali foto.',
+  receipt_too_large: 'Foto hasil pemrosesan harus berisi data dan berukuran hingga 512 KB.',
+  invalid_receipt_image: 'Isi foto tidak dapat divalidasi sebagai JPG/PNG yang utuh. Pilih kembali foto yang valid.',
+  receipt_decode_limit: 'Foto melebihi batas pemrosesan server. Perkecil resolusi foto lalu coba lagi.'
+};
+const fail = (code, message = validationMessages[code] || 'Lampiran tidak valid.') => { throw new ApiError(400, code, message); };
 
 function dbError(error) {
   const message = String(error?.message || error);
@@ -114,7 +122,10 @@ async function parseImage(mime, bytes) {
     try {
       const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: false, tolerantDecoding: false, maxResolutionInMP: 16, maxMemoryUsageInMB: 64 });
       if (decoded.width !== info.width || decoded.height !== info.height) fail('invalid_receipt_image');
-    } catch { fail('invalid_receipt_image'); }
+    } catch (error) {
+      if (/maxMemoryUsageInMB|maxResolutionInMP|Could not allocate enough memory/.test(String(error?.message || ''))) fail('receipt_decode_limit');
+      fail('invalid_receipt_image');
+    }
   }
   const clean = mime === 'image/png' ? pngSanitize(bytes, info) : sanitizeJpeg(bytes, info);
   return { ...info, bytes: clean };

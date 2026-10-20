@@ -51,6 +51,36 @@ const PNG = pngBytes(1);
 assert(JPEG.length > 8192 && JPEG.length < 512 * 1024, `fixture JPEG size ${JPEG.length}`);
 assert(PNG.length > 8192 && PNG.length < 512 * 1024, `fixture PNG size ${PNG.length}`);
 
+test('validation errors explain the failing stage and never store an invalid photo', async () => {
+  const d = db();
+  for (const [body, code, message] of [
+    [{ mimeType: 'image/heic', dataBase64: b64(JPEG) }, 'invalid_mime_type', /Jenis lampiran.*JPG atau PNG/],
+    [{ mimeType: 'image/jpeg', dataBase64: 'broken!' }, 'invalid_base64', /Data foto.*512 KB/],
+    [{ mimeType: 'image/jpeg', dataBase64: b64(PNG) }, 'invalid_receipt_image', /Isi foto.*JPG\/PNG/],
+    [{ mimeType: 'image/jpeg', dataBase64: b64(new Uint8Array(512 * 1024 + 1)) }, 'invalid_base64', /512 KB/]
+  ]) {
+    await assert.rejects(() => createSubmissionReceipt({ request: req(crypto.randomUUID(), { filename: 'nota.jpg', ...body }) }, d, actor, 'submission-1'), error => {
+      assert.equal(error.code, code); assert.match(error.message, message); return true;
+    });
+  }
+  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submission_receipts').get().n, 0);
+  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submissions').get().n, 1);
+});
+
+test('valid 2048-square 4:4:4 JPEG reports decoder resource limit without changing receipts or submissions', async () => {
+  const d = db();
+  const bytes = jpeg.encode({ width: 2048, height: 2048, data: new Uint8Array(2048 * 2048 * 4).fill(255) }, 70).data;
+  assert.ok(bytes.length < 512 * 1024);
+  const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: false, maxMemoryUsageInMB: 128 });
+  assert.deepEqual([decoded.width, decoded.height], [2048, 2048]);
+  await assert.rejects(() => upload(d, bytes), error => {
+    assert.equal(error.code, 'receipt_decode_limit');
+    assert.match(error.message, /batas pemrosesan server/); return true;
+  });
+  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submission_receipts').get().n, 0);
+  assert.equal(d.db.prepare('SELECT COUNT(*) n FROM submissions').get().n, 1);
+});
+
 test('generated baseline JPEG is accepted, decodes at 200x200, and download has exact EOI', async () => {
   const d = db(); const response = await upload(d, JPEG); assert.equal(response.status, 201);
   const row = JSON.parse(await response.text());
