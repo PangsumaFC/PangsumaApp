@@ -594,7 +594,11 @@ async function api(path, options = {}) {
     body, signal: options.signal
   });
   let payload = {};
-  try { payload = await response.json(); } catch { payload = {}; }
+  if (response.ok && options.responseType === 'blob') {
+    payload = await response.blob();
+  } else {
+    try { payload = await response.json(); } catch { payload = {}; }
+  }
   if (!response.ok) {
     const error = payload?.error || {};
     if (response.status === 401 && error.code === 'authentication_required' && state.user && requestEpoch === authEpoch) {

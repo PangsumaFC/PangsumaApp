@@ -17,3 +17,16 @@
 .receipt-consent input { flex: 0 0 20px; width: 20px; min-width: 20px; max-width: 20px; height: 20px; min-height: 20px; margin: 0; padding: 0; accent-color: var(--blue-deep, #17334e); }
 .receipt-remove { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line, #dfe4e8); border-radius: 10px; background: var(--paper, #fff); color: var(--muted, #637083); font: inherit; cursor: pointer; }
 .new-request-evidence .receipt-retry { margin-left: 0; }
+
+/* Keep private evidence in the authenticated app, including APK WebViews. */
+.receipt-open { min-height: 44px; padding: .4rem .65rem; border: 1px solid var(--line, #dfe4e8); border-radius: 8px; background: var(--paper, #fff); color: var(--blue-deep, #17334e); font: inherit; font-weight: 650; cursor: pointer; }
+.receipt-open:focus-visible, .receipt-viewer button:focus-visible { outline: 3px solid var(--focus, #795b17); outline-offset: 3px; }
+.receipt-viewer { box-sizing: border-box; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: 92vh; max-height: 92dvh; overflow: auto; padding: 20px; border: 1px solid var(--line, #dfe4e8); border-radius: 16px; background: var(--paper, #fff); color: var(--ink, #17334e); }
+.receipt-viewer::backdrop { background: rgba(10, 22, 35, .7); }
+.receipt-viewer h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.receipt-viewer-image { display: block; width: 100%; height: auto; max-height: 68vh; max-height: 68dvh; object-fit: contain; background: #f4f5f6; }
+.receipt-viewer-image[hidden] { display: none; }
+.receipt-viewer-status { margin: 8px 0; font-size: .9rem; }
+.receipt-viewer-status:empty { display: none; }
+.receipt-viewer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.receipt-viewer-actions button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--line, #dfe4e8); border-radius: 10px; background: var(--paper, #fff); color: var(--blue-deep, #17334e); font: inherit; font-weight: 650; cursor: pointer; }

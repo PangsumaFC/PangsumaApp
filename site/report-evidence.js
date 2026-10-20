@@ -20,6 +20,7 @@
   function cleanupContext(ctx) {
     if (!ctx || ctx.cleaned) return;
     ctx.cleaned = true; ctx.generation++; ctx.abort?.abort(); ctx.observer?.disconnect(); clearTimeout(ctx.pendingTimer); revoke(ctx.previewUrl); ctx.previewUrl = null;
+    ctx.viewer?.close();
     ctx.bitmap?.close?.(); ctx.bitmap = null; contexts.delete(ctx);
     if (ctx.closeHandler && ctx.dialog) ctx.dialog.removeEventListener('close', ctx.closeHandler);
     ctx.workspace?.remove(); if (ctx.container?._reportEvidenceContext === ctx) delete ctx.container._reportEvidenceContext;
@@ -76,7 +77,49 @@
     return { blob, bytes, mimeType: outputMime, width, height, sha256: await digest(bytes), filename: outputFilename(file.name, outputMime) };
   }
   function readBase64(bytes) { let binary = ''; for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(binary); }
-  function receiptMarkup(items) { if (!items.length) return '<p class="receipt-empty">Belum ada foto nota pada pengajuan ini.</p>'; return `<ul class="receipt-list">${items.map(item => { const url = receiptUrl(item.url); return url ? `<li class="receipt-item"><img loading="lazy" src="${esc(url)}" alt="Pratinjau foto nota"><div class="receipt-item-info"><a href="${esc(url)}" target="_blank" rel="noopener">Buka foto</a><span>${formatBytes(Number(item.sizeBytes) || 0)} · ${esc(item.actorName || item.uploadedByName || 'Pengguna')}</span></div></li>` : ''; }).join('')}</ul>`; }
+  function receiptMarkup(items) { if (!items.length) return '<p class="receipt-empty">Belum ada foto nota pada pengajuan ini.</p>'; return `<ul class="receipt-list">${items.map(item => { const url = receiptUrl(item.url); return url ? `<li class="receipt-item"><img loading="lazy" src="${esc(url)}" alt="Pratinjau foto nota"><div class="receipt-item-info"><button type="button" class="receipt-open" data-receipt-url="${esc(url)}">Buka foto</button><span>${formatBytes(Number(item.sizeBytes) || 0)} · ${esc(item.actorName || item.uploadedByName || 'Pengguna')}</span></div></li>` : ''; }).join('')}</ul>`; }
+  function openReceipt(ctx, value, trigger) {
+    const url = receiptUrl(value), owner = currentOwnerId();
+    if (!url || ctx.cleaned || !owner || !userCanSee(ctx.submission) || !ctx.items.some(item => receiptUrl(item.url) === url)) return;
+    for (const other of contexts) other.viewer?.close();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'receipt-viewer'; dialog.setAttribute('aria-label', 'Foto bukti pengajuan');
+    dialog.innerHTML = '<h2>Foto bukti pengajuan</h2><p class="receipt-viewer-status" role="status" aria-live="polite">Memuat foto…</p><img class="receipt-viewer-image" alt="Foto bukti pengajuan" hidden><div class="receipt-viewer-actions"><button type="button" class="receipt-viewer-retry" hidden>Coba lagi</button><button type="button" class="receipt-viewer-close">Tutup foto</button></div>';
+    document.body.appendChild(dialog);
+    const image = dialog.querySelector('.receipt-viewer-image'), status = dialog.querySelector('.receipt-viewer-status'), retry = dialog.querySelector('.receipt-viewer-retry');
+    let closed = false, objectUrl = null, controller = null;
+    const current = () => !closed && !ctx.cleaned && currentOwnerId() === owner && userCanSee(ctx.submission);
+    function close() {
+      if (closed) return;
+      closed = true; controller?.abort(); image.removeAttribute('src'); revoke(objectUrl); objectUrl = null;
+      if (dialog.open) dialog.close(); dialog.remove();
+      if (ctx.viewer?.dialog === dialog) ctx.viewer = null;
+      if (trigger?.isConnected) trigger.focus();
+    }
+    async function load() {
+      if (!current()) { close(); return; }
+      controller?.abort(); controller = new AbortController(); retry.hidden = true; image.hidden = true;
+      image.removeAttribute('src'); revoke(objectUrl); objectUrl = null; status.textContent = 'Memuat foto…';
+      try {
+        const blob = await apiCall(url.slice(4), { responseType: 'blob', signal: controller.signal });
+        if (!current()) { close(); return; }
+        if (!blob?.size || !ACCEPTED.has(String(blob.type || '').toLowerCase())) throw new Error('Foto tidak dapat dibaca. Coba lagi.');
+        objectUrl = URL.createObjectURL(blob); image.src = objectUrl; image.hidden = false; status.textContent = '';
+      } catch (error) {
+        if (!current() || error?.name === 'AbortError') return;
+        const expired = error?.status === 401 || ['authentication_required', 'session_changed'].includes(error?.code);
+        status.textContent = expired ? 'Sesi berakhir. Silakan masuk kembali.' : error?.status === 403 ? 'Anda tidak memiliki akses ke foto ini.' : 'Foto belum dapat dimuat. Periksa koneksi lalu coba lagi.';
+        retry.hidden = expired || error?.status === 403;
+      }
+    }
+    ctx.viewer = { dialog, close };
+    dialog.querySelector('.receipt-viewer-close').addEventListener('click', close);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    dialog.addEventListener('close', close);
+    retry.addEventListener('click', load);
+    image.addEventListener('error', () => { if (current()) { image.hidden = true; image.removeAttribute('src'); revoke(objectUrl); objectUrl = null; status.textContent = 'Foto tidak dapat dibaca. Coba lagi.'; retry.hidden = false; } });
+    dialog.showModal(); void load();
+  }
   function updateReceiptControls(ctx) { const maxCount = Number(ctx.maxCount || 10), count = Number(ctx.itemCount ?? ctx.items.length); ctx.count.textContent = `${count}/${maxCount} foto`; const busy = ctx.processing || ctx.uploading; if (ctx.input) ctx.input.disabled = busy || count >= maxCount; if (ctx.file) { ctx.file.disabled = busy || !ctx.prepared; ctx.file.setAttribute('aria-busy', ctx.uploading ? 'true' : 'false'); } }
   async function loadReceipts(ctx) {
     const sequence = ++ctx.listSequence;
@@ -139,7 +182,11 @@
       }
     };
     if (ctx.input) ctx.input.addEventListener('change', prepare);
-    workspace.addEventListener('click', event => { if (event.target.closest('.receipt-retry')) { event.preventDefault(); if (!ctx.listLoading) void loadReceipts(ctx); } });
+    workspace.addEventListener('click', event => {
+      const open = event.target.closest('.receipt-open');
+      if (open) { event.preventDefault(); openReceipt(ctx, open.dataset.receiptUrl, open); return; }
+      if (event.target.closest('.receipt-retry')) { event.preventDefault(); if (!ctx.listLoading) void loadReceipts(ctx); }
+    });
     if (ctx.file) ctx.file.addEventListener('click', async e => { if (!ctx.prepared || ctx.uploading || ctx.processing) { e.preventDefault(); return; } ctx.uploading = true; const uploadToken = (ctx.uploadToken || 0) + 1; ctx.uploadToken = uploadToken; updateReceiptControls(ctx); ctx.status.textContent = 'Mengunggah foto…'; const generation = ctx.generation; ctx.uploadKey ||= String(config.newKey()); const payload = { filename: ctx.prepared.filename, mimeType: ctx.prepared.mimeType, dataBase64: readBase64(ctx.prepared.bytes), dropboxPublicConsent: true }; let committed = false; try { await apiCall(`/submissions/${encodeURIComponent(submission.id)}/receipts`, { method: 'POST', headers: { 'Idempotency-Key': ctx.uploadKey }, body: payload }); committed = true; if (ctx.cleaned || generation !== ctx.generation) return; ctx.status.textContent = 'Foto nota berhasil diunggah.'; ctx.itemCount = Math.min(ctx.maxCount, Number(ctx.itemCount || ctx.items.length) + 1); const oldInput = ctx.input; ctx.input = clearFileInput(oldInput); if (ctx.input !== oldInput) ctx.input.addEventListener('change', prepare); ctx.prepared = null; ctx.uploadKey = null; revoke(ctx.previewUrl); ctx.previewUrl = null; ctx.preview.hidden = true; if (!await loadReceipts(ctx)) { ctx.status.textContent = 'Foto nota berhasil diunggah. Daftar lampiran belum dapat diperbarui.'; } } catch (error) { if (!ctx.cleaned && generation === ctx.generation) ctx.status.innerHTML = committed ? 'Foto nota berhasil diunggah. Daftar lampiran belum dapat diperbarui. <button type="button" class="receipt-retry">Coba lagi</button>' : esc(error?.message || 'Foto belum berhasil diunggah. Coba lagi.'); } finally { if (!ctx.cleaned && ctx.uploadToken === uploadToken) { ctx.uploading = false; updateReceiptControls(ctx); } } });
     const dialog = container.closest('dialog'); if (dialog) { ctx.dialog = dialog; ctx.closeHandler = () => cleanupContext(ctx); dialog.addEventListener('close', ctx.closeHandler); }
     if (typeof MutationObserver !== 'undefined' && root.document?.body) { ctx.observer = new MutationObserver(() => { const body = ctx.container.ownerDocument?.body; if (ctx.container.isConnected === false || body?.isConnected === false) cleanupContext(ctx); }); ctx.observer.observe(root.document.body, { childList: true, subtree: true }); }
