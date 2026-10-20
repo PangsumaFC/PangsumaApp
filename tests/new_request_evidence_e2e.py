@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from qa_fixture_server import serve_in_thread
 
 ROOT = Path(__file__).resolve().parents[1]
 SCREENSHOTS = Path("/workspace/pangsuma-new-evidence-qa")
+EVIDENCE_ASSET = os.environ.get("PANGSUMA_QA_EVIDENCE_ASSET")
 # A valid 1x1 PNG; synthetic and contains no real user data.
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -44,6 +46,11 @@ def run_combo(role: str, kind: str, browser, index: int):
         # The page may load only this loopback origin. Any other request is blocked.
         if not url.startswith(base + "/"):
             route.abort()
+            return
+        # Optional downloaded public asset: execution and every API write still
+        # stay on loopback/mocks, including when checking a deployed release.
+        if EVIDENCE_ASSET and url.split("?", 1)[0].endswith("/report-evidence.js"):
+            route.fulfill(content_type="application/javascript", body=Path(EVIDENCE_ASSET).read_text())
             return
         if req.method == "POST" and url.endswith("/api/submissions/duplicate-check"):
             _json(route, {"matches": []})
@@ -141,6 +148,7 @@ def run_combo(role: str, kind: str, browser, index: int):
         page.locator("#reportForm button[type=submit]").click()
         page.wait_for_timeout(250)
         expect(page.locator("body")).to_contain_text("Pengajuan sudah tersimpan")
+        expect(page.locator(".new-request-evidence .receipt-status")).to_have_text("Simulasi receipt gagal")
         submission_writes = [w for w in writes if w["kind"] == "submission"]
         assert len(submission_writes) == 2
         assert submission_writes[0]["key"] == submission_writes[1]["key"]
