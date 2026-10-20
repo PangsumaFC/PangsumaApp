@@ -12,3 +12,9 @@
 .cash-health-card,.cash-trend-card{width:100%;min-width:0;box-sizing:border-box}.cash-minimum-form[hidden]{display:none}
 .finance-page,.finance-section{min-width:0;box-sizing:border-box}
 .finance-page>*,.finance-section>*{max-width:100%}.cash-health-main,.cash-health-threshold{min-width:0;max-width:100%}
+
+/* On small Finance screens, an empty alert mount must not consume a grid gap. */
+@media (max-width: 720px) {
+  .finance-page > #financialAlertsFinance:empty { display: none; }
+  .finance-page > .finance-reports-section { margin-top: 0; }
+}

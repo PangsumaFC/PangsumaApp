@@ -46,12 +46,15 @@ def main():
               detailHeight: document.querySelector('.cash-trend-details').getBoundingClientRect().height,
               detailsOpen: document.querySelector('.cash-trend-details').open,
               nestedDetails: document.querySelectorAll('.cash-trend-details details').length,
-              visibleAccount: getComputedStyle(document.querySelector('.cash-health-status strong')).display !== 'none'
+              visibleAccount: getComputedStyle(document.querySelector('.cash-health-status strong')).display !== 'none',
+              headingToReports: document.querySelector('.finance-reports-section').getBoundingClientRect().top - document.querySelector('.finance-page .page-heading').getBoundingClientRect().bottom
             })""")
             assert measured["scrollWidth"] <= measured["width"] + 1, (width, measured)
             assert measured["summaryHeight"] < 260, (width, measured)
             assert measured["detailHeight"] < 80 and not measured["detailsOpen"], (width, measured)
             assert measured["nestedDetails"] == 0 and measured["visibleAccount"]
+            if width <= 720:
+                assert measured["headingToReports"] <= 18, (width, measured)
             page.locator('.cash-trend-details summary').focus()
             expect(page.locator('.cash-trend-details summary')).to_be_focused()
             page.keyboard.press("Enter")
@@ -59,7 +62,7 @@ def main():
             page.keyboard.press("Enter")
             assert not page.locator('.cash-trend-details').get_attribute("open")
         browser.close()
-    print("FINANCE_COMPACT_UI_OFFLINE_PASS widths=320,390,768,1280 compact_summary=1 overflow=0 focus_keyboard=1")
+    print("FINANCE_COMPACT_UI_OFFLINE_PASS widths=320,390,768,1280 compact_summary=1 overflow=0 header_gap_mobile=1 focus_keyboard=1")
 
 
 if __name__ == "__main__":

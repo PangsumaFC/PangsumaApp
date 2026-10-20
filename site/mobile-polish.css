@@ -417,3 +417,13 @@ main:has(.add-user-card) .user-access-state { display: grid; gap: 6px; min-width
     width: 100%;
   }
 }
+
+/* Manager dashboard cash card: keep the balance action full-width and stable on phones. */
+@media (max-width: 760px) {
+  main:has(.balance-panel) .balance-panel { align-items: stretch; gap: 12px; }
+  main:has(.balance-panel) .balance-panel > div { width: 100%; }
+  main:has(.balance-panel) .balance-actions { display: block; width: 100%; margin-top: 8px; }
+  main:has(.balance-panel) .balance-actions > button { display: block; width: 100%; min-width: 0; white-space: nowrap; }
+  main:has(.balance-panel) .manager-action-row { align-items: stretch; gap: 10px; }
+  main:has(.balance-panel) .manager-action-row > button { width: 100%; min-width: 0; }
+}

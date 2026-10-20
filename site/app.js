@@ -1032,8 +1032,19 @@ function userOverview() {
     <div class="metric-row" aria-label="Ringkasan laporan">${metricCard('report', 'Total laporan', String(total))}${metricCard('review', 'Menunggu', String(pending))}</div>
     <section class="user-status-section" aria-labelledby="userStatusTitle"><div class="section-row"><h2 id="userStatusTitle">Laporan terbaru</h2></div>${own.length ? `<div class="list-stack">${own.slice(0, 5).map(item => submissionCard(item)).join('')}</div><button class="secondary-button" type="button" data-page="my-reports">Lihat semua laporan</button>` : emptyState('Belum ada laporan', 'Pilih Buat laporan di navigasi untuk mengirim kebutuhan.')}</section>`;
 }
+function pendingApprovalItems() {
+  return Array.isArray(state.pendingSubmissions) ? state.pendingSubmissions : state.submissions.filter(item => item.status === 'pending');
+}
+function currentApprovalItem(id) {
+  const item = pendingApprovalItems().find(entry => entry.id === id);
+  if (!item || item.status !== 'pending') {
+    showToast('Pengajuan ini sudah tidak tersedia di antrean. Muat ulang antrean untuk melihat status terbaru.');
+    return null;
+  }
+  return item;
+}
 function managerApprovals() {
-  const pending = Array.isArray(state.pendingSubmissions) ? state.pendingSubmissions : state.submissions.filter(item => item.status === 'pending');
+  const pending = pendingApprovalItems();
   const history = state.submissions.filter(item => item.status !== 'pending');
   const audit = state.auditEvents;
   return `${pageHeading('Persetujuan', 'Tinjau setiap pengajuan. Keputusan Petty Cash tercatat bersama perubahan saldo.')}
@@ -1993,7 +2004,7 @@ async function handleAction(button) {
     $('#profilePhotoStatus').textContent = 'Foto akan dihapus setelah Simpan profil ditekan.';
     renderProfilePreview();
   } else if (action === 'approve') {
-    const item = state.submissions.find(entry => entry.id === id);
+    const item = currentApprovalItem(id);
     if (!item || item.createdBy === state.user.id) return;
     if (item.type === 'petty_cash' && item.amountIdr > state.cashBalanceIdr) {
       showToast('Saldo Petty Cash tidak mencukupi.');
@@ -2004,7 +2015,7 @@ async function handleAction(button) {
       : `${money(item.amountIdr)} akan disetujui dan masuk ke daftar Finance. Keputusan akan tercatat.`;
     setConfirm('approve', 'Setujui pengajuan?', `${item.description}. ${description}`, item.type === 'petty_cash' ? 'Setujui & kurangi saldo' : 'Setujui pengajuan', false, { id, successMessage: item.type === 'petty_cash' ? 'Pengajuan disetujui dan debit tercatat di ledger.' : 'Pengajuan disetujui dan masuk ke Finance.' });
   } else if (action === 'reject') {
-    const item = state.submissions.find(entry => entry.id === id);
+    const item = currentApprovalItem(id);
     if (!item || item.createdBy === state.user.id) return;
     $('#rejectForm').dataset.id = id;
     $('#rejectDescription').textContent = `${item.description} · ${money(item.amountIdr)}. Beri alasan agar keputusan dapat ditinjau kembali.`;
